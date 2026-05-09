@@ -1,0 +1,33 @@
+# Binaries and executables
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test artifacts and coverage
+*.test
+*.out
+coverage.txt
+*.coverprofile
+profile.cov
+
+# Dependency directories
+# Only ignore vendor/ if you do not want to commit dependencies
+# vendor/
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Environment variables (contains secrets)
+.env
+.env.*
+!.env.example
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo

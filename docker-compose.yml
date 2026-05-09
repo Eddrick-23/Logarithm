@@ -1,0 +1,62 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.3
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - ./deploy/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: strongpassword
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+  nats:
+    image: nats:2.14
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["-c", "/etc/deploy/nats.conf"]
+    volumes:
+      - ./deploy/nats/nats.conf:/etc/deploy/nats.conf:ro
+      - nats_storage:/data
+
+  ingester:
+    build:
+      context: ./backend
+    ports:
+      - "8090:8090"
+    command: ./ingester
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - nats
+  worker:
+    build:
+      context: ./backend
+    command: ./worker
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - nats
+      - clickhouse
+  dashboard-api:
+    build:
+      context: ./backend
+    ports:
+      - "8091:8091"
+    command: ./dashboard
+    env_file:
+      - ./backend/.env
+    depends_on: # TODO: add NATS later when implementing live tail websocket conn
+      - clickhouse
+volumes:
+  clickhouse_data:
+  clickhouse_logs:
+  nats_storage:

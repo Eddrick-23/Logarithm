@@ -1,0 +1,22 @@
+CREATE DATABASE IF NOT EXISTS logarithm;
+
+CREATE TABLE IF NOT EXISTS logarithm.logs (
+    Timestamp DateTime64(9, 'UTC') CODEC(DoubleDelta, LZ4),
+    
+    -- OTLP Tracing Data
+    TraceId FixedString(32) CODEC(ZSTD(1)),
+    SpanId FixedString(16) CODEC(ZSTD(1)),
+    
+    -- OTLP Log Record Data
+    SeverityText LowCardinality(String),
+    SeverityNumber UInt8,
+    ServiceName LowCardinality(String),
+    Body String CODEC(ZSTD(3)),
+    
+    -- Flexible attributes
+    LogAttributes JSON,
+    ResourceAttributes JSON
+) 
+ENGINE = MergeTree()
+PARTITION BY toYYYYMMDD(Timestamp)
+ORDER BY (ServiceName, Timestamp, SeverityNumber)
