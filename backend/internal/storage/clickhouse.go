@@ -11,8 +11,8 @@ import (
 )
 
 type LogStore interface {
-	BatchInsert(context.Context, []core.LogRecord) (error)
-	SearchLogs(context.Context, core.LogQueryFilter) ([]core.LogRecord, error) 
+	BatchInsert(context.Context, []core.FlatLogRecord) (error)
+	SearchLogs(context.Context, core.LogQueryFilter) ([]core.FlatLogRecord, error) 
 }
 
 type ClickHouseStore struct {
@@ -49,7 +49,7 @@ func NewClickHouseStore(ctx context.Context, addr string, dbName string, tableNa
 	return &ClickHouseStore{conn: conn, dbAndTable: dbName + "." + tableName}, nil
 }
 
-func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.LogRecord) error {
+func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLogRecord) error {
 	batch , err := s.conn.PrepareBatch(ctx, "INSERT INTO " + s.dbAndTable)
 
 	if err != nil {
@@ -66,8 +66,10 @@ func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.LogRec
 			record.SeverityNumber,
 			record.ServiceName,
 			record.Body,
-			record.LogAttributes,
-			record.ResourceAttributes,
+			record.LogAttrKeys,
+			record.LogAttrValues,
+			record.ResAttrKeys,
+			record.ResAttrValues,
 		)
 		if err != nil {
             return fmt.Errorf("failed to append row: %v", err)
@@ -80,7 +82,7 @@ func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.LogRec
 	return nil
 }
 
-func (s *ClickHouseStore) SearchLogs(ctx context.Context, filter core.LogQueryFilter) ([]core.LogRecord, error){
+func (s *ClickHouseStore) SearchLogs(ctx context.Context, filter core.LogQueryFilter) ([]core.FlatLogRecord, error){
 	queryString := fmt.Sprintf("Select * FROM %v WHERE 1=1", s.dbAndTable)
 	var args []any
 
@@ -133,7 +135,7 @@ func (s *ClickHouseStore) SearchLogs(ctx context.Context, filter core.LogQueryFi
 	}
 	queryString += fmt.Sprintf(" LIMIT %v", limit)
 
-	var result []core.LogRecord
+	var result []core.FlatLogRecord
 	if err := s.conn.Select(ctx, &result, queryString, args...); err != nil {
 		return result, err
 	}

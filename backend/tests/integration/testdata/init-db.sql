@@ -13,9 +13,11 @@ CREATE TABLE IF NOT EXISTS logarithm.logs (
     ServiceName LowCardinality(String),
     Body String CODEC(ZSTD(3)),
     
-    -- Flexible attributes
-    LogAttributes JSON,
-    ResourceAttributes JSON
+    -- Flattened flexible attributes
+    LogAttrKeys Array(String),
+    LogAttrValues Array(String),
+    ResAttrKeys Array(String),
+    ResAttrValues Array(String),
 ) 
 ENGINE = MergeTree()
 PARTITION BY toYYYYMMDD(Timestamp)

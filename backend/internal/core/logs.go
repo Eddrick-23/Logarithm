@@ -4,33 +4,51 @@ import (
 	"time"
 )
 
-type LogRecord struct{
-	Timestamp time.Time `json:"Timestamp" ch:"Timestamp"`   
-
-	TraceId string `json:"TraceId" ch:"TraceId"`
-	SpanId string `json:"SpanId" ch:"SpanId"`
-
-	SeverityText string `json:"SeverityText" ch:"SeverityText"`
-	SeverityNumber uint8 `json:"SeverityNumber" ch:"SeverityNumber"`
-
-	ServiceName string `json:"ServiceName" ch:"ServiceName"`
-	Body string `json:"Body" ch:"Body"`
-
-	LogAttributes map[string]any `json:"LogAttributes" ch:"LogAttributes"`
-	ResourceAttributes map[string]any `json:"ResourceAttributes" ch:"ResourceAttributes"`
+type KeyValue struct {
+	Key string 		`json:"key"`
+	Value string	`json:"value"`
 }
-	
+
+type LogRecordDTO struct{
+	Timestamp      time.Time  `json:"Timestamp"`
+	TraceId        string     `json:"TraceId"`
+	SpanId         string     `json:"SpanId"`
+	SeverityText   string     `json:"SeverityText"`
+	SeverityNumber uint8      `json:"SeverityNumber"`
+	Body           string     `json:"Body"`
+	LogAttributes  []KeyValue `json:"LogAttributes"`
+}
+
 /*
-BatchLogs sent by clients will only include ServiceName and
+Batch logs sent by clients will only include ServiceName and
 ResourceAttributes once in the grouped json.
 Before inserting to db, worker will insert the ServiceName
 and ResourceAttributes to every individual record for consistency
 */
-type BatchLogRequest struct {
-	ServiceName string `json:"ServiceName"`
-	ResourceAttributes map[string]any `json:"ResourceAttributes,omitempty"`
-	Records []LogRecord `json:"Records"` 
+type LogIngestRequest struct {
+	ServiceName string 				`json:"ServiceName"`
+	ResourceAttributes []KeyValue 	`json:"ResourceAttributes,omitempty"`
+	Records []LogRecordDTO 			`json:"Records"` 
 }
+
+/*
+Store in a flattened structure for efficient storage and transer
+for NATS and Clickhouse
+*/
+type FlatLogRecord struct{
+	Timestamp      time.Time `ch:"Timestamp"`
+	TraceId        string    `ch:"TraceId"`
+	SpanId         string    `ch:"SpanId"`
+	SeverityText   string    `ch:"SeverityText"`
+	SeverityNumber uint8     `ch:"SeverityNumber"`
+	ServiceName    string    `ch:"ServiceName"`
+	Body           string    `ch:"Body"`
+	LogAttrKeys    []string  `ch:"LogAttrKeys"`
+	LogAttrValues  []string  `ch:"LogAttrValues"`
+	ResAttrKeys    []string  `ch:"ResAttrKeys"`
+	ResAttrValues  []string  `ch:"ResAttrValues"`
+}
+	
 
 type OrderByField string
 
