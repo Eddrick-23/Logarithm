@@ -4,7 +4,6 @@ import type { CSSObject, Theme } from "@mui/material/styles";
 import Box from "@mui/material/Box";
 import MuiDrawer from "@mui/material/Drawer";
 import MuiAppBar from "@mui/material/AppBar";
-import type { AppBarProps } from "@mui/material/AppBar";
 import Toolbar from "@mui/material/Toolbar";
 import List from "@mui/material/List";
 import CssBaseline from "@mui/material/CssBaseline";
@@ -56,7 +55,7 @@ const DrawerHeader = styled("div")(({ theme }) => ({
     ...theme.mixins.toolbar,
 }));
 
-interface AppBarProps extends MuiAppBarProps {
+interface AppBarProps {
     open?: boolean;
 }
 
@@ -67,8 +66,8 @@ const navIconMap: Record<string, React.ElementType> = {
     Analytics: AnalyticsIcon,
 };
 
-const navLinkMap = {
-    Overview: "/",
+const navLinkMap: Record<string, string> = {
+    Overview: "/dashboard",
     "Live Tail": "/live-tail",
     Search: "/search",
     Analytics: "/analytics",
