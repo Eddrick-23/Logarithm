@@ -42,13 +42,6 @@ export const theme = createTheme({
     shape: { borderRadius: 10 },
 
     components: {
-        // Inject Google Fonts
-        MuiCssBaseline: {
-            styleOverrides: `
-                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap');
-            `,
-        },
-
         // Remove gradient overlay in MUI Paper
         MuiPaper: {
             styleOverrides: {

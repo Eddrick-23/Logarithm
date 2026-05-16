@@ -1,4 +1,4 @@
-import { Box, Typography } from "@mui/material";
+import { Box, Typography, Stack } from "@mui/material";
 import type { LogType } from "../types/LogType";
 import { card, logRowSx, pulseSx, sectionLabel } from "../theme/tokens";
 
@@ -48,10 +48,10 @@ export default function LiveTailLogs() {
     return (
         <>
             <Box sx={{ ...card, width: "100%" }}>
-                <Typography sx={{ ...sectionLabel, display: "flex", alignItems: "center", gap: "6px" }}>
+                <Stack direction="row" sx={{ alignItems: "center" }} spacing={1}>
                     <Box sx={{ ...pulseSx, color: "success.main" }} />
-                    Live Tail - All services
-                </Typography>
+                    <Typography sx={{ ...sectionLabel }}>Live Tail - All services</Typography>
+                </Stack>
 
                 {/* dummy data, to replace it with for loop */}
                 <TailLogRow
