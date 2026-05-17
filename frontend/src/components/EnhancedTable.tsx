@@ -403,7 +403,8 @@ export default function EnhancedTable() {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(5);
 
-    const handleRequestSort = (event: React.MouseEvent<unknown>, property: keyof LogRecord) => {
+    const handleRequestSort = (_: React.MouseEvent<unknown>, property: keyof LogRecord) => {
+        // _ represents event
         const isAsc = orderBy === property && order === "asc";
         setOrder(isAsc ? "desc" : "asc");
         setOrderBy(property);
@@ -418,7 +419,8 @@ export default function EnhancedTable() {
         setSelected([]);
     };
 
-    const handleClick = (event: React.MouseEvent<unknown>, id: string) => {
+    const handleClick = (_: React.MouseEvent<unknown>, id: string) => {
+        // _ represents event
         const selectedIndex = selected.indexOf(id);
         let newSelected: readonly string[] = [];
 
@@ -434,7 +436,8 @@ export default function EnhancedTable() {
         setSelected(newSelected);
     };
 
-    const handleChangePage = (event: unknown, newPage: number) => {
+    const handleChangePage = (_: unknown, newPage: number) => {
+        // _ represents event
         setPage(newPage);
     };
 
