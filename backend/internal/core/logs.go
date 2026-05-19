@@ -5,18 +5,18 @@ import (
 )
 
 type KeyValue struct {
-	Key string 		`json:"key"`
-	Value string	`json:"value"`
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
-type LogRecordDTO struct{
-	Timestamp      time.Time  `json:"Timestamp"`
-	TraceId        string     `json:"TraceId"`
-	SpanId         string     `json:"SpanId"`
-	SeverityText   string     `json:"SeverityText"`
-	SeverityNumber uint8      `json:"SeverityNumber"`
-	Body           string     `json:"Body"`
-	LogAttributes  []KeyValue `json:"LogAttributes"`
+type LogRecordDTO struct {
+	Timestamp      time.Time  `json:"timestamp"`
+	TraceId        string     `json:"traceId"`
+	SpanId         string     `json:"spanId"`
+	SeverityText   string     `json:"severityText"`
+	SeverityNumber uint8      `json:"severityNumber"`
+	Body           string     `json:"body"`
+	LogAttributes  []KeyValue `json:"logAttributes"`
 }
 
 /*
@@ -26,16 +26,16 @@ Before inserting to db, worker will insert the ServiceName
 and ResourceAttributes to every individual record for consistency
 */
 type LogIngestRequest struct {
-	ServiceName string 				`json:"ServiceName"`
-	ResourceAttributes []KeyValue 	`json:"ResourceAttributes,omitempty"`
-	Records []LogRecordDTO 			`json:"Records"` 
+	ServiceName        string         `json:"serviceName"`
+	ResourceAttributes []KeyValue     `json:"resourceAttributes,omitempty"`
+	Records            []LogRecordDTO `json:"records"`
 }
 
 /*
 Store in a flattened structure for efficient storage and transer
 for NATS and Clickhouse
 */
-type FlatLogRecord struct{
+type FlatLogRecord struct {
 	Timestamp      time.Time `ch:"Timestamp"`
 	TraceId        string    `ch:"TraceId"`
 	SpanId         string    `ch:"SpanId"`
@@ -48,24 +48,23 @@ type FlatLogRecord struct{
 	ResAttrKeys    []string  `ch:"ResAttrKeys"`
 	ResAttrValues  []string  `ch:"ResAttrValues"`
 }
-	
 
 type OrderByField string
 
 const (
-	OrderByTimestamp OrderByField = "Timestamp"
+	OrderByTimestamp   OrderByField = "Timestamp"
 	OrderByServiceName OrderByField = "ServiceName"
 )
 
 type LogQueryFilter struct {
-	StartTime time.Time
-	EndTime time.Time
-	ServiceName string
+	StartTime    time.Time
+	EndTime      time.Time
+	ServiceName  string
 	SeverityText string
-	TraceId string
-	SpanId string
-	SearchTerm string // search "Body" field
-	Limit int
-	OrderBy OrderByField
-	Descending bool
+	TraceId      string
+	SpanId       string
+	SearchTerm   string // search "Body" field
+	Limit        int
+	OrderBy      OrderByField
+	Descending   bool
 }

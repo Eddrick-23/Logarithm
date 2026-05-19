@@ -4,9 +4,8 @@ services:
       context: ./frontend
     ports:
       - "5173:80"
-    volumes:
-      - .:/app
-      - /app/node_modules
+    depends_on:
+      - dashboard-api
   clickhouse:
     image: clickhouse/clickhouse-server:26.3
     ports:
