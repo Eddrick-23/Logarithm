@@ -69,10 +69,24 @@ func apiDataHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
+	response := struct {
+		Data []core.LogRecordDTO `json:"data"`
+		Meta struct {
+			TotalRowCount int `json:"totalRowCount"`
+		} `json:"meta"`
+	}{
+		Data: dummyLogs,
+		Meta: struct {
+			TotalRowCount int `json:"totalRowCount"`
+		}{
+			TotalRowCount: len(dummyLogs),
+		},
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
-	err := json.NewEncoder(w).Encode(dummyLogs)
+	err := json.NewEncoder(w).Encode(response)
 
 	if err != nil {
 		slog.Error("failed to write response", "err", err)
