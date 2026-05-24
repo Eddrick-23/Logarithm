@@ -5,22 +5,27 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/Eddrick-23/OrbitalTest/internal/core"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 )
 
 
-type Producer interface {
-
+type Producer interface { // for ingestion endpoint to push payload
+	publishLogs(context.Context, string, []byte) error
 }
 
-type Consumer interface {
-
+type Consumer interface { // for worker to read logs from stream
+	consumeLogs()
 }
 
 type NatsBroker struct {
 	conn *nats.Conn
 	js jetstream.JetStream
+}
+
+type NatsJSConsumer struct {
+	consumer jetstream.Consumer
 }
 
 func NewNatsBroker(ctx context.Context, natsUrl string) (*NatsBroker, error){
@@ -29,7 +34,6 @@ func NewNatsBroker(ctx context.Context, natsUrl string) (*NatsBroker, error){
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to NATS: %v", err)
 	}
-	defer nc.Drain()
 
 	js, err := jetstream.New(nc)	
 	if err != nil {
@@ -44,6 +48,7 @@ func (nb *NatsBroker) Close() {
 	if nb.conn != nil {
 		slog.Info("Draining NATS connection...")
 		nb.conn.Drain()
+		slog.Info("Connection closed")
 	}
 }
 
@@ -51,7 +56,7 @@ func (nb *NatsBroker) CreateStream(ctx context.Context, streamName string, subje
 	slog.Info("creating stream...")
 	stream, err := nb.js.CreateStream(ctx, jetstream.StreamConfig{
 		Name:     streamName,
-		Subjects: []string{"jobs.>"}, // Listens for any subject starting with "jobs."
+		Subjects: []string{subject}, // Listens for any subject starting with "jobs."
 		Storage:  jetstream.FileStorage, // Persist to disk
 	})
 	if err != nil {
@@ -62,11 +67,30 @@ func (nb *NatsBroker) CreateStream(ctx context.Context, streamName string, subje
 	return stream, nil
 }
 
-// func (nb *NatsBroker) publishLogs(ctx context.Context, subject string, payload []byte) {
-// 	ack, err := nb.js.Publish(ctx, subject, payload)
-// 	if err != nil {
+func (nb *NatsBroker) publishLogs(ctx context.Context, subject string, payload []byte) error {
+	// ack, err := nb.js.Publish(ctx, subject, payload)
+	// if err != nil {
 
-// 	}
+	// }
 
-// 	ack.
-// }
+	// // ack.
+	
+	return nil
+}
+
+func (nb *NatsBroker) newConsumer(ctx context.Context, streamName string, consumer string) (*NatsJSConsumer, error) {
+	cons, err := nb.js.Consumer(ctx, streamName, "test")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create jetstream consumer: %v", err)
+	}
+	return &NatsJSConsumer{cons}, nil
+}
+
+func (nc *NatsJSConsumer) consumeLogs(ctx context.Context, streamName string) ([]core.LogIngestRequest, error) {
+	// need to check use Consume -> pass in callback
+	// or use Messages
+	// Fetch is worse for throughput
+	// nc.consumer.Consume()
+	nc.consumer.Messages()
+	return nil, nil
+}

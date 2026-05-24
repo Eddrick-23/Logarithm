@@ -20,7 +20,8 @@ type Config struct {
 }
 
 func LoadConfig() *Config {
-	if err := godotenv.Load(); err != nil{
+	// TODO check if it fallsback to .env in docker
+	if err := godotenv.Load(".env.local", ".env"); err != nil{
 		slog.Info("No .env found. Reading directly and using fallbacks if needed.")
 	}
 
