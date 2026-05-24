@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Eddrick-23/OrbitalTest/internal/core"
+	"github.com/Eddrick-23/Logarithm/internal/core"
 )
 
 func NewRouter() http.Handler {
