@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/Eddrick-23/OrbitalTest/internal/config"
-	"github.com/Eddrick-23/OrbitalTest/internal/dashboard"
+	"github.com/Eddrick-23/Logarithm/internal/config"
+	"github.com/Eddrick-23/Logarithm/internal/dashboard"
 )
 
 func main() {
