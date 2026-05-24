@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Eddrick-23/OrbitalTest/internal/transport"
+	"github.com/Eddrick-23/Logarithm/internal/transport"
 )
 func main() {
 	// config := config.LoadConfig()

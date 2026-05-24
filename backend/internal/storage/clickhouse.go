@@ -7,7 +7,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/Eddrick-23/OrbitalTest/internal/core"
+	"github.com/Eddrick-23/Logarithm/internal/core"
 )
 
 type LogStore interface {

@@ -10,8 +10,8 @@ import (
 
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2" // alias to avoid naming conflict
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/Eddrick-23/OrbitalTest/internal/core"
-	"github.com/Eddrick-23/OrbitalTest/internal/storage"
+	"github.com/Eddrick-23/Logarithm/internal/core"
+	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/testcontainers/testcontainers-go"
 	chmodule "github.com/testcontainers/testcontainers-go/modules/clickhouse" // alias to avoid naming conflict
 )
