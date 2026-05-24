@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/Eddrick-23/OrbitalTest/internal/transport"
+	"github.com/Eddrick-23/Logarithm/internal/transport"
 )
 
 func AddRoutes(

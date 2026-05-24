@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/Eddrick-23/OrbitalTest/internal/core"
+	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 )

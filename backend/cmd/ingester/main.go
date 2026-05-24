@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Eddrick-23/OrbitalTest/internal/config"
-	"github.com/Eddrick-23/OrbitalTest/internal/ingester"
-	"github.com/Eddrick-23/OrbitalTest/internal/transport"
+	"github.com/Eddrick-23/Logarithm/internal/config"
+	"github.com/Eddrick-23/Logarithm/internal/ingester"
+	"github.com/Eddrick-23/Logarithm/internal/transport"
 )
 
 func NewServer(config *config.Config, producer transport.Producer) http.Handler {
