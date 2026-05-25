@@ -41,7 +41,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	natsBroker, err := transport.NewNatsBroker(ctx, natsLogger, config.NatsURL)
 
 	if err != nil {
-		return fmt.Errorf("Failed to create Nats Broker: %v", err)
+		return fmt.Errorf("Failed to create Nats Broker: %w", err)
 	}
 
 	srv := NewServer(httpLogger, config, natsBroker)
@@ -51,10 +51,10 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		Handler: srv,
 	}
 
-	go func() { // start server in a go routine
-		slog.Info(fmt.Sprintf("listening on %s\n", httpServer.Addr))
+	go func() {
+		httpLogger.Info("listening", "addr", httpServer.Addr)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			fmt.Fprintf(os.Stderr, "error listening and serving: %s\n", err)
+			httpLogger.Error("http server failed", "err", err)
 		}
 	}()
 
@@ -69,9 +69,9 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		shutdownCtx, cancel := context.WithTimeout(shutdownCtx, 10 * time.Second)
 		defer cancel()
 
-		slog.Info("Shutting down server...")
+		httpLogger.Info("Shutting down server")
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
-			fmt.Fprintf(os.Stderr, "error shutting down http server: %s\n", err)
+			httpLogger.Error("http server shutting down failed", "err", err)
 		}
 	}()
 

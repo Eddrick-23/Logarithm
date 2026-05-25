@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"os"
 
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 )
@@ -18,8 +20,11 @@ func main() {
 	// if err != nil {
 	// 	fmt.Println(err)
 	// }
+
+	handler := slog.NewTextHandler(os.Stdout, nil)
+	logger := slog.New(handler)
 	ctx := context.Background()	
-	nb, err := transport.NewNatsBroker(ctx, "nats://localhost:4222")
+	nb, err := transport.NewNatsBroker(ctx, logger, "nats://localhost:4222")
 
 	if err != nil {
 		fmt.Println(err)
