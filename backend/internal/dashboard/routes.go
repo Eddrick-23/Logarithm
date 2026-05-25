@@ -1,13 +1,17 @@
 package dashboard
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
+	"github.com/Eddrick-23/Logarithm/internal/config"
 	"github.com/Eddrick-23/Logarithm/internal/core"
+	"github.com/Eddrick-23/Logarithm/internal/storage"
 )
 
 func NewRouter() http.Handler {
@@ -28,46 +32,75 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func apiDataHandler(w http.ResponseWriter, r *http.Request) {
-	dummyLogs := []core.LogRecordDTO{
-		{
-			Timestamp:      time.Now().Add(-2 * time.Hour), // 2 hours ago
-			TraceId:        "5b8aa5a2d2c872e8321cf3730591f855",
-			SpanId:         "9248231e3ccb89ad",
-			SeverityText:   "INFO",
-			SeverityNumber: 9, // OTel standard for INFO
-			Body:           "User authentication successful",
-			LogAttributes: []core.KeyValue{
-				{Key: "user.id", Value: "user_8932"},
-				{Key: "http.method", Value: "POST"},
-				{Key: "http.route", Value: "/api/login"},
-			},
-		},
-		{
-			Timestamp:      time.Now().Add(-5 * time.Minute), // 5 minutes ago
-			TraceId:        "a4f812b18e7c10b240391c0192bd80aa",
-			SpanId:         "d78a9c210bf23c45",
-			SeverityText:   "WARN",
-			SeverityNumber: 13, // OTel standard for WARN
-			Body:           "API rate limit approaching",
-			LogAttributes: []core.KeyValue{
-				{Key: "tenant.id", Value: "org_112"},
-				{Key: "rate.limit.remaining", Value: "5"},
-			},
-		},
-		{
-			Timestamp:      time.Now(), // Right now
-			TraceId:        "f18b3d7a8e2c10b240391c0192bc55ef",
-			SpanId:         "c32a9c110bf23e99",
-			SeverityText:   "ERROR",
-			SeverityNumber: 17, // OTel standard for ERROR
-			Body:           "Database connection timeout",
-			LogAttributes: []core.KeyValue{
-				{Key: "db.system", Value: "postgresql"},
-				{Key: "error.type", Value: "timeout"},
-				{Key: "db.name", Value: "users_db"},
-			},
-		},
+	query := r.URL.Query()
+	layout := "2006-01-02T15:04:05" // reference layout for time
+
+	startTime, err := time.Parse(layout, query.Get("startTime"))
+	if err != nil {
+		slog.Error("invalid start time type", "err", err)
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
 	}
+
+	endTime, err := time.Parse(layout, query.Get("endTime"))
+	if err != nil {
+		slog.Error("invalid end time type", "err", err)
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
+	orderBy, err := core.ParseOrderByField(query.Get("orderBy"))
+	if err != nil {
+		slog.Error("invalid order by", "err", err)
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
+	descending, err := strconv.ParseBool(query.Get("descending"))
+	if err != nil {
+		slog.Error("invalid descending type", "err", err)
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
+	limit, err := strconv.Atoi(query.Get("limit"))
+	if err != nil {
+		slog.Error("invalid limit type", "err", err)
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
+	cfg := config.LoadConfig()
+	ctx := context.Background()
+
+	logStore, err := storage.NewClickHouseStore(ctx, cfg.DBAddress, cfg.DBName, cfg.DBTableName, cfg.DBUser, cfg.DBPassword)
+	if err != nil {
+		slog.Error("failed to search logs", "err", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	filter := core.LogQueryFilter{
+		StartTime:    startTime,
+		EndTime:      endTime,
+		ServiceName:  query.Get("serviceName"),
+		SeverityText: query.Get("severityText"),
+		TraceId:      query.Get("traceId"),
+		SpanId:       query.Get("spanId"),
+		SearchTerm:   query.Get("searchTerm"),
+		OrderBy:      orderBy,
+		Descending:   descending,
+		Limit:        limit,
+	}
+
+	records, err := logStore.SearchLogs(ctx, filter)
+	if err != nil {
+		slog.Error("failed to search logs", "err", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	dtos := core.FlatLogRecordsToDTO(records)
 
 	response := struct {
 		Data []core.LogRecordDTO `json:"data"`
@@ -75,19 +108,18 @@ func apiDataHandler(w http.ResponseWriter, r *http.Request) {
 			TotalRowCount int `json:"totalRowCount"`
 		} `json:"meta"`
 	}{
-		Data: dummyLogs,
+		Data: dtos,
 		Meta: struct {
 			TotalRowCount int `json:"totalRowCount"`
 		}{
-			TotalRowCount: len(dummyLogs),
+			TotalRowCount: len(dtos),
 		},
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
-	err := json.NewEncoder(w).Encode(response)
-
+	err = json.NewEncoder(w).Encode(response)
 	if err != nil {
 		slog.Error("failed to write response", "err", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -67,4 +68,42 @@ type LogQueryFilter struct {
 	Limit        int
 	OrderBy      OrderByField
 	Descending   bool
+}
+
+func ParseOrderByField(s string) (OrderByField, error) {
+	switch OrderByField(s) {
+	case OrderByTimestamp, OrderByServiceName:
+		return OrderByField(s), nil
+	default:
+		return "", fmt.Errorf("invalid OrderByField: %q", s)
+	}
+}
+
+func FlatLogRecordToDTO(flat FlatLogRecord) LogRecordDTO {
+	logAttributes := make([]KeyValue, 0, len(flat.LogAttrKeys))
+	for i, key := range flat.LogAttrKeys {
+		value := ""
+		if i < len(flat.LogAttrValues) {
+			value = flat.LogAttrValues[i]
+		}
+		logAttributes = append(logAttributes, KeyValue{Key: key, Value: value})
+	}
+
+	return LogRecordDTO{
+		Timestamp:      flat.Timestamp,
+		TraceId:        flat.TraceId,
+		SpanId:         flat.SpanId,
+		SeverityText:   flat.SeverityText,
+		SeverityNumber: flat.SeverityNumber,
+		Body:           flat.Body,
+		LogAttributes:  logAttributes,
+	}
+}
+
+func FlatLogRecordsToDTO(flats []FlatLogRecord) []LogRecordDTO {
+	dtos := make([]LogRecordDTO, len(flats))
+	for i, flat := range flats {
+		dtos[i] = FlatLogRecordToDTO(flat)
+	}
+	return dtos
 }
