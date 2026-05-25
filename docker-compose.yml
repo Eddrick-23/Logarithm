@@ -24,6 +24,12 @@ services:
       nofile:
         soft: 262144
         hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
   nats:
     image: nats:2.14
     ports:
@@ -62,7 +68,8 @@ services:
     env_file:
       - ./backend/.env
     depends_on: # TODO: add NATS later when implementing live tail websocket conn
-      - clickhouse
+      clickhouse:
+        condition: service_healthy
 volumes:
   clickhouse_data:
   clickhouse_logs:
