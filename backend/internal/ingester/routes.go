@@ -11,11 +11,12 @@ import (
 
 func AddRoutes(
 	mux *http.ServeMux,
+	logger *slog.Logger, 
 	producer transport.Producer,
 ) {
 	mux.HandleFunc("/", indexHandler)
 	mux.HandleFunc("/health", handleHealth())
-	mux.HandleFunc("/ingest", handleIngest(producer)) // has dependency: producer
+	mux.HandleFunc("/ingest", handleIngest(logger, producer)) // has dependency: producer
 	mux.HandleFunc("/api/data", apiDataHandler)
 }
 
@@ -44,7 +45,7 @@ func handleHealth() http.HandlerFunc {
 	}
 }
 
-func handleIngest(producer transport.Producer) http.HandlerFunc {
+func handleIngest(logger *slog.Logger, producer transport.Producer) http.HandlerFunc {
 	// should this be POST/PUT?
 	// receive payload, unmarshall to core.LogIngestRequest
 	// publish payload into nats jetstream

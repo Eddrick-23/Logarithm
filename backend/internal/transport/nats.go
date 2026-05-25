@@ -21,49 +21,51 @@ type Consumer interface { // for worker to read logs from stream
 
 type NatsBroker struct {
 	conn *nats.Conn
+	logger *slog.Logger
 	js jetstream.JetStream
 }
 
 type NatsJSConsumer struct {
 	consumer jetstream.Consumer
+	logger *slog.Logger
 }
 
-func NewNatsBroker(ctx context.Context, natsUrl string) (*NatsBroker, error){
-	slog.Info("Connecting to NATS")
+func NewNatsBroker(ctx context.Context, logger *slog.Logger, natsUrl string) (*NatsBroker, error){
+	logger.Info("Connecting to NATS")
 	nc, err := nats.Connect(natsUrl)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to NATS: %v", err)
+		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
 	}
 
 	js, err := jetstream.New(nc)	
 	if err != nil {
-		return nil, fmt.Errorf("failed to create to jetstream interface: %v", err)
+		return nil, fmt.Errorf("failed to create to jetstream interface: %w", err)
 	}
 	
-	slog.Info("Connection to NATS established")
-	return &NatsBroker{conn: nc, js: js}, nil
+	logger.Info("Connection to NATS established")
+	return &NatsBroker{conn: nc, logger: logger, js: js}, nil
 }
 
 func (nb *NatsBroker) Close() {
 	if nb.conn != nil {
-		slog.Info("Draining NATS connection...")
+		nb.logger.Info("Draining NATS connection")
 		nb.conn.Drain()
-		slog.Info("Connection closed")
+		nb.logger.Info("Connection closed")
 	}
 }
 
 func (nb *NatsBroker) CreateStream(ctx context.Context, streamName string, subject string) (jetstream.Stream, error) {
-	slog.Info("creating stream...")
+	nb.logger.Info("creating stream...")
 	stream, err := nb.js.CreateStream(ctx, jetstream.StreamConfig{
 		Name:     streamName,
 		Subjects: []string{subject}, // Listens for any subject starting with "jobs."
 		Storage:  jetstream.FileStorage, // Persist to disk
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create stream: %v", err)
+		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
 
-	slog.Info("stream created", "name", streamName, "subject", subject)
+	nb.logger.Info("stream created", "name", streamName, "subject", subject)
 	return stream, nil
 }
 
@@ -81,9 +83,9 @@ func (nb *NatsBroker) publishLogs(ctx context.Context, subject string, payload [
 func (nb *NatsBroker) newConsumer(ctx context.Context, streamName string, consumer string) (*NatsJSConsumer, error) {
 	cons, err := nb.js.Consumer(ctx, streamName, "test")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create jetstream consumer: %v", err)
+		return nil, fmt.Errorf("failed to create jetstream consumer: %w", err)
 	}
-	return &NatsJSConsumer{cons}, nil
+	return &NatsJSConsumer{cons, nb.logger}, nil
 }
 
 func (nc *NatsJSConsumer) consumeLogs(ctx context.Context, streamName string) ([]core.LogIngestRequest, error) {
