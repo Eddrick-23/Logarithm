@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/config"
@@ -16,9 +17,9 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 )
 
-func NewServer(config *config.Config, producer transport.Producer) http.Handler {
+func NewServer(logger *slog.Logger, config *config.Config, producer transport.Producer) http.Handler {
 	mux := http.NewServeMux()
-	ingester.AddRoutes(mux, producer)
+	ingester.AddRoutes(mux, logger, producer)
 	
 	var handler http.Handler = mux
 	// add middlewares if any
@@ -27,18 +28,23 @@ func NewServer(config *config.Config, producer transport.Producer) http.Handler 
 }
 
 func run(ctx context.Context, w io.Writer, args []string) error {
-	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
+	logger := slog.New(
+        slog.NewTextHandler(w, nil),
+    )
+	natsLogger := logger.With("component", "nats")
+	httpLogger := logger.With("component", "ingester")
+
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	config := config.LoadConfig()
-	slog.Info(config.NatsURL)
-	nb, err := transport.NewNatsBroker(ctx, config.NatsURL)
+	natsBroker, err := transport.NewNatsBroker(ctx, natsLogger, config.NatsURL)
 
 	if err != nil {
 		return fmt.Errorf("Failed to create Nats Broker: %v", err)
 	}
 
-	srv := NewServer(config, nb)
+	srv := NewServer(httpLogger, config, natsBroker)
 
 	httpServer := &http.Server{
 		Addr: fmt.Sprintf("localhost:%v", config.IngesterPort),
@@ -55,19 +61,24 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	// TODO check what is correct way to implement shutdown
 	go func() { // shutdown job
 		defer wg.Done()
-		defer nb.Close() // close nats connection
 		<- ctx.Done()
+
 		shutdownCtx := context.Background()
 		shutdownCtx, cancel := context.WithTimeout(shutdownCtx, 10 * time.Second)
 		defer cancel()
+
+		slog.Info("Shutting down server...")
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
 			fmt.Fprintf(os.Stderr, "error shutting down http server: %s\n", err)
 		}
 	}()
+
 	wg.Wait()
+
+	natsBroker.Close() // close nats connection
+
 	return nil
 }
 

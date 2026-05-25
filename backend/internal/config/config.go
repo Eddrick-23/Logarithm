@@ -1,7 +1,7 @@
 package config
 
 import (
-	"log/slog"
+	"fmt"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -20,9 +20,8 @@ type Config struct {
 }
 
 func LoadConfig() *Config {
-	// TODO check if it fallsback to .env in docker
 	if err := godotenv.Load(".env.local", ".env"); err != nil{
-		slog.Info("No .env found. Reading directly and using fallbacks if needed.")
+		fmt.Println("Note: No .env found. using system environemnt variables with default fallbacks if needed.")
 	}
 
 	return &Config{
