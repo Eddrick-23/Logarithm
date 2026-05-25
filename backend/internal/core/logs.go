@@ -4,36 +4,35 @@ import (
 	"time"
 )
 
+// KeyValue represents the standard OTel key-value pair.
 type KeyValue struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
 }
 
+// LogRecordDTO represents the individual record payload from the frontend/client.
 type LogRecordDTO struct {
-	Timestamp      time.Time  `json:"Timestamp"`
-	TraceId        string     `json:"TraceId"`
-	SpanId         string     `json:"SpanId"`
-	SeverityText   string     `json:"SeverityText"`
-	SeverityNumber uint8      `json:"SeverityNumber"`
-	Body           string     `json:"Body"`
-	LogAttributes  []KeyValue `json:"LogAttributes"`
+	Timestamp      time.Time  `json:"timestamp"`
+	TraceId        string     `json:"traceId"`
+	SpanId         string     `json:"spanId"`
+	SeverityText   string     `json:"severityText"`
+	SeverityNumber uint8      `json:"severityNumber"`
+	Body           string     `json:"body"`
+	LogAttributes  []KeyValue `json:"logAttributes"`
 }
 
 /*
-Batch logs sent by clients will only include ServiceName and
-ResourceAttributes once in the grouped json.
-Before inserting to db, worker will insert the ServiceName
-and ResourceAttributes to every individual record for consistency
+LogIngestRequest handles batch logs sent by clients.
+Includes ServiceName and ResourceAttributes once in the grouped JSON.
 */
 type LogIngestRequest struct {
-	ServiceName        string         `json:"ServiceName"`
-	ResourceAttributes []KeyValue     `json:"ResourceAttributes,omitempty"`
-	Records            []LogRecordDTO `json:"Records"`
+	ServiceName        string         `json:"serviceName"`
+	ResourceAttributes []KeyValue     `json:"resourceAttributes,omitempty"`
+	Records            []LogRecordDTO `json:"records"`
 }
 
 /*
-Store in a flattened structure for efficient storage and transer
-for NATS and Clickhouse
+FlatLogRecord is optimized for storage in ClickHouse
 */
 type FlatLogRecord struct {
 	Timestamp      time.Time `ch:"Timestamp"`
@@ -47,6 +46,22 @@ type FlatLogRecord struct {
 	LogAttrValues  []string  `ch:"LogAttrValues"`
 	ResAttrKeys    []string  `ch:"ResAttrKeys"`
 	ResAttrValues  []string  `ch:"ResAttrValues"`
+}
+
+/*
+LogRecord represents the complete structure when reading back
+from ClickHouse to display on the frontend.
+*/
+type LogRecord struct {
+	Timestamp          time.Time  `json:"timestamp"`
+	TraceId            string     `json:"traceId"`
+	SpanId             string     `json:"spanId"`
+	SeverityText       string     `json:"severityText"`
+	SeverityNumber     uint8      `json:"severityNumber"`
+	ServiceName        string     `json:"serviceName"`
+	Body               string     `json:"body"`
+	LogAttributes      []KeyValue `json:"logAttributes"`
+	ResourceAttributes []KeyValue `json:"resourceAttributes"`
 }
 
 type OrderByField string
