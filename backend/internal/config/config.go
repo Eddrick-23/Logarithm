@@ -9,6 +9,7 @@ import (
 )
 
 type Config struct {
+	IngesterHost    string
 	IngesterPort 	string
 	AppPort 		string
 	DBAddress 		string
@@ -25,6 +26,7 @@ func LoadConfig() *Config {
 	}
 
 	return &Config{
+		IngesterHost: getEnv("INGESTER_HOST", "localhost"),
 		IngesterPort: getEnv("INGESTER_PORT", "8090"),
 		AppPort: getEnv("APP_PORT", "8091"),
 		DBAddress: getEnv("DB_ADDRESS", "localhost:9000"),

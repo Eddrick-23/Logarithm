@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -47,7 +48,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	srv := NewServer(httpLogger, config, natsBroker)
 
 	httpServer := &http.Server{
-		Addr: fmt.Sprintf("localhost:%v", config.IngesterPort),
+		Addr: net.JoinHostPort(config.IngesterHost, config.IngesterPort),
 		Handler: srv,
 	}
 
