@@ -21,7 +21,7 @@ import (
 func NewServer(logger *slog.Logger, config *config.Config, producer transport.Producer) http.Handler {
 	mux := http.NewServeMux()
 	ingester.AddRoutes(mux, logger, producer)
-	
+
 	var handler http.Handler = mux
 	// add middlewares if any
 
@@ -30,8 +30,8 @@ func NewServer(logger *slog.Logger, config *config.Config, producer transport.Pr
 
 func run(ctx context.Context, w io.Writer, args []string) error {
 	logger := slog.New(
-        slog.NewTextHandler(w, nil),
-    )
+		slog.NewTextHandler(w, nil),
+	)
 	natsLogger := logger.With("component", "nats")
 	httpLogger := logger.With("component", "ingester")
 
@@ -48,7 +48,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	srv := NewServer(httpLogger, config, natsBroker)
 
 	httpServer := &http.Server{
-		Addr: net.JoinHostPort(config.IngesterHost, config.IngesterPort),
+		Addr:    net.JoinHostPort(config.IngesterHost, config.IngesterPort),
 		Handler: srv,
 	}
 
@@ -64,10 +64,10 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 
 	go func() { // shutdown job
 		defer wg.Done()
-		<- ctx.Done()
+		<-ctx.Done()
 
 		shutdownCtx := context.Background()
-		shutdownCtx, cancel := context.WithTimeout(shutdownCtx, 10 * time.Second)
+		shutdownCtx, cancel := context.WithTimeout(shutdownCtx, 10*time.Second)
 		defer cancel()
 
 		httpLogger.Info("Shutting down server")

@@ -11,7 +11,7 @@ import (
 
 func AddRoutes(
 	mux *http.ServeMux,
-	logger *slog.Logger, 
+	logger *slog.Logger,
 	producer transport.Producer,
 ) {
 	mux.HandleFunc("/", indexHandler)
@@ -61,7 +61,7 @@ func handleIngest(logger *slog.Logger, producer transport.Producer) http.Handler
 func apiDataHandler(w http.ResponseWriter, r *http.Request) {
 	data := "Some data from the API"
 	_, err := fmt.Fprintln(w, data)
-	
+
 	if err != nil {
 		slog.Error("failed to write response", "err", err)
 	}

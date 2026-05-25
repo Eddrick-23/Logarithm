@@ -8,6 +8,7 @@ import (
 
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 )
+
 func main() {
 	// config := config.LoadConfig()
 	// _, err := storage.NewClickHouseStore(context.Background(),
@@ -23,7 +24,7 @@ func main() {
 
 	handler := slog.NewTextHandler(os.Stdout, nil)
 	logger := slog.New(handler)
-	ctx := context.Background()	
+	ctx := context.Background()
 	nb, err := transport.NewNatsBroker(ctx, logger, "nats://localhost:4222")
 
 	if err != nil {

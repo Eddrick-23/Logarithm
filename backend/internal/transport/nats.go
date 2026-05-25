@@ -10,7 +10,6 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-
 type Producer interface { // for ingestion endpoint to push payload
 	publishLogs(context.Context, string, []byte) error
 }
@@ -20,28 +19,30 @@ type Consumer interface { // for worker to read logs from stream
 }
 
 type NatsBroker struct {
-	conn *nats.Conn
+	conn   *nats.Conn
 	logger *slog.Logger
-	js jetstream.JetStream
+	js     jetstream.JetStream
 }
 
 type NatsJSConsumer struct {
 	consumer jetstream.Consumer
-	logger *slog.Logger
+	logger   *slog.Logger
 }
 
-func NewNatsBroker(ctx context.Context, logger *slog.Logger, natsUrl string) (*NatsBroker, error){
+func NewNatsBroker(ctx context.Context, logger *slog.Logger, natsUrl string) (*NatsBroker, error) {
 	logger.Info("Connecting to NATS")
+	// connect to server
 	nc, err := nats.Connect(natsUrl)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
 	}
 
-	js, err := jetstream.New(nc)	
+	// create JetStream management interface
+	js, err := jetstream.New(nc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create to jetstream interface: %w", err)
 	}
-	
+
 	logger.Info("Connection to NATS established")
 	return &NatsBroker{conn: nc, logger: logger, js: js}, nil
 }
@@ -56,10 +57,13 @@ func (nb *NatsBroker) Close() {
 
 func (nb *NatsBroker) CreateStream(ctx context.Context, streamName string, subject string) (jetstream.Stream, error) {
 	nb.logger.Info("creating stream...")
+
+	// TODO is CreateOrUpdateStream more applicable here?
 	stream, err := nb.js.CreateStream(ctx, jetstream.StreamConfig{
-		Name:     streamName,
-		Subjects: []string{subject}, // Listens for any subject starting with "jobs."
-		Storage:  jetstream.FileStorage, // Persist to disk
+		Name:        streamName,
+		Description: "Log payloads from client services",
+		Subjects:    []string{subject},     // Listens for any subject starting with "jobs."
+		Storage:     jetstream.FileStorage, // Persist to disk
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
@@ -70,18 +74,20 @@ func (nb *NatsBroker) CreateStream(ctx context.Context, streamName string, subje
 }
 
 func (nb *NatsBroker) publishLogs(ctx context.Context, subject string, payload []byte) error {
-	// ack, err := nb.js.Publish(ctx, subject, payload)
-	// if err != nil {
+	_, err := nb.js.Publish(ctx, subject, payload)
+	if err != nil {
 
-	// }
-
-	// // ack.
-	
+	}
+	// TODO need to acknowledge the publish?
 	return nil
 }
 
-func (nb *NatsBroker) newConsumer(ctx context.Context, streamName string, consumer string) (*NatsJSConsumer, error) {
-	cons, err := nb.js.Consumer(ctx, streamName, "test")
+func (nb *NatsBroker) newDurableConsumer(ctx context.Context, stream jetstream.Stream, consumerName string) (*NatsJSConsumer, error) {
+	cons, err := stream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
+		Name:      consumerName,
+		Durable:   consumerName,
+		AckPolicy: jetstream.AckExplicitPolicy,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create jetstream consumer: %w", err)
 	}
