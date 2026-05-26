@@ -14,6 +14,7 @@ import type { LogRecord } from "../types/LogRecord";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import axios from "axios";
+import { capitaliseFirstLetter } from "../utils/utils";
 
 type UserApiResponse = {
     data: Array<LogRecord>;
@@ -21,6 +22,11 @@ type UserApiResponse = {
         totalRowCount: number;
     };
 };
+
+// helper to get a column filter value by id
+function getFilter(filters: MRT_ColumnFiltersState, id: string): string {
+    return (filters.find((f) => f.id === id)?.value as string) ?? "";
+}
 
 export default function EnhancedTable() {
     // manage our own state for stuff we want to pass to the API
@@ -50,22 +56,32 @@ export default function EnhancedTable() {
             },
         ],
         queryFn: async () => {
-            try {
-                const response = await axios.get("/api/data");
-                console.log("data:", response.data);
-                return response.data as UserApiResponse;
-            } catch (error) {
-                console.error("Axios request failed:", error);
-                throw error; // Let React Query know it failed so it can set isError: true
-            }
+            // derive params from table state
+            console.log("sorting:", sorting);
+            const sortField = capitaliseFirstLetter(sorting[0]?.id) ?? "Timestamp";
+            const descending = sorting[0]?.desc ?? true;
 
-            // TODO: add filters
-            // read our state and pass it to the API as query params
-            // fetchURL.searchParams.set("start", `${pagination.pageIndex * pagination.pageSize}`);
-            // fetchURL.searchParams.set("size", `${pagination.pageSize}`);
-            // fetchURL.searchParams.set("filters", JSON.stringify(columnFilters ?? []));
-            // fetchURL.searchParams.set("globalFilter", globalFilter ?? "");
-            // fetchURL.searchParams.set("sorting", JSON.stringify(sorting ?? []));
+            // default time range: last 24 hours
+            const endTime = new Date();
+            const startTime = new Date(endTime.getTime() - 24 * 60 * 60 * 1000);
+            const fmt = (d: Date) => d.toISOString().slice(0, 19); // "2006-01-02T15:04:05"
+
+            const response = await axios.get<UserApiResponse>("/api/data", {
+                params: {
+                    startTime: fmt(startTime),
+                    endTime: fmt(endTime),
+                    serviceName: getFilter(columnFilters, "serviceName"),
+                    severityText: getFilter(columnFilters, "severityText"),
+                    traceId: getFilter(columnFilters, "traceId"),
+                    spanId: getFilter(columnFilters, "spanId"),
+                    searchTerm: globalFilter,
+                    orderBy: sortField,
+                    descending: descending,
+                    limit: pagination.pageSize,
+                },
+            });
+
+            return response.data;
         },
         placeholderData: keepPreviousData, // don't go to 0 rows when refetching or paginating to next page
     });
@@ -76,22 +92,32 @@ export default function EnhancedTable() {
             {
                 accessorKey: "traceId",
                 header: "Trace ID",
+                enableSorting: false,
             },
             {
                 accessorKey: "spanId",
                 header: "Span ID",
+                enableSorting: false,
             },
             {
                 accessorKey: "severityText",
                 header: "Severity Text",
+                enableSorting: false,
             },
             {
                 accessorKey: "severityNumber",
                 header: "Severity #",
+                enableSorting: false,
+            },
+            {
+                accessorKey: "serviceName",
+                header: "Service Name",
+                enableSorting: true,
             },
             {
                 accessorKey: "body",
-                header: "body",
+                header: "Body",
+                enableSorting: false,
             },
             {
                 accessorFn: (row) => new Date(row.timestamp),
@@ -101,6 +127,7 @@ export default function EnhancedTable() {
                 filterFn: "greaterThan",
                 filterVariant: "date",
                 enableGlobalFilter: false,
+                enableSorting: true,
             },
         ],
         [],
