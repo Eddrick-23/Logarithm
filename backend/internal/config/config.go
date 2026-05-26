@@ -9,15 +9,17 @@ import (
 )
 
 type Config struct {
-	IngesterHost string
-	IngesterPort string
-	AppPort      string
-	DBAddress    string
-	DBUser       string
-	DBPassword   string
-	DBName       string
-	DBTableName  string
-	NatsURL      string
+	IngesterHost             string
+	IngesterPort             string
+	AppPort                  string
+	DBAddress                string
+	DBUser                   string
+	DBPassword               string
+	DBName                   string
+	DBTableName              string
+	NatsURL                  string
+	NatsSubject              string
+	NatsPublishSubjectPrefix string
 }
 
 func LoadConfig() *Config {
@@ -26,15 +28,17 @@ func LoadConfig() *Config {
 	}
 
 	return &Config{
-		IngesterHost: getEnv("INGESTER_HOST", "localhost"),
-		IngesterPort: getEnv("INGESTER_PORT", "8090"),
-		AppPort:      getEnv("APP_PORT", "8091"),
-		DBAddress:    getEnv("DB_ADDRESS", "localhost:9000"),
-		DBUser:       getEnv("DB_USER", "admin"),
-		DBPassword:   getEnv("DB_PASSWORD", "strongpassword"),
-		DBName:       getEnv("DB_NAME", "logarithm"),
-		DBTableName:  getEnv("DB_TABLE_NAME", "logs"),
-		NatsURL:      getEnv("NATS_URL", nats.DefaultURL),
+		IngesterHost:             getEnv("INGESTER_HOST", "localhost"),
+		IngesterPort:             getEnv("INGESTER_PORT", "8090"),
+		AppPort:                  getEnv("APP_PORT", "8091"),
+		DBAddress:                getEnv("DB_ADDRESS", "localhost:9000"),
+		DBUser:                   getEnv("DB_USER", "admin"),
+		DBPassword:               getEnv("DB_PASSWORD", "strongpassword"),
+		DBName:                   getEnv("DB_NAME", "logarithm"),
+		DBTableName:              getEnv("DB_TABLE_NAME", "logs"),
+		NatsURL:                  getEnv("NATS_URL", nats.DefaultURL),
+		NatsSubject:              getEnv("NATS_SUBJECT", "logs.>"),
+		NatsPublishSubjectPrefix: getEnv("NATS_PUBLISH_PREFIX", "logs."),
 	}
 }
 

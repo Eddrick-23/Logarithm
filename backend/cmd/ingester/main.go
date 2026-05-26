@@ -20,7 +20,7 @@ import (
 
 func NewServer(logger *slog.Logger, config *config.Config, producer transport.Producer) http.Handler {
 	mux := http.NewServeMux()
-	ingester.AddRoutes(mux, logger, producer)
+	ingester.AddRoutes(mux, logger, producer, config.NatsPublishSubjectPrefix)
 
 	var handler http.Handler = mux
 	// add middlewares if any
@@ -43,6 +43,10 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 
 	if err != nil {
 		return fmt.Errorf("Failed to create Nats Broker: %w", err)
+	}
+
+	if _, err = natsBroker.EnsureStream(ctx, config.NatsSubject); err != nil {
+		return fmt.Errorf("failed to ensure stream: %w", err)
 	}
 
 	srv := NewServer(httpLogger, config, natsBroker)
