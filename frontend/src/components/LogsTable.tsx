@@ -10,7 +10,7 @@ import {
 import { IconButton, Tooltip } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import type { LogRecord } from "../types/LogRecord";
+import type { KeyValue, LogRecord } from "../types/LogRecord";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import axios from "axios";
@@ -133,6 +133,38 @@ export default function EnhancedTable() {
                 }),
                 Cell: ({ cell }) =>
                     `${cell.getValue<Date>().toLocaleDateString()} ${cell.getValue<Date>().toLocaleTimeString()}`,
+            },
+            {
+                accessorKey: "logAttributes",
+                header: "Log Attributes",
+                enableSorting: false,
+                enableColumnFilter: false,
+                enableGlobalFilter: false,
+                Cell: ({ cell }) => (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        {cell.getValue<KeyValue[]>()?.map((attr, i) => (
+                            <span key={`${i}-${attr.key}`}>
+                                {attr.key}: {attr.value}
+                            </span>
+                        ))}
+                    </div>
+                ),
+            },
+            {
+                accessorKey: "resourceAttributes",
+                header: "Resource Attributes",
+                enableSorting: false,
+                enableColumnFilter: false,
+                enableGlobalFilter: false,
+                Cell: ({ cell }) => (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        {cell.getValue<KeyValue[]>()?.map((attr, i) => (
+                            <span key={`${i}-${attr.key}`}>
+                                {attr.key}: {attr.value}
+                            </span>
+                        ))}
+                    </div>
+                ),
             },
         ],
         [],

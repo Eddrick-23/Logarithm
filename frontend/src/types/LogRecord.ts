@@ -1,3 +1,8 @@
+export type KeyValue = {
+    key: string;
+    value: string;
+};
+
 export type LogRecord = {
     timestamp: Date;
     traceId: string;
@@ -5,5 +10,6 @@ export type LogRecord = {
     severityText: string;
     severityNumber: number;
     body: string;
-    logAttributes: Object[];
+    logAttributes: KeyValue[];
+    resourceAttributes: KeyValue[];
 };
