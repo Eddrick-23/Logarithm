@@ -11,13 +11,13 @@ import (
 )
 
 type LogStore interface {
-	BatchInsert(context.Context, []core.FlatLogRecord) (error)
-	SearchLogs(context.Context, core.LogQueryFilter) ([]core.FlatLogRecord, error) 
+	BatchInsert(context.Context, []core.FlatLogRecord) error
+	SearchLogs(context.Context, core.LogQueryFilter) ([]core.FlatLogRecord, error)
 }
 
 type ClickHouseStore struct {
-	conn driver.Conn
-	dbAndTable string	
+	conn       driver.Conn
+	dbAndTable string
 }
 
 // addr should be full host:port e.g. localhost:9000 or clickhouse:9000
@@ -49,15 +49,20 @@ func NewClickHouseStore(ctx context.Context, addr string, dbName string, tableNa
 	return &ClickHouseStore{conn: conn, dbAndTable: dbName + "." + tableName}, nil
 }
 
+func (s *ClickHouseStore) Close() error {
+	slog.Info("Closing clickhouse connection")
+	return s.conn.Close()
+}
+
 func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLogRecord) error {
-	batch , err := s.conn.PrepareBatch(ctx, "INSERT INTO " + s.dbAndTable)
+	batch, err := s.conn.PrepareBatch(ctx, "INSERT INTO "+s.dbAndTable)
 
 	if err != nil {
 		slog.Error("Failed to prepare batch: %v", "err", err)
 		return err
 	}
 
-	for _, record := range records{
+	for _, record := range records {
 		err = batch.Append(
 			record.Timestamp,
 			record.TraceId,
@@ -72,17 +77,17 @@ func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLo
 			record.ResAttrValues,
 		)
 		if err != nil {
-            return fmt.Errorf("failed to append row: %v", err)
-        }
+			return fmt.Errorf("failed to append row: %v", err)
+		}
 	}
 
 	if err := batch.Send(); err != nil {
-        return err
-    }
+		return err
+	}
 	return nil
 }
 
-func (s *ClickHouseStore) SearchLogs(ctx context.Context, filter core.LogQueryFilter) ([]core.FlatLogRecord, error){
+func (s *ClickHouseStore) SearchLogs(ctx context.Context, filter core.LogQueryFilter) ([]core.FlatLogRecord, error) {
 	queryString := fmt.Sprintf("Select * FROM %v WHERE 1=1", s.dbAndTable)
 	var args []any
 
@@ -96,24 +101,24 @@ func (s *ClickHouseStore) SearchLogs(ctx context.Context, filter core.LogQueryFi
 	}
 	if filter.ServiceName != "" {
 		queryString += " AND ServiceName ILIKE ?"
-		args = append(args, filter.ServiceName + "%")
+		args = append(args, filter.ServiceName+"%")
 	}
 	if filter.SeverityText != "" {
 		queryString += " AND SeverityText ILIKE ?"
-		args = append(args, filter.SeverityText + "%")
+		args = append(args, filter.SeverityText+"%")
 	}
 	if filter.TraceId != "" {
 		queryString += " AND TraceId ILIKE ?"
-		args = append(args, filter.TraceId + "%")
+		args = append(args, filter.TraceId+"%")
 	}
 	if filter.SpanId != "" {
 		queryString += " AND SpanId ILIKE ?"
-		args = append(args, filter.SpanId + "%")
+		args = append(args, filter.SpanId+"%")
 	}
 
 	if filter.SearchTerm != "" {
 		queryString += " AND Body ILIKE ?"
-		args = append(args, "%" + filter.SearchTerm + "%")
+		args = append(args, "%"+filter.SearchTerm+"%")
 	}
 
 	if filter.OrderBy != "" {
@@ -121,7 +126,7 @@ func (s *ClickHouseStore) SearchLogs(ctx context.Context, filter core.LogQueryFi
 	} else {
 		queryString += fmt.Sprintf(" ORDER BY %s", core.OrderByTimestamp)
 	}
-	
+
 	if filter.Descending {
 		queryString += " DESC"
 	} else {
