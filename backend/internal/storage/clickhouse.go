@@ -276,6 +276,11 @@ func (s *ClickHouseStore) InitDB(ctx context.Context) error {
 	return nil
 }
 
+func (s *ClickHouseStore) Close() error {
+	slog.Info("Closing clickhouse connection")
+	return s.conn.Close()
+}
+
 func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLogRecord) error {
 	batch, err := s.conn.PrepareBatch(ctx, "INSERT INTO "+s.dbAndTable)
 
