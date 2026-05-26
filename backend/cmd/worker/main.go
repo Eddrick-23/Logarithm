@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/Eddrick-23/Logarithm/internal/config"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
@@ -13,12 +15,20 @@ import (
 )
 
 func run(ctx context.Context, w io.Writer) error {
+	const logLevel = slog.LevelInfo // TODO set debug level in config
+	const workerName = "worker"
+	opt := &slog.HandlerOptions{
+		Level: logLevel,
+	}
 	logger := slog.New(
-		slog.NewTextHandler(w, nil),
+		slog.NewTextHandler(w, opt),
 	)
 	workerLogger := logger.With("component", "worker")
 	natsLogger := logger.With("component", "nats")
 	// TODO refactor db to support logger via dependency injection
+
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
 	config := config.LoadConfig()
 	store, err := storage.NewClickHouseStore(ctx,
@@ -38,24 +48,32 @@ func run(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("failed to create Nats Broker: %w", err)
 	}
 
-	if _, err = natsBroker.EnsureStream(ctx, config.NatsSubject); err != nil {
-		return fmt.Errorf("failed to ensure stream: %w", err)
-	}
 	defer func() {
 		natsBroker.Close()
 
 		if err := store.Close(); err != nil {
 			workerLogger.Error("failed to close clickhouse connection", "err", err)
 		}
+		workerLogger.Info("clickhouse connection closed")
 	}()
 
-	// fmt.Println(store, natsBroker)
-	// consume logic here
-	return nil
+	stream, err := natsBroker.EnsureStream(ctx, config.NatsSubject)
+	if err != nil {
+		return fmt.Errorf("failed to ensure stream: %w", err)
+	}
+
+	consumer, err := natsBroker.NewDurableConsumer(ctx, stream, workerName)
+	if err != nil {
+		return fmt.Errorf("failed to create durable consumer: %w", err)
+	}
+
+	return consumer.ConsumeLogs(ctx, ConsumeCallback(store))
 }
 
 func main() {
-
-	run(context.Background(), os.Stdout)
-
+	ctx := context.Background()
+	if err := run(ctx, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
 }

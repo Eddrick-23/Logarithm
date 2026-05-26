@@ -67,6 +67,7 @@ func (nb *NatsBroker) Close() {
 		nb.conn.SetClosedHandler(func(_ *nats.Conn) {
 			close(done)
 		})
+		nb.conn.Drain()
 
 		<-done // block until connection fully closed
 		nb.logger.Info("Connection closed")
@@ -107,9 +108,10 @@ func (nb *NatsBroker) PublishLogs(ctx context.Context, subject string, payload [
 
 func (nb *NatsBroker) NewDurableConsumer(ctx context.Context, stream jetstream.Stream, consumerName string) (*NatsJSConsumer, error) {
 	cons, err := stream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
-		Name:      consumerName,
-		Durable:   consumerName,
-		AckPolicy: jetstream.AckExplicitPolicy,
+		Name:       consumerName,
+		Durable:    consumerName,
+		AckPolicy:  jetstream.AckExplicitPolicy,
+		MaxDeliver: 5,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create jetstream consumer: %w", err)
@@ -118,15 +120,14 @@ func (nb *NatsBroker) NewDurableConsumer(ctx context.Context, stream jetstream.S
 }
 
 func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, handler ProcessLogFunc) error {
-	const maxBatch = 500            // how many messages to take from stream
+	const maxBatch = 10             // how many messages to take from stream
 	const maxWait = 2 * time.Second // how many seconds to wait
 
-	// read from nats jetstream
 	msgCh := make(chan jetstream.Msg, maxBatch*2) // buffered channel between NATS and batching loop
 	nc.logger.Info("starting streaming from jetstream to database")
 
 	cons, err := nc.consumer.Consume(func(msg jetstream.Msg) {
-		// we buffer messages straight to the channel
+		// buffer messages straight channel
 		select {
 		case msgCh <- msg:
 		case <-ctx.Done():
@@ -144,6 +145,16 @@ func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, handler ProcessLogFun
 
 	var batch []jetstream.Msg
 	flush := func() {
+		defer func() { // resets timer fully every flush call
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(maxWait)
+		}()
+
 		if len(batch) == 0 {
 			return
 		}
@@ -165,23 +176,21 @@ func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, handler ProcessLogFun
 			}
 		}
 
-		batch = batch[:0]
-		timer.Reset(maxWait)
+		batch = batch[:0] // clear batch buffer
 	}
 
-	// read from channel
 	for {
 		select {
-		case <-ctx.Done(): // shutdown
-			// flush()
+		case <-ctx.Done():
+			flush()
 			return nil
-		case <-timer.C: // timer finish
+		case <-timer.C:
 			nc.logger.Debug("timer flush")
-			// flush()
-		case msg := <-msgCh: // batch is full
+			flush()
+		case msg := <-msgCh:
 			batch = append(batch, msg)
 			if len(batch) >= maxBatch {
-				nc.logger.Debug("size flush", "batch_size", len(batch))
+				nc.logger.Debug("size flush", "batchSize", len(batch))
 				flush()
 			}
 		}
