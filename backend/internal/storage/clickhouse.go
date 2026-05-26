@@ -49,6 +49,11 @@ func NewClickHouseStore(ctx context.Context, addr string, dbName string, tableNa
 	return &ClickHouseStore{conn: conn, dbAndTable: dbName + "." + tableName}, nil
 }
 
+func (s *ClickHouseStore) Close() error {
+	slog.Info("Closing clickhouse connection")
+	return s.conn.Close()
+}
+
 func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLogRecord) error {
 	batch, err := s.conn.PrepareBatch(ctx, "INSERT INTO "+s.dbAndTable)
 
