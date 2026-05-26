@@ -15,6 +15,7 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import axios from "axios";
 import { capitaliseFirstLetter } from "../utils/utils";
+import dayjs from "dayjs";
 
 type UserApiResponse = {
     data: Array<LogRecord>;
@@ -57,14 +58,17 @@ export default function EnhancedTable() {
         ],
         queryFn: async () => {
             // derive params from table state
-            console.log("sorting:", sorting);
             const sortField = capitaliseFirstLetter(sorting[0]?.id) ?? "Timestamp";
             const descending = sorting[0]?.desc ?? true;
 
-            // default time range: last 24 hours
-            const endTime = new Date();
-            const startTime = new Date(endTime.getTime() - 24 * 60 * 60 * 1000);
-            const fmt = (d: Date) => d.toISOString().slice(0, 19); // "2006-01-02T15:04:05"
+            // default time range: from Unix epoch time to current datetime
+            const timeFilter = columnFilters.find((f) => f.id === "startTime")?.value as
+                | [dayjs.Dayjs | null, dayjs.Dayjs | null]
+                | undefined;
+            const endTime = timeFilter?.[1] ? timeFilter[1].toDate() : new Date();
+            const startTime = timeFilter?.[0] ? timeFilter[0].toDate() : new Date(0);
+
+            const fmt = (d: Date) => d.toISOString().slice(0, 19); // Example: "2006-01-02T15:04:05"
 
             const response = await axios.get<UserApiResponse>("/api/data", {
                 params: {
@@ -121,13 +125,14 @@ export default function EnhancedTable() {
             },
             {
                 accessorFn: (row) => new Date(row.timestamp),
-                id: "timestamp",
+                id: "startTime",
                 header: "Time",
-                Cell: ({ cell }) => new Date(cell.getValue<Date>()).toLocaleString(),
-                filterFn: "greaterThan",
-                filterVariant: "date",
-                enableGlobalFilter: false,
-                enableSorting: true,
+                filterVariant: "datetime-range",
+                muiFilterDateTimePickerProps: ({ rangeFilterIndex }: { rangeFilterIndex: number }) => ({
+                    label: rangeFilterIndex === 0 ? "Start" : "End",
+                }),
+                Cell: ({ cell }) =>
+                    `${cell.getValue<Date>().toLocaleDateString()} ${cell.getValue<Date>().toLocaleTimeString()}`,
             },
         ],
         [],
@@ -136,7 +141,15 @@ export default function EnhancedTable() {
     const table = useMaterialReactTable({
         columns,
         data,
-        initialState: { showColumnFilters: true },
+        initialState: {
+            showColumnFilters: true,
+            columnFilters: [
+                {
+                    id: "startTime",
+                    value: [new Date(0), null], // [earliest possible date, no end limit]
+                },
+            ],
+        },
         manualFiltering: true, // turn off built-in client-side filtering
         manualPagination: true, // turn off built-in client-side pagination
         manualSorting: true, // turn off built-in client-side sorting
