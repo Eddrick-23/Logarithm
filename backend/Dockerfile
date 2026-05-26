@@ -1,10 +1,10 @@
 FROM golang:1.25-alpine AS builder
 
 WORKDIR /build
-COPY . .
+COPY go.mod go.sum ./
 RUN go mod download
 
-RUN ls -la
+COPY . .
 ENV CGO_ENABLED=0 GOOS=linux
 RUN go build -o ./bin/dashboard cmd/dashboard/main.go
 RUN go build -o ./bin/ingester cmd/ingester/main.go
