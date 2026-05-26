@@ -12,7 +12,7 @@ func NewRouter() http.Handler {
 	mux.HandleFunc("/", indexHandler)
 	mux.HandleFunc("/api/data", apiDataHandler)
 
-	return mux;
+	return mux
 }
 
 func indexHandler(w http.ResponseWriter, r *http.Request) {

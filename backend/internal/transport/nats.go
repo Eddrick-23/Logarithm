@@ -4,69 +4,196 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 )
 
+var _ Producer = (*NatsBroker)(nil)
+var _ Consumer = (*NatsJSConsumer)(nil)
 
-type Producer interface {
+const logStreamName = "LOGS" // infrastructure constant, not configurable
 
+type ProcessLogFunc func(payload [][]byte) error // call back to consume from stream
+
+type Producer interface { // for ingestion endpoint to push payload
+	PublishLogs(context.Context, string, []byte) error
 }
 
-type Consumer interface {
-
+type Consumer interface { // for worker to read logs from stream
+	ConsumeLogs(ctx context.Context, handler ProcessLogFunc) error
 }
 
 type NatsBroker struct {
-	conn *nats.Conn
-	js jetstream.JetStream
+	conn   *nats.Conn
+	logger *slog.Logger
+	js     jetstream.JetStream
 }
 
-func NewNatsBroker(ctx context.Context, natsUrl string) (*NatsBroker, error){
-	slog.Info("Connecting to NATS")
-	nc, err := nats.Connect(natsUrl)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to NATS: %v", err)
-	}
-	defer nc.Drain()
+type NatsJSConsumer struct {
+	consumer jetstream.Consumer
+	logger   *slog.Logger
+}
 
-	js, err := jetstream.New(nc)	
+type TransimittedLog struct {
+	Payload []byte
+	Ack     func() error
+}
+
+func NewNatsBroker(ctx context.Context, logger *slog.Logger, natsUrl string) (*NatsBroker, error) {
+	logger.Info("Connecting to NATS")
+	// connect to server
+	nc, err := nats.Connect(natsUrl, nats.DrainTimeout(5*time.Second))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create to jetstream interface: %v", err)
+		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
 	}
-	
-	slog.Info("Connection to NATS established")
-	return &NatsBroker{conn: nc, js: js}, nil
+
+	// create JetStream management interface
+	js, err := jetstream.New(nc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create to jetstream interface: %w", err)
+	}
+
+	logger.Info("Connection to NATS established")
+	return &NatsBroker{conn: nc, logger: logger, js: js}, nil
 }
 
 func (nb *NatsBroker) Close() {
 	if nb.conn != nil {
-		slog.Info("Draining NATS connection...")
+		nb.logger.Info("Draining NATS connection")
+
+		done := make(chan struct{})
+		nb.conn.SetClosedHandler(func(_ *nats.Conn) {
+			close(done)
+		})
 		nb.conn.Drain()
+
+		<-done // block until connection fully closed
+		nb.logger.Info("Connection closed")
 	}
 }
 
-func (nb *NatsBroker) CreateStream(ctx context.Context, streamName string, subject string) (jetstream.Stream, error) {
-	slog.Info("creating stream...")
-	stream, err := nb.js.CreateStream(ctx, jetstream.StreamConfig{
-		Name:     streamName,
-		Subjects: []string{"jobs.>"}, // Listens for any subject starting with "jobs."
-		Storage:  jetstream.FileStorage, // Persist to disk
+func (nb *NatsBroker) EnsureStream(ctx context.Context, subject string) (jetstream.Stream, error) {
+	nb.logger.Info("Ensuring stream exists", "subject", subject)
+
+	//TODO add TTL policy?
+	stream, err := nb.js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+		Name:        logStreamName,
+		Description: "unified log stream for all client services",
+		Subjects:    []string{subject},     // capture every subject under logs name space
+		Storage:     jetstream.FileStorage, // Persist to disk
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create stream: %v", err)
+		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
 
-	slog.Info("stream created", "name", streamName, "subject", subject)
+	nb.logger.Info("stream created", "name", logStreamName, "subject", subject)
 	return stream, nil
 }
 
-// func (nb *NatsBroker) publishLogs(ctx context.Context, subject string, payload []byte) {
-// 	ack, err := nb.js.Publish(ctx, subject, payload)
-// 	if err != nil {
+func (nb *NatsBroker) PublishLogs(ctx context.Context, subject string, payload []byte) error {
+	ack, err := nb.js.Publish(ctx, subject, payload)
+	if err != nil {
+		return fmt.Errorf("published failed: %w, subject: %v", err, subject)
+	}
 
-// 	}
+	nb.logger.Debug("logs published",
+		"Stream", ack.Stream,
+		"Sequence", ack.Sequence,
+		"duplicate", ack.Duplicate)
 
-// 	ack.
-// }
+	return nil
+}
+
+func (nb *NatsBroker) NewDurableConsumer(ctx context.Context, stream jetstream.Stream, consumerName string) (*NatsJSConsumer, error) {
+	cons, err := stream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
+		Name:       consumerName,
+		Durable:    consumerName,
+		AckPolicy:  jetstream.AckExplicitPolicy,
+		MaxDeliver: 5,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create jetstream consumer: %w", err)
+	}
+	return &NatsJSConsumer{cons, nb.logger}, nil
+}
+
+func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, handler ProcessLogFunc) error {
+	const maxBatch = 10             // how many messages to take from stream
+	const maxWait = 2 * time.Second // how many seconds to wait
+
+	msgCh := make(chan jetstream.Msg, maxBatch*2) // buffered channel between NATS and batching loop
+	nc.logger.Info("starting streaming from jetstream to database")
+
+	cons, err := nc.consumer.Consume(func(msg jetstream.Msg) {
+		// buffer messages straight channel
+		select {
+		case msgCh <- msg:
+		case <-ctx.Done():
+			msg.Nak() // context cancelled so mark as Nak, don't process message
+		}
+
+	})
+	if err != nil {
+		return fmt.Errorf("failed to start consuming: %w", err)
+	}
+	defer cons.Drain()
+
+	timer := time.NewTimer(maxWait)
+	defer timer.Stop()
+
+	var batch []jetstream.Msg
+	flush := func() {
+		defer func() { // resets timer fully every flush call
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(maxWait)
+		}()
+
+		if len(batch) == 0 {
+			return
+		}
+
+		payloads := make([][]byte, len(batch))
+		for i, msg := range batch {
+			payloads[i] = msg.Data()
+		}
+
+		if err := handler(payloads); err != nil {
+			nc.logger.Error("batch insert failed, NAKing messages", "err", err, "batchsize", len(batch))
+
+			for _, msg := range batch {
+				msg.Nak()
+			}
+		} else {
+			for _, msg := range batch {
+				msg.Ack()
+			}
+		}
+
+		batch = batch[:0] // clear batch buffer
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			flush()
+			return nil
+		case <-timer.C:
+			nc.logger.Debug("timer flush")
+			flush()
+		case msg := <-msgCh:
+			batch = append(batch, msg)
+			if len(batch) >= maxBatch {
+				nc.logger.Debug("size flush", "batchSize", len(batch))
+				flush()
+			}
+		}
+
+	}
+}
