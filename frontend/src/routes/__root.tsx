@@ -12,7 +12,7 @@ export const Route = createRootRoute({
                 sx={{
                     flexGrow: 1,
                     p: 3,
-                    width: "100%",
+                    minWidth: 0,
                 }}
             >
                 <Toolbar />
