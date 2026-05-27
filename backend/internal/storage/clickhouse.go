@@ -352,10 +352,13 @@ func (s *ClickHouseStore) SearchLogs(ctx context.Context, filter core.LogQueryFi
 		queryString += " AND SpanId ILIKE ?"
 		args = append(args, filter.SpanId+"%")
 	}
-
-	if filter.SearchTerm != "" {
+	if filter.SeverityNumber != -1 {
+		queryString += " AND SeverityNumber = ?"
+		args = append(args, filter.SeverityNumber)
+	}
+	if filter.Body != "" {
 		queryString += " AND Body ILIKE ?"
-		args = append(args, "%"+filter.SearchTerm+"%")
+		args = append(args, "%"+filter.Body+"%")
 	}
 
 	if filter.OrderBy != "" {

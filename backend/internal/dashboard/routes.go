@@ -36,6 +36,7 @@ func apiDataHandler(w http.ResponseWriter, r *http.Request) {
 	layout := "2006-01-02T15:04:05" // reference layout for time
 	var startTime, endTime time.Time
 	var err error
+	var severityNumber int = -1
 
 	if s := query.Get("startTime"); s != "" {
 		startTime, err = time.Parse(layout, s)
@@ -69,6 +70,15 @@ func apiDataHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s := query.Get("severityNumber"); s != "" {
+		severityNumber, err = strconv.Atoi(query.Get("severityNumber"))
+		if err != nil {
+			slog.Error("invalid severityNumber type", "err", err)
+			http.Error(w, "Bad Request", http.StatusBadRequest)
+			return
+		}
+	}
+
 	limit, err := strconv.Atoi(query.Get("limit"))
 	if err != nil {
 		slog.Error("invalid limit type", "err", err)
@@ -94,17 +104,19 @@ func apiDataHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filter := core.LogQueryFilter{
-		StartTime:    startTime,
-		EndTime:      endTime,
-		ServiceName:  query.Get("serviceName"),
-		SeverityText: query.Get("severityText"),
-		TraceId:      query.Get("traceId"),
-		SpanId:       query.Get("spanId"),
-		SearchTerm:   query.Get("searchTerm"),
-		OrderBy:      orderBy,
-		Descending:   descending,
-		Limit:        limit,
-		Offset:       offset,
+		StartTime:      startTime,
+		EndTime:        endTime,
+		ServiceName:    query.Get("serviceName"),
+		SeverityNumber: severityNumber,
+		SeverityText:   query.Get("severityText"),
+		TraceId:        query.Get("traceId"),
+		SpanId:         query.Get("spanId"),
+		SearchTerm:     query.Get("searchTerm"),
+		Body:           query.Get("body"),
+		OrderBy:        orderBy,
+		Descending:     descending,
+		Limit:          limit,
+		Offset:         offset,
 	}
 
 	flatLogRecords, err := logStore.SearchLogs(ctx, filter)

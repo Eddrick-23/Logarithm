@@ -74,7 +74,9 @@ export default function EnhancedTable() {
                 params: {
                     startTime: fmt(startTime),
                     endTime: fmt(endTime),
+                    body: getFilter(columnFilters, "body"),
                     serviceName: getFilter(columnFilters, "serviceName"),
+                    severityNumber: getFilter(columnFilters, "severityNumber"),
                     severityText: getFilter(columnFilters, "severityText"),
                     traceId: getFilter(columnFilters, "traceId"),
                     spanId: getFilter(columnFilters, "spanId"),
