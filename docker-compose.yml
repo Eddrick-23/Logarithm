@@ -26,12 +26,12 @@ services:
         hard: 262144
     healthcheck:
       test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
-      interval: 5s
-      timeout: 3s
+      interval: 10s
+      timeout: 5s
       retries: 10
-      start_period: 10s
+      start_period: 60s # increased to allow more time for init.sql migrations
   nats:
-    image: nats:2.14
+    image: nats:2.14-alpine
     ports:
       - "4222:4222"
       - "8222:8222"
@@ -39,6 +39,12 @@ services:
     volumes:
       - ./deploy/nats/nats.conf:/etc/deploy/nats.conf:ro
       - nats_storage:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   ingester:
     build:
@@ -49,7 +55,8 @@ services:
     env_file:
       - ./backend/.env
     depends_on:
-      - nats
+      nats:
+        condition: service_healthy
   worker:
     build:
       context: ./backend
@@ -57,8 +64,10 @@ services:
     env_file:
       - ./backend/.env
     depends_on:
-      - nats
-      - clickhouse
+      nats:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
   dashboard-api:
     build:
       context: ./backend
