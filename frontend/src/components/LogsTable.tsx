@@ -183,6 +183,9 @@ export default function EnhancedTable() {
         manualFiltering: true, // turn off built-in client-side filtering
         manualPagination: true, // turn off built-in client-side pagination
         manualSorting: true, // turn off built-in client-side sorting
+        muiFilterTextFieldProps: {
+            variant: "filled",
+        },
         muiToolbarAlertBannerProps: isError
             ? {
                   color: "error",
