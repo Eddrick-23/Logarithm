@@ -82,6 +82,7 @@ export default function EnhancedTable() {
                     orderBy: sortField,
                     descending: descending,
                     limit: pagination.pageSize,
+                    offset: pagination.pageIndex * pagination.pageSize,
                 },
             });
 

@@ -76,6 +76,13 @@ func apiDataHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	offset, err := strconv.Atoi(query.Get("offset"))
+	if err != nil {
+		slog.Error("invalid offset type", "err", err)
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
 	cfg := config.LoadConfig()
 	ctx := context.Background()
 
@@ -97,11 +104,19 @@ func apiDataHandler(w http.ResponseWriter, r *http.Request) {
 		OrderBy:      orderBy,
 		Descending:   descending,
 		Limit:        limit,
+		Offset:       offset,
 	}
 
 	flatLogRecords, err := logStore.SearchLogs(ctx, filter)
 	if err != nil {
 		slog.Error("failed to search logs", "err", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	logsCount, err := logStore.GetLogsCount(ctx)
+	if err != nil {
+		slog.Error("failed to get logs count", "err", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
@@ -118,7 +133,7 @@ func apiDataHandler(w http.ResponseWriter, r *http.Request) {
 		Meta: struct {
 			TotalRowCount int `json:"totalRowCount"`
 		}{
-			TotalRowCount: len(logRecords),
+			TotalRowCount: logsCount,
 		},
 	}
 

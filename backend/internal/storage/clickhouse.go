@@ -314,6 +314,16 @@ func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLo
 	return nil
 }
 
+func (s *ClickHouseStore) GetLogsCount(ctx context.Context) (int, error) {
+	queryString := fmt.Sprintf("Select COUNT(*) FROM %v WHERE 1=1", s.dbAndTable)
+	var count uint64
+	row := s.conn.QueryRow(ctx, queryString)
+	if err := row.Scan(&count); err != nil {
+		return 0, err
+	}
+	return int(count), nil
+}
+
 func (s *ClickHouseStore) SearchLogs(ctx context.Context, filter core.LogQueryFilter) ([]core.FlatLogRecord, error) {
 	queryString := fmt.Sprintf("Select * FROM %v WHERE 1=1", s.dbAndTable)
 	var args []any
@@ -366,6 +376,9 @@ func (s *ClickHouseStore) SearchLogs(ctx context.Context, filter core.LogQueryFi
 		limit = filter.Limit
 	}
 	queryString += fmt.Sprintf(" LIMIT %v", limit)
+
+	offset := max(filter.Offset, 0)
+	queryString += fmt.Sprintf(" OFFSET %v", offset)
 
 	var result []core.FlatLogRecord
 	if err := s.conn.Select(ctx, &result, queryString, args...); err != nil {

@@ -80,6 +80,7 @@ type LogQueryFilter struct {
 	SpanId       string
 	SearchTerm   string // search "Body" field
 	Limit        int
+	Offset       int
 	OrderBy      OrderByField
 	Descending   bool
 }
