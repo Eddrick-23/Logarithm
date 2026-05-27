@@ -126,7 +126,7 @@ func apiDataHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logsCount, err := logStore.GetLogsCount(ctx)
+	logsCount, err := logStore.GetFilteredLogsCount(ctx, filter)
 	if err != nil {
 		slog.Error("failed to get logs count", "err", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)

@@ -314,52 +314,49 @@ func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLo
 	return nil
 }
 
-func (s *ClickHouseStore) GetLogsCount(ctx context.Context) (int, error) {
-	queryString := fmt.Sprintf("Select COUNT(*) FROM %v WHERE 1=1", s.dbAndTable)
-	var count uint64
-	row := s.conn.QueryRow(ctx, queryString)
-	if err := row.Scan(&count); err != nil {
-		return 0, err
-	}
-	return int(count), nil
-}
-
-func (s *ClickHouseStore) SearchLogs(ctx context.Context, filter core.LogQueryFilter) ([]core.FlatLogRecord, error) {
-	queryString := fmt.Sprintf("Select * FROM %v WHERE 1=1", s.dbAndTable)
+func (s *ClickHouseStore) buildFilterQueryString(filter core.LogQueryFilter) (string, []any) {
+	filterQueryString := "WHERE 1=1"
 	var args []any
 
 	if !filter.StartTime.IsZero() {
-		queryString += " AND Timestamp >= ?"
+		filterQueryString += " AND Timestamp >= ?"
 		args = append(args, filter.StartTime)
 	}
 	if !filter.EndTime.IsZero() {
-		queryString += " AND Timestamp <= ?"
+		filterQueryString += " AND Timestamp <= ?"
 		args = append(args, filter.EndTime)
 	}
 	if filter.ServiceName != "" {
-		queryString += " AND ServiceName ILIKE ?"
+		filterQueryString += " AND ServiceName ILIKE ?"
 		args = append(args, filter.ServiceName+"%")
 	}
 	if filter.SeverityText != "" {
-		queryString += " AND SeverityText ILIKE ?"
+		filterQueryString += " AND SeverityText ILIKE ?"
 		args = append(args, filter.SeverityText+"%")
 	}
 	if filter.TraceId != "" {
-		queryString += " AND TraceId ILIKE ?"
+		filterQueryString += " AND TraceId ILIKE ?"
 		args = append(args, filter.TraceId+"%")
 	}
 	if filter.SpanId != "" {
-		queryString += " AND SpanId ILIKE ?"
+		filterQueryString += " AND SpanId ILIKE ?"
 		args = append(args, filter.SpanId+"%")
 	}
 	if filter.SeverityNumber != -1 {
-		queryString += " AND SeverityNumber = ?"
+		filterQueryString += " AND SeverityNumber = ?"
 		args = append(args, filter.SeverityNumber)
 	}
 	if filter.Body != "" {
-		queryString += " AND Body ILIKE ?"
+		filterQueryString += " AND Body ILIKE ?"
 		args = append(args, "%"+filter.Body+"%")
 	}
+
+	return filterQueryString, args
+}
+
+func (s *ClickHouseStore) SearchLogs(ctx context.Context, filter core.LogQueryFilter) ([]core.FlatLogRecord, error) {
+	whereClause, args := s.buildFilterQueryString(filter)
+	queryString := fmt.Sprintf("Select * FROM %v %v", s.dbAndTable, whereClause)
 
 	if filter.OrderBy != "" {
 		queryString += fmt.Sprintf(" ORDER BY %s", filter.OrderBy)
@@ -389,4 +386,15 @@ func (s *ClickHouseStore) SearchLogs(ctx context.Context, filter core.LogQueryFi
 	}
 
 	return result, nil
+}
+
+func (s *ClickHouseStore) GetFilteredLogsCount(ctx context.Context, filter core.LogQueryFilter) (int, error) {
+	whereClause, args := s.buildFilterQueryString(filter)
+	queryString := fmt.Sprintf("SELECT COUNT(*) FROM %v %v", s.dbAndTable, whereClause)
+
+	var count uint64
+	if err := s.conn.QueryRow(ctx, queryString, args...).Scan(&count); err != nil {
+		return 0, err
+	}
+	return int(count), nil
 }
