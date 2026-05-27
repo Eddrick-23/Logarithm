@@ -32,7 +32,6 @@ function getFilter(filters: MRT_ColumnFiltersState, id: string): string {
 export default function EnhancedTable() {
     // manage our own state for stuff we want to pass to the API
     const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>([]);
-    const [globalFilter, setGlobalFilter] = useState("");
     const [sorting, setSorting] = useState<MRT_SortingState>([]);
     const [pagination, setPagination] = useState<MRT_PaginationState>({
         pageIndex: 0,
@@ -51,7 +50,6 @@ export default function EnhancedTable() {
             "logs-search",
             {
                 columnFilters, // refetch when columnFilters changes
-                globalFilter, // refetch when globalFilter changes
                 pagination, // refetch when pagination changes
                 sorting, // refetch when sorting changes
             },
@@ -74,11 +72,12 @@ export default function EnhancedTable() {
                 params: {
                     startTime: fmt(startTime),
                     endTime: fmt(endTime),
+                    body: getFilter(columnFilters, "body"),
                     serviceName: getFilter(columnFilters, "serviceName"),
+                    severityNumber: getFilter(columnFilters, "severityNumber"),
                     severityText: getFilter(columnFilters, "severityText"),
                     traceId: getFilter(columnFilters, "traceId"),
                     spanId: getFilter(columnFilters, "spanId"),
-                    searchTerm: globalFilter,
                     orderBy: sortField,
                     descending: descending,
                     limit: pagination.pageSize,
@@ -140,7 +139,6 @@ export default function EnhancedTable() {
                 header: "Log Attributes",
                 enableSorting: false,
                 enableColumnFilter: false,
-                enableGlobalFilter: false,
                 Cell: ({ cell }) => (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                         {cell.getValue<KeyValue[]>()?.map((attr, i) => (
@@ -156,7 +154,6 @@ export default function EnhancedTable() {
                 header: "Resource Attributes",
                 enableSorting: false,
                 enableColumnFilter: false,
-                enableGlobalFilter: false,
                 Cell: ({ cell }) => (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                         {cell.getValue<KeyValue[]>()?.map((attr, i) => (
@@ -186,6 +183,9 @@ export default function EnhancedTable() {
         manualFiltering: true, // turn off built-in client-side filtering
         manualPagination: true, // turn off built-in client-side pagination
         manualSorting: true, // turn off built-in client-side sorting
+        muiFilterTextFieldProps: {
+            variant: "filled",
+        },
         muiToolbarAlertBannerProps: isError
             ? {
                   color: "error",
@@ -193,7 +193,7 @@ export default function EnhancedTable() {
               }
             : undefined,
         onColumnFiltersChange: setColumnFilters,
-        onGlobalFilterChange: setGlobalFilter,
+        enableGlobalFilter: false,
         onPaginationChange: setPagination,
         onSortingChange: setSorting,
         renderTopToolbarCustomActions: () => (
@@ -206,7 +206,6 @@ export default function EnhancedTable() {
         rowCount: meta?.totalRowCount ?? 0,
         state: {
             columnFilters,
-            globalFilter,
             isLoading,
             pagination,
             showAlertBanner: isError,

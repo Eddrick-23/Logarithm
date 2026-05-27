@@ -72,17 +72,19 @@ const (
 )
 
 type LogQueryFilter struct {
-	StartTime    time.Time
-	EndTime      time.Time
-	ServiceName  string
-	SeverityText string
-	TraceId      string
-	SpanId       string
-	SearchTerm   string // search "Body" field
-	Limit        int
-	Offset       int
-	OrderBy      OrderByField
-	Descending   bool
+	StartTime      time.Time
+	EndTime        time.Time
+	ServiceName    string
+	SeverityNumber int
+	SeverityText   string
+	TraceId        string
+	SpanId         string
+	SearchTerm     string // search "Body" field
+	Body           string
+	Limit          int
+	Offset         int
+	OrderBy        OrderByField
+	Descending     bool
 }
 
 func ParseOrderByField(s string) OrderByField {
