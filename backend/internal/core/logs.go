@@ -83,3 +83,52 @@ type LogQueryFilter struct {
 	OrderBy      OrderByField
 	Descending   bool
 }
+
+func ParseOrderByField(s string) OrderByField {
+	switch OrderByField(s) {
+	case OrderByTimestamp, OrderByServiceName:
+		return OrderByField(s)
+	default:
+		return ""
+	}
+}
+
+func unflattenLogRecord(flat FlatLogRecord) LogRecord {
+	logAttributes := make([]KeyValue, 0, len(flat.LogAttrKeys))
+	for i, key := range flat.LogAttrKeys {
+		value := ""
+		if i < len(flat.LogAttrValues) {
+			value = flat.LogAttrValues[i]
+		}
+		logAttributes = append(logAttributes, KeyValue{Key: key, Value: value})
+	}
+
+	resourceAttributes := make([]KeyValue, 0, len(flat.ResAttrKeys))
+	for i, key := range flat.ResAttrKeys {
+		value := ""
+		if i < len(flat.ResAttrValues) {
+			value = flat.ResAttrValues[i]
+		}
+		resourceAttributes = append(resourceAttributes, KeyValue{Key: key, Value: value})
+	}
+
+	return LogRecord{
+		Timestamp:          flat.Timestamp,
+		TraceId:            flat.TraceId,
+		SpanId:             flat.SpanId,
+		SeverityText:       flat.SeverityText,
+		SeverityNumber:     flat.SeverityNumber,
+		ServiceName:        flat.ServiceName,
+		Body:               flat.Body,
+		LogAttributes:      logAttributes,
+		ResourceAttributes: resourceAttributes,
+	}
+}
+
+func UnflattenLogRecords(flats []FlatLogRecord) []LogRecord {
+	dtos := make([]LogRecord, len(flats))
+	for i, flat := range flats {
+		dtos[i] = unflattenLogRecord(flat)
+	}
+	return dtos
+}
