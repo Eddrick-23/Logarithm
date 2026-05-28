@@ -22,7 +22,7 @@ type Producer interface { // for ingestion endpoint to push payload
 }
 
 type Consumer interface { // for worker to read logs from stream
-	ConsumeLogs(ctx context.Context, handler ProcessLogFunc) error
+	ConsumeLogs(ctx context.Context, handler ProcessLogFunc, maxBatch int, maxWait time.Duration) error
 }
 
 type NatsBroker struct {
@@ -74,15 +74,15 @@ func (nb *NatsBroker) Close() {
 	}
 }
 
-func (nb *NatsBroker) EnsureStream(ctx context.Context, subject string) (jetstream.Stream, error) {
+func (nb *NatsBroker) EnsureStream(ctx context.Context, subject string, NatsStreamMaxAge time.Duration) (jetstream.Stream, error) {
 	nb.logger.Info("Ensuring stream exists", "subject", subject)
 
-	//TODO add TTL policy?
 	stream, err := nb.js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:        logStreamName,
 		Description: "unified log stream for all client services",
-		Subjects:    []string{subject},     // capture every subject under logs name space
-		Storage:     jetstream.FileStorage, // Persist to disk
+		Subjects:    []string{subject},
+		Storage:     jetstream.FileStorage, // Persist to disk for durable queue
+		MaxAge:      NatsStreamMaxAge,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
@@ -119,9 +119,7 @@ func (nb *NatsBroker) NewDurableConsumer(ctx context.Context, stream jetstream.S
 	return &NatsJSConsumer{cons, nb.logger}, nil
 }
 
-func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, handler ProcessLogFunc) error {
-	const maxBatch = 10             // how many messages to take from stream
-	const maxWait = 2 * time.Second // how many seconds to wait
+func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, handler ProcessLogFunc, maxBatch int, maxWait time.Duration) error {
 
 	msgCh := make(chan jetstream.Msg, maxBatch*2) // buffered channel between NATS and batching loop
 	nc.logger.Info("starting streaming from jetstream to database")

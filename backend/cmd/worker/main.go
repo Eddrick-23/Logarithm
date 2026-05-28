@@ -15,8 +15,17 @@ import (
 )
 
 func run(ctx context.Context, w io.Writer) error {
-	const logLevel = slog.LevelInfo // TODO set debug level in config
 	const workerName = "worker"
+
+	config, err := config.LoadConfig(ctx)
+	if err != nil {
+		return err
+	}
+
+	var logLevel slog.Level
+	if err := logLevel.UnmarshalText([]byte(config.WorkerLogLevel)); err != nil {
+		logLevel = slog.LevelInfo
+	}
 	opt := &slog.HandlerOptions{
 		Level: logLevel,
 	}
@@ -30,10 +39,6 @@ func run(ctx context.Context, w io.Writer) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	config, err := config.LoadConfig(ctx)
-	if err != nil {
-		return err
-	}
 	store, err := storage.NewClickHouseStore(ctx,
 		config.DBAddress,
 		config.DBName,
@@ -60,7 +65,7 @@ func run(ctx context.Context, w io.Writer) error {
 		workerLogger.Info("clickhouse connection closed")
 	}()
 
-	stream, err := natsBroker.EnsureStream(ctx, config.NatsSubject)
+	stream, err := natsBroker.EnsureStream(ctx, config.NatsSubject, config.NatsStreamMaxAge)
 	if err != nil {
 		return fmt.Errorf("failed to ensure stream: %w", err)
 	}
@@ -69,8 +74,10 @@ func run(ctx context.Context, w io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("failed to create durable consumer: %w", err)
 	}
-
-	return consumer.ConsumeLogs(ctx, ConsumeCallback(store))
+	return consumer.ConsumeLogs(ctx,
+		ConsumeCallback(store),
+		config.WorkerMaxBatch,
+		config.WorkerMaxWait)
 }
 
 func main() {
