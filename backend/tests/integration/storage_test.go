@@ -318,7 +318,7 @@ func TestSearchLogs(t *testing.T) {
 		},
 		{
 			testName:        "SearchTerm \"timeout\"",
-			filter:          core.LogQueryFilter{SearchTerm: "timeout"},
+			filter:          core.LogQueryFilter{Body: "timeout"},
 			expectedCount:   1,
 			expectedTraceId: testRecord1.TraceId,
 		},

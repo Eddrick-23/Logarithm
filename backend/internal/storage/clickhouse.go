@@ -342,7 +342,7 @@ func (s *ClickHouseStore) buildFilterQueryString(filter core.LogQueryFilter) (st
 		filterQueryString += " AND SpanId ILIKE ?"
 		args = append(args, filter.SpanId+"%")
 	}
-	if filter.SeverityNumber != -1 {
+	if filter.SeverityNumber > 0 { // OTel severity number ranges 1 - 24
 		filterQueryString += " AND SeverityNumber = ?"
 		args = append(args, filter.SeverityNumber)
 	}

@@ -79,7 +79,6 @@ type LogQueryFilter struct {
 	SeverityText   string
 	TraceId        string
 	SpanId         string
-	SearchTerm     string // search "Body" field
 	Body           string
 	Limit          int
 	Offset         int
