@@ -38,11 +38,14 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	config := config.LoadConfig()
+	config, err := config.LoadConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
 	natsBroker, err := transport.NewNatsBroker(ctx, natsLogger, config.NatsURL)
 
 	if err != nil {
-		return fmt.Errorf("Failed to create Nats Broker: %w", err)
+		return fmt.Errorf("failed to crate nats broker: %w", err)
 	}
 
 	if _, err = natsBroker.EnsureStream(ctx, config.NatsSubject); err != nil {
