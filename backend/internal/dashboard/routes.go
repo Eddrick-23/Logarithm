@@ -111,7 +111,6 @@ func apiDataHandler(w http.ResponseWriter, r *http.Request) {
 		SeverityText:   query.Get("severityText"),
 		TraceId:        query.Get("traceId"),
 		SpanId:         query.Get("spanId"),
-		SearchTerm:     query.Get("searchTerm"),
 		Body:           query.Get("body"),
 		OrderBy:        orderBy,
 		Descending:     descending,
