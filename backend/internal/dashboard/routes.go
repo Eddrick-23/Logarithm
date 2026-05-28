@@ -93,8 +93,13 @@ func apiDataHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.LoadConfig()
 	ctx := context.Background()
+	cfg, err := config.LoadConfig(ctx)
+	if err != nil {
+		slog.Error("failed to load config", "err", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 
 	logStore, err := storage.NewClickHouseStore(ctx, cfg.DBAddress, cfg.DBName, cfg.DBTableName, cfg.DBUser, cfg.DBPassword)
 	if err != nil {

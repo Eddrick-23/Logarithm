@@ -1,53 +1,34 @@
 package config
 
 import (
+	"context"
 	"fmt"
-	"os"
 
 	"github.com/joho/godotenv"
-	"github.com/nats-io/nats.go"
+	"github.com/sethvargo/go-envconfig"
 )
 
 type Config struct {
-	IngesterHost             string
-	IngesterPort             string
-	AppPort                  string
-	DBAddress                string
-	DBUser                   string
-	DBPassword               string
-	DBName                   string
-	DBTableName              string
-	NatsURL                  string
-	NatsSubject              string
-	NatsPublishSubjectPrefix string
+	IngesterHost             string `env:"INGESTER_HOST, default=localhost"`
+	IngesterPort             string `env:"INGESTER_PORT, default=8090"`
+	AppPort                  string `env:"APP_PORT, default=8091"`
+	DBAddress                string `env:"DB_ADDRESS, default=localhost:9000"`
+	DBUser                   string `env:"DB_USER, required"`
+	DBPassword               string `env:"DB_PASSWORD, required"`
+	DBName                   string `env:"DB_NAME, default=logarithm"`
+	DBTableName              string `env:"DB_TABLE_NAME, default=logs"`
+	NatsURL                  string `env:"NATS_URL, default=nats://127.0.0.1:4222"`
+	NatsSubject              string `env:"NATS_SUBJECT, default=logs.>"`
+	NatsPublishSubjectPrefix string `env:"NATS_PUBLISH_PREFIX, default=logs."`
 }
 
-func LoadConfig() *Config {
+func LoadConfig(ctx context.Context) (*Config, error) {
 	if err := godotenv.Load(".env.local", ".env"); err != nil {
 		fmt.Println("Note: No .env found. using system environemnt variables with default fallbacks if needed.")
 	}
-
-	return &Config{
-		IngesterHost:             getEnv("INGESTER_HOST", "localhost"),
-		IngesterPort:             getEnv("INGESTER_PORT", "8090"),
-		AppPort:                  getEnv("APP_PORT", "8091"),
-		DBAddress:                getEnv("DB_ADDRESS", "localhost:9000"),
-		DBUser:                   getEnv("DB_USER", "admin"),
-		DBPassword:               getEnv("DB_PASSWORD", "strongpassword"),
-		DBName:                   getEnv("DB_NAME", "logarithm"),
-		DBTableName:              getEnv("DB_TABLE_NAME", "logs"),
-		NatsURL:                  getEnv("NATS_URL", nats.DefaultURL),
-		NatsSubject:              getEnv("NATS_SUBJECT", "logs.>"),
-		NatsPublishSubjectPrefix: getEnv("NATS_PUBLISH_PREFIX", "logs."),
+	var c Config
+	if err := envconfig.Process(ctx, &c); err != nil {
+		return nil, fmt.Errorf("failed to load config from environment variables: %w", err)
 	}
-}
-
-func getEnv(key string, fallback string) string {
-	value, exists := os.LookupEnv(key)
-
-	if exists {
-		return value
-	}
-	return fallback
-
+	return &c, nil
 }

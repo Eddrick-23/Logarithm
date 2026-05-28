@@ -13,9 +13,14 @@ import (
 )
 
 func main() {
-	router := dashboard.NewRouter()
-	config := config.LoadConfig()
 	ctx := context.Background()
+	router := dashboard.NewRouter()
+	config, err := config.LoadConfig(ctx)
+	if err != nil {
+		slog.Error("failed to load config", "err", err)
+		panic(err)
+	}
+
 	logStore, err := storage.NewClickHouseStore(ctx, config.DBAddress, config.DBName, config.DBTableName, config.DBUser, config.DBPassword)
 	if err != nil {
 		slog.Error("failed to connect to db", "err", err)

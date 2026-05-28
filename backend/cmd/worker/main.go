@@ -30,7 +30,10 @@ func run(ctx context.Context, w io.Writer) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	config := config.LoadConfig()
+	config, err := config.LoadConfig(ctx)
+	if err != nil {
+		return err
+	}
 	store, err := storage.NewClickHouseStore(ctx,
 		config.DBAddress,
 		config.DBName,
@@ -39,13 +42,13 @@ func run(ctx context.Context, w io.Writer) error {
 		config.DBPassword)
 
 	if err != nil {
-		return fmt.Errorf("failed to connect to clickhouse: %w", err)
+		return fmt.Errorf("failed to connect to db: %w", err)
 	}
 
 	natsBroker, err := transport.NewNatsBroker(ctx, natsLogger, config.NatsURL)
 
 	if err != nil {
-		return fmt.Errorf("failed to create Nats Broker: %w", err)
+		return fmt.Errorf("failed to create nats broker: %w", err)
 	}
 
 	defer func() {
