@@ -78,12 +78,17 @@ To stop all services:
 docker compose down
 ```
 
-### Running integration tests
+### Running tests
+To run unit tests, use
+```
+cd backend
+go test ./...
+```
 
-Integration tests for the backend are available at backend/tests/integration.
+Integration tests for the backend are available at backend/tests/integration and are tagged under `integration`
 To run them, use
 
 ```
-cd backend/tests/integration
-go test
+cd backend
+go test ./... -tags=integration
 ```
