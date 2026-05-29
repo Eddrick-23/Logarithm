@@ -1,10 +1,13 @@
 package ingester
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"time"
 
@@ -20,7 +23,45 @@ func AddRoutes(
 ) {
 	mux.HandleFunc("GET /", handleRoot(logger))
 	mux.HandleFunc("GET /health", handleHealth())
-	mux.HandleFunc("POST /ingest", handleIngest(logger, producer, natsSubjectPrefix))
+	mux.Handle("POST /ingest", contentTypeMiddleware(gzipMiddleware(handleIngest(logger, producer, natsSubjectPrefix))))
+}
+
+func gzipMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Content-Encoding") != "gzip" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		gz, err := gzip.NewReader(r.Body)
+		if err != nil {
+			http.Error(w, "Invalid gzip body", http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
+		defer gz.Close()
+
+		r.Body = io.NopCloser(gz)        // r.Body.Close() will be handled here only
+		r.Header.Del("Content-Encoding") // prevent double decodes
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func contentTypeMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		contentType := r.Header.Get("Content-Type")
+		mediaType, _, err := mime.ParseMediaType(contentType)
+		if err != nil {
+			http.Error(w, "Malformed/Missing Content-Type", http.StatusBadRequest)
+			return
+		}
+
+		if mediaType != "application/json" {
+			http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func handleRoot(logger *slog.Logger) http.HandlerFunc {
@@ -56,7 +97,6 @@ func handleIngest(logger *slog.Logger, producer transport.Producer, natsSubjectT
 	// needed for latency numbers on the dashboard
 	return func(w http.ResponseWriter, r *http.Request) {
 		var payload core.LogIngestRequest
-
 		err := json.NewDecoder(r.Body).Decode(&payload)
 
 		if err != nil {
@@ -79,13 +119,14 @@ func handleIngest(logger *slog.Logger, producer transport.Producer, natsSubjectT
 		err = producer.PublishLogs(ctx, streamSubject, bytesPayload)
 
 		if err != nil {
+			fmt.Println(streamSubject)
 			logger.Error("Error publishing to nats jetstream", "err", err)
 			http.Error(w, "Error transporting json", http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusAccepted)
-		_, err = w.Write([]byte("log ingested successfully"))
+		_, err = w.Write([]byte("Log ingested successfully"))
 
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to write response: %v", err), http.StatusInternalServerError)
