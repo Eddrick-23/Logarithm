@@ -2,24 +2,12 @@ services:
   react:
     build:
       context: ./frontend
-      target: dev # points to dev stage, comment this out during production
     ports:
-      - "5173:5173" # dev stage port mapping
-      # - "5173:80" # prod stage port mapping
+      - "5173:80" # prod stage port mapping
     env_file:
       - ./frontend/.env
     depends_on:
       - dashboard-api
-    develop:
-      watch:
-        - action: sync
-          path: ./frontend/src
-          target: /app/src
-          initial_sync: true
-          ignore:
-            - node_modules/
-        - action: rebuild
-          path: ./frontend/package.json
   clickhouse:
     image: clickhouse/clickhouse-server:26.3
     ports:
