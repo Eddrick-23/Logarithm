@@ -84,6 +84,22 @@ To stop all services:
 docker compose down
 ```
 
+To force a rebuild from prod to dev
+
+```bash
+docker compose down
+docker compose build --no-cache
+docker compose up --watch
+```
+
+To force a rebuild from dev to prod
+
+```bash
+docker compose down
+docker compose -f docker-compose.yml build --no-cache
+docker compose -f docker-compose.yml up
+```
+
 ### Running tests
 
 To run unit tests, use
