@@ -1,3 +1,13 @@
+# Dev stage
+FROM golang:1.25-alpine AS dev
+WORKDIR /app
+RUN go install github.com/air-verse/air@latest
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+CMD ["air", "-c", ".air.dashboard.toml"]  
+
+# Build stage
 FROM golang:1.25-alpine AS builder
 
 WORKDIR /build
@@ -14,4 +24,4 @@ FROM alpine:latest
 WORKDIR /root/
 COPY --from=builder /build/bin .
 
-# no start commands, handled by docker compose
+# no start commands, handled by docker compose  

@@ -1,0 +1,25 @@
+x-backend-dev: &backend-dev
+  build:
+    target: dev
+  develop:
+    watch:
+      - action: sync
+        path: ./backend
+        target: /app
+        ignore:
+          - tmp/
+      - action: rebuild
+        path: ./backend/go.mod
+
+services:
+  worker:
+    <<: *backend-dev
+    command: air -c .air.worker.toml
+
+  dashboard-api:
+    <<: *backend-dev
+    command: air -c .air.dashboard.toml
+
+  ingester:
+    <<: *backend-dev
+    command: air -c .air.ingester.toml
