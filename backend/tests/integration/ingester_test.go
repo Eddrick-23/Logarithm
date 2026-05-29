@@ -88,7 +88,7 @@ func TestIngestEndpoint(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// t.Parallel()
+			t.Parallel()
 			app := setupTestApp(tc.producerErr)
 			body := tc.body
 			req := httptest.NewRequest("POST", "/ingest", bytes.NewReader(body))
