@@ -1,0 +1,40 @@
+x-backend-dev: &backend-dev
+  build:
+    target: dev
+  develop:
+    watch:
+      - action: sync
+        path: ./backend
+        target: /app
+        ignore:
+          - tmp/
+      - action: rebuild
+        path: ./backend/go.mod
+
+services:
+  react:
+    build:
+      target: dev
+    ports: !override
+      - "5173:5173"
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend/src
+          target: /app/src
+          initial_sync: true
+          ignore:
+            - node_modules/
+        - action: rebuild
+          path: ./frontend/package.json
+  worker:
+    <<: *backend-dev
+    command: air -c .air.worker.toml
+
+  dashboard-api:
+    <<: *backend-dev
+    command: air -c .air.dashboard.toml
+
+  ingester:
+    <<: *backend-dev
+    command: air -c .air.ingester.toml

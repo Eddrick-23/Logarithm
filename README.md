@@ -72,14 +72,38 @@ To run in detached mode (background) mode:
 docker compose up --build -d
 ```
 
+To watch services
+
+```bash
+docker compose up --watch
+```
+
 To stop all services:
 
 ```bash
 docker compose down
 ```
 
+To force a rebuild from prod to dev
+
+```bash
+docker compose down
+docker compose build --no-cache
+docker compose up --watch
+```
+
+To force a rebuild from dev to prod
+
+```bash
+docker compose down
+docker compose -f docker-compose.yml build --no-cache
+docker compose -f docker-compose.yml up
+```
+
 ### Running tests
+
 To run unit tests, use
+
 ```
 cd backend
 go test ./...
