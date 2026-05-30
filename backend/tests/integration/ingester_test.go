@@ -42,6 +42,11 @@ var testIngestRequest core.LogIngestRequest = core.LogIngestRequest{
 	ResourceAttributes: []core.KeyValue{{Key: "host.name", Value: "prod-payment-02"}},
 	Records:            []core.LogRecordDTO{testLogRecordDTO},
 }
+var testIngestRequestNoServiceName core.LogIngestRequest = core.LogIngestRequest{
+	ServiceName:        "",
+	ResourceAttributes: []core.KeyValue{{Key: "host.name", Value: "prod-payment-02"}},
+	Records:            []core.LogRecordDTO{testLogRecordDTO},
+}
 
 func setupTestApp(producerErr error) http.Handler {
 	mockProducer := &MockProducer{producerErr}
@@ -50,22 +55,32 @@ func setupTestApp(producerErr error) http.Handler {
 	return mux
 }
 
-func TestIngestEndpoint(t *testing.T) {
-	validBodyBytes, err := json.Marshal(testIngestRequest)
+func marshalAndZipPayload(t *testing.T, payload any) ([]byte, []byte) {
+	t.Helper()
+	jsonBytes, err := json.Marshal(payload)
+
 	if err != nil {
-		t.Fatalf("error marshalling valid json body: %v", err)
+		t.Fatalf("error marshalling json body: %v", err)
 	}
 
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
-	_, err = gz.Write(validBodyBytes)
+	_, err = gz.Write(jsonBytes)
+
 	if err != nil {
 		t.Fatalf("error writing gzip data: %v", err)
 	}
+
 	if err = gz.Close(); err != nil {
 		t.Fatalf("error closing gzip writer: %v", err)
 	}
-	validBodyBytesGzipped := buf.Bytes()
+
+	return jsonBytes, buf.Bytes()
+}
+
+func TestIngestEndpoint(t *testing.T) {
+	validBodyBytes, validGzipped := marshalAndZipPayload(t, testIngestRequest)
+	bodyMissingServiceNameBytes, missingGzipped := marshalAndZipPayload(t, testIngestRequestNoServiceName)
 
 	tests := []struct {
 		name           string
@@ -77,21 +92,22 @@ func TestIngestEndpoint(t *testing.T) {
 		expectedBody   string
 	}{
 		{"valid json", "application/json", validBodyBytes, false, nil, http.StatusAccepted, "Log ingested successfully"},
-		{"valid json gzip", "application/json", validBodyBytesGzipped, true, nil, http.StatusAccepted, "Log ingested successfully"},
+		{"valid json gzip", "application/json", validGzipped, true, nil, http.StatusAccepted, "Log ingested successfully"},
+		{"missing service name", "application/json", bodyMissingServiceNameBytes, false, nil, http.StatusBadRequest, "No serviceName in payload"},
+		{"missing service name gzip", "application/json", missingGzipped, true, nil, http.StatusBadRequest, "No serviceName in payload"},
 		{"wrong content type", "text/plain", validBodyBytes, false, nil, http.StatusUnsupportedMediaType, "Content-Type must be application/json"},
 		{"missing content type", "", validBodyBytes, false, nil, http.StatusBadRequest, "Malformed/Missing Content-Type"},
 		{"invalid json", "application/json", []byte(`{bad}`), false, nil, http.StatusBadRequest, "Invalid JSON body"},
 		{"invalid gzip body", "application/json", []byte(`notgzip`), true, nil, http.StatusBadRequest, "Invalid gzip body"},
 		{"valid json publish failed", "application/json", validBodyBytes, false, fmt.Errorf("publish to nats failed"), http.StatusInternalServerError, "Error transporting json"},
-		{"valid json gzip publish failed", "application/json", validBodyBytesGzipped, true, fmt.Errorf("publish to nats failed"), http.StatusInternalServerError, "Error transporting json"},
+		{"valid json gzip publish failed", "application/json", validGzipped, true, fmt.Errorf("publish to nats failed"), http.StatusInternalServerError, "Error transporting json"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := setupTestApp(tc.producerErr)
-			body := tc.body
-			req := httptest.NewRequest("POST", "/ingest", bytes.NewReader(body))
+			req := httptest.NewRequest("POST", "/ingest", bytes.NewReader(tc.body))
 			req.Header.Set("Content-type", tc.contentType)
 			if tc.gzipped {
 				req.Header.Set("Content-Encoding", "gzip")
