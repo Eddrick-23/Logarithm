@@ -112,7 +112,7 @@ func (nb *NatsBroker) NewDurableConsumer(ctx context.Context, stream jetstream.S
 		Durable:    consumerName,
 		AckPolicy:  jetstream.AckExplicitPolicy,
 		MaxDeliver: maxDeliver,
-		BackOff:    backoff,
+		BackOff:    backoff, // does not affect Nak, it defines how long nats waits for an Ack() before it times out
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create jetstream consumer: %w", err)
@@ -167,7 +167,7 @@ func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, handler ProcessLogFun
 			nc.logger.Error("batch insert failed, NAKing messages", "err", err, "batchsize", len(batch))
 
 			for _, msg := range batch {
-				msg.Nak()
+				msg.NakWithDelay(30 * time.Second)
 			}
 		} else {
 			for _, msg := range batch {

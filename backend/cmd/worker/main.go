@@ -75,7 +75,7 @@ func run(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("failed to create durable consumer: %w", err)
 	}
 	return consumer.ConsumeLogs(ctx,
-		ConsumeCallback(store),
+		ConsumeCallback(workerLogger, store),
 		config.WorkerMaxBatch,
 		config.WorkerMaxWait)
 }
