@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 )
 
@@ -22,7 +21,7 @@ func AddRoutes(
 	natsSubjectPrefix string,
 ) {
 	mux.HandleFunc("GET /", handleRoot(logger))
-	mux.HandleFunc("GET /health", handleHealth())
+	mux.HandleFunc("GET /health", handleHealth(logger))
 	mux.Handle("POST /ingest", contentTypeMiddleware(gzipMiddleware(handleIngest(logger, producer, natsSubjectPrefix))))
 }
 
@@ -74,7 +73,7 @@ func handleRoot(logger *slog.Logger) http.HandlerFunc {
 	}
 }
 
-func handleHealth() http.HandlerFunc {
+func handleHealth(logger *slog.Logger) http.HandlerFunc {
 	type response struct {
 		Health string `json:"health"`
 	}
@@ -83,53 +82,52 @@ func handleHealth() http.HandlerFunc {
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to marshall json: %v", err), http.StatusInternalServerError)
 		}
-		fmt.Println()
+
+		w.WriteHeader(http.StatusOK)
 		_, err = w.Write(bytes)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to write response: %v", err), http.StatusInternalServerError)
+			logger.Error("failed to write response", "err", err)
 		}
 	}
 }
 
 func handleIngest(logger *slog.Logger, producer transport.Producer, natsSubjectTemplate string) http.HandlerFunc {
-	// TODO1 optimisations, partial json decode to extract service name only, then immediate push
-	// TODO2 push extra data to time how long it took to transfer payload
+	// TODO push extra data to time how long it took to transfer payload
 	// needed for latency numbers on the dashboard
+	type partialIngestBody struct {
+		ServiceName string `json:"serviceName"`
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		var payload core.LogIngestRequest
-		err := json.NewDecoder(r.Body).Decode(&payload)
-
+		bytesPayload, err := io.ReadAll(r.Body)
 		if err != nil {
-			logger.Error("Json decode error", "err", err)
+			logger.Error("failed to parse request body", "err", err)
+			http.Error(w, "Failed to read body", http.StatusBadRequest)
+			return
+		}
+		var ingestBody partialIngestBody
+		if err = json.Unmarshal(bytesPayload, &ingestBody); err != nil {
+			logger.Error("invalid JSON body", "err", err)
 			http.Error(w, "Invalid JSON body", http.StatusBadRequest)
 			return
 		}
 
-		bytesPayload, err := json.Marshal(payload)
-		if err != nil {
-			logger.Error("Error marshalling json", "err", err)
-			http.Error(w, "Error marshalling json", http.StatusInternalServerError)
+		if ingestBody.ServiceName == "" {
+			http.Error(w, "No serviceName in payload", http.StatusBadRequest)
 			return
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		streamSubject := natsSubjectTemplate + payload.ServiceName
-		err = producer.PublishLogs(ctx, streamSubject, bytesPayload)
-
-		if err != nil {
-			fmt.Println(streamSubject)
+		if err = producer.PublishLogs(ctx, natsSubjectTemplate+ingestBody.ServiceName, bytesPayload); err != nil {
 			logger.Error("Error publishing to nats jetstream", "err", err)
 			http.Error(w, "Error transporting json", http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusAccepted)
-		_, err = w.Write([]byte("Log ingested successfully"))
-
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to write response: %v", err), http.StatusInternalServerError)
+		if _, err = w.Write([]byte("Log ingested successfully")); err != nil {
+			logger.Error("failed to write response", "err", err)
 		}
 	}
 }
