@@ -1,25 +1,38 @@
 import { Box, LinearProgress, Typography } from "@mui/material";
 import { card, sectionLabel } from "../theme/tokens";
 
-interface ServiceProps {
+interface ServiceError {
     service: string;
     count: number;
-    colour: string;
 }
 
-// TODO: remove magic number
-const MAX_SCALE = 50;
+type ServiceErrorProps = ServiceError & {
+    maxCount: number;
+};
 
-const errorData = [
-    { service: "payments", count: 50, colour: "#ef5350" },
-    { service: "auth-svc", count: 31, colour: "#ffa726" },
-    { service: "db-proxy", count: 18, colour: "#fbc02d" },
-    { service: "inventory", count: 9, colour: "#42a5f5" },
-    { service: "api-gateway", count: 4, colour: "#607d8b" },
+const errorData: ServiceError[] = [
+    { service: "payments", count: 100 },
+    { service: "auth-svc", count: 79 },
+    { service: "db-proxy", count: 59 },
+    { service: "inventory", count: 39 },
+    { service: "api-gateway", count: 19 },
 ];
 
-function ServiceErrorRow({ service, count, colour }: ServiceProps) {
-    const progressValue = (count / MAX_SCALE) * 100;
+const SEVERITY_THRESHOLDS = [
+    { min: 80, colour: "#ef5350" }, // critical  — red
+    { min: 60, colour: "#ffa726" }, // high      — orange
+    { min: 40, colour: "#fbc02d" }, // medium    — yellow
+    { min: 20, colour: "#42a5f5" }, // low       — blue
+    { min: 0, colour: "#607d8b" }, // minimal   — grey
+] as const;
+
+function getSeverityColour(count: number, maxCount: number): string {
+    const percentage = (count / maxCount) * 100;
+    return SEVERITY_THRESHOLDS.find(({ min }) => percentage >= min)!.colour;
+}
+
+function ServiceErrorRow({ service, count, maxCount }: ServiceErrorProps) {
+    const progressValue = (count / maxCount) * 100;
 
     return (
         <Box
@@ -48,7 +61,7 @@ function ServiceErrorRow({ service, count, colour }: ServiceProps) {
                         borderRadius: 3,
                         backgroundColor: "rgba(255, 255, 255, 0.08)",
                         "& .MuiLinearProgress-bar": {
-                            backgroundColor: colour, // TODO: update with a helper function
+                            backgroundColor: getSeverityColour(count, maxCount),
                             borderRadius: 3,
                         },
                     }}
@@ -61,6 +74,8 @@ function ServiceErrorRow({ service, count, colour }: ServiceProps) {
 }
 
 export default function ServiceError() {
+    const maxCount = Math.max(...errorData.map((data) => data.count));
+
     return (
         <>
             <Box sx={{ ...card, height: "100%" }}>
@@ -82,7 +97,7 @@ export default function ServiceError() {
                             key={item.service}
                             service={item.service}
                             count={item.count}
-                            colour={item.colour}
+                            maxCount={maxCount}
                         />
                     );
                 })}
