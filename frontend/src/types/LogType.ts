@@ -1,1 +1,1 @@
-export type LogType = "info" | "warn" | "error";
+export type LogType = "info" | "warning" | "error";
