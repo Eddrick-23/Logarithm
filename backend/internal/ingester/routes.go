@@ -21,7 +21,7 @@ func AddRoutes(
 	natsSubjectPrefix string,
 ) {
 	mux.HandleFunc("GET /", handleRoot(logger))
-	mux.HandleFunc("GET /health", handleHealth())
+	mux.HandleFunc("GET /health", handleHealth(logger))
 	mux.Handle("POST /ingest", contentTypeMiddleware(gzipMiddleware(handleIngest(logger, producer, natsSubjectPrefix))))
 }
 
@@ -73,7 +73,7 @@ func handleRoot(logger *slog.Logger) http.HandlerFunc {
 	}
 }
 
-func handleHealth() http.HandlerFunc {
+func handleHealth(logger *slog.Logger) http.HandlerFunc {
 	type response struct {
 		Health string `json:"health"`
 	}
@@ -82,9 +82,11 @@ func handleHealth() http.HandlerFunc {
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to marshall json: %v", err), http.StatusInternalServerError)
 		}
+
+		w.WriteHeader(http.StatusOK)
 		_, err = w.Write(bytes)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to write response: %v", err), http.StatusInternalServerError)
+			logger.Error("failed to write response", "err", err)
 		}
 	}
 }
