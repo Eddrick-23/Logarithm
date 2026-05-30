@@ -22,11 +22,12 @@ type Config struct {
 	NatsSubject              string          `env:"NATS_SUBJECT, default=logs.>"`
 	NatsPublishSubjectPrefix string          `env:"NATS_PUBLISH_PREFIX, default=logs."`
 	NatsStreamMaxAge         time.Duration   `env:"NATS_STREAM_MAX_AGE, default=12h"`
-	WorkerMaxDeliver         int             `env:"WORKER_MAX_DELIVER, default=10"`
-	WorkerBackoff            []time.Duration `env:"WORKER_BACKOFF, default=5s,30s,60s,300s,3600s"`
+	NatsMaxDeliver           int             `env:"NATS_MAX_DELIVER, default=10"`
+	NatsBackoff              []time.Duration `env:"NATS_BACKOFF, default=5s,30s,60s,300s,3600s"`
+	WorkerLogLevel           string          `env:"WORKER_LOG_LEVEL, default=INFO"`
 	WorkerMaxBatch           int             `env:"WORKER_MAX_BATCH, default=10"`
 	WorkerMaxWait            time.Duration   `env:"WORKER_MAX_WAIT, default=2s"`
-	WorkerLogLevel           string          `env:"WORKER_LOG_LEVEL, default=INFO"`
+	WorkerBackoff            []time.Duration `env:"WORKER_BACKOFF, default=5s,30s,60s,300s,3600s"`
 }
 
 func LoadConfig(ctx context.Context) (*Config, error) {

@@ -40,3 +40,16 @@ func ConsumeCallback(logger *slog.Logger, store storage.LogStore) func([][]byte)
 		return nil
 	}
 }
+
+func DelayCalculator(backoff []time.Duration) func(uint64) time.Duration {
+	return func(deliveredCount uint64) time.Duration {
+		if len(backoff) == 0 {
+			return 0
+		}
+		if int(deliveredCount) >= len(backoff) {
+			return backoff[len(backoff)-1]
+		}
+		idx := max(int(deliveredCount)-1, 0)
+		return backoff[idx]
+	}
+}
