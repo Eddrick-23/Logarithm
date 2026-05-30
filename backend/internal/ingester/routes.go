@@ -105,7 +105,7 @@ func handleIngest(logger *slog.Logger, producer transport.Producer, natsSubjectT
 			return
 		}
 		var ingestBody partialIngestBody
-		if err := json.Unmarshal(bytesPayload, &ingestBody); err != nil {
+		if err = json.Unmarshal(bytesPayload, &ingestBody); err != nil {
 			logger.Error("invalid JSON body", "err", err)
 			http.Error(w, "Invalid JSON body", http.StatusBadRequest)
 			return
@@ -119,8 +119,7 @@ func handleIngest(logger *slog.Logger, producer transport.Producer, natsSubjectT
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		err = producer.PublishLogs(ctx, natsSubjectTemplate+ingestBody.ServiceName, bytesPayload)
-		if err != nil {
+		if err = producer.PublishLogs(ctx, natsSubjectTemplate+ingestBody.ServiceName, bytesPayload); err != nil {
 			logger.Error("Error publishing to nats jetstream", "err", err)
 			http.Error(w, "Error transporting json", http.StatusInternalServerError)
 			return
@@ -129,8 +128,6 @@ func handleIngest(logger *slog.Logger, producer transport.Producer, natsSubjectT
 		w.WriteHeader(http.StatusAccepted)
 		if _, err = w.Write([]byte("Log ingested successfully")); err != nil {
 			logger.Error("failed to write response", "err", err)
-		}
-		if err != nil {
 		}
 	}
 }
