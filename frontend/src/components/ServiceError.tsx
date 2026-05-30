@@ -33,26 +33,12 @@ function getSeverityColour(count: number, maxCount: number): string {
 
 function ServiceErrorRow({ service, count, maxCount }: ServiceErrorProps) {
     const progressValue = (count / maxCount) * 100;
-
     return (
-        <Box
-            sx={{
-                display: "flex",
-                alignItems: "center",
-                py: 1.5,
-            }}
-        >
-            <Typography
-                sx={{
-                    width: 100,
-                    fontSize: "0.85rem",
-                }}
-            >
+        <Box sx={{ display: "flex", alignItems: "center", py: 1.5, overflow: "hidden" }}>
+            <Typography noWrap sx={{ minWidth: 80, maxWidth: 120, fontSize: "0.85rem", flexShrink: 0 }}>
                 {service}
             </Typography>
-
-            {/* bar showcasing service error comparison with other errors */}
-            <Box sx={{ flexGrow: 1, mx: 2 }}>
+            <Box sx={{ flexGrow: 1, flexShrink: 1, minWidth: 60, mx: 2 }}>
                 <LinearProgress
                     variant="determinate"
                     value={progressValue}
@@ -67,8 +53,9 @@ function ServiceErrorRow({ service, count, maxCount }: ServiceErrorProps) {
                     }}
                 />
             </Box>
-
-            <Typography sx={{ fontWeight: "bold", width: 24, textAlign: "right" }}>{count}</Typography>
+            <Typography sx={{ fontWeight: "bold", minWidth: 40, textAlign: "right", flexShrink: 0 }}>
+                {count}
+            </Typography>
         </Box>
     );
 }
