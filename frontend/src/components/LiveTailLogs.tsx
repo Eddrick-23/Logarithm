@@ -87,12 +87,14 @@ function TailLogRow({ time, service, severity, message }: TailLogProps) {
     return (
         <Box sx={{ ...logRowSx, display: "flex", alignItems: "center", py: 1.5, fontSize: 14 }}>
             {/* TIME */}
-            <Typography sx={{ width: columnWidths.time, textAlign: "left", fontSize: 13, fontWeight: "bold" }}>
+            <Typography
+                sx={{ width: columnWidths.time, textAlign: "left", flexShrink: 0, fontSize: 13, fontWeight: "bold" }}
+            >
                 {time}
             </Typography>
 
             {/* SERVICE TAG */}
-            <Box sx={{ width: columnWidths.service, textAlign: "left" }}>
+            <Box sx={{ width: columnWidths.service, flexShrink: 0, textAlign: "left" }}>
                 <Box
                     sx={{
                         display: "inline-block",
@@ -107,7 +109,7 @@ function TailLogRow({ time, service, severity, message }: TailLogProps) {
             </Box>
 
             {/* SEVERITY TAG */}
-            <Box sx={{ width: columnWidths.severity, textAlign: "left" }}>
+            <Box sx={{ width: columnWidths.severity, flexShrink: 0, textAlign: "left" }}>
                 <Box
                     sx={{
                         display: "inline-block",
@@ -136,9 +138,7 @@ function TailLogRow({ time, service, severity, message }: TailLogProps) {
                     textAlign: "left",
                     fontSize: 13,
                     color: "#9e9e9e",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+                    overflowWrap: "break-word",
                 }}
             >
                 {message}
