@@ -1,7 +1,22 @@
-import { Box, Typography, Stack, Button, Select, MenuItem, TextField } from "@mui/material";
+import {
+    Box,
+    Typography,
+    Stack,
+    Button,
+    Select,
+    MenuItem,
+    TextField,
+    type SelectChangeEvent,
+    FormControl,
+    InputLabel,
+} from "@mui/material";
 import type { LogType } from "../types/LogType";
+import { useState } from "react";
 import { card, logRowSx, pulseSx, sectionLabel } from "../theme/tokens";
 import PauseIcon from "@mui/icons-material/Pause";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+
+const LOG_TYPES: LogType[] = ["debug", "info", "warning", "error"];
 
 interface TailLogProps {
     time: string;
@@ -64,13 +79,14 @@ const logData: TailLogProps[] = [
     {
         time: "14:17:53.144",
         service: "payments",
-        severity: "info",
-        message: "stock low for item_id=4491, qty=3 remaining",
+        severity: "debug",
+        message: "bug in payment processes",
     },
 ];
 
 // Styling maps for the severity badges
 const severityStyles: Record<LogType, { bg: string; text: string }> = {
+    debug: { bg: "rgba(100, 181, 246, 0.15)", text: "#64b5f6" }, // Blue
     info: { bg: "rgba(102, 187, 106, 0.15)", text: "#66bb6a" }, // Green
     warning: { bg: "rgba(255, 167, 38, 0.15)", text: "#ffa726" }, // Orange
     error: { bg: "rgba(239, 83, 80, 0.15)", text: "#ef5350" }, // Red
@@ -149,6 +165,26 @@ function TailLogRow({ time, service, severity, message }: TailLogProps) {
 
 export default function LiveTailLogs() {
     // TODO: connect to backend API and update logs in real time
+    const [severity, setSeverity] = useState<LogType | "all-severities">("all-severities");
+    const [service, setService] = useState<string>("all-services");
+    const [isPaused, setIsPaused] = useState<boolean>(false);
+    const handlePause = () => {
+        // TODO: add fetching logic
+        setIsPaused(true);
+    };
+
+    const handleResume = () => {
+        // TODO: add fetching logic
+        setIsPaused(false);
+    };
+
+    const handleServiceChange = (event: SelectChangeEvent) => {
+        setService(event.target.value);
+    };
+
+    const handleSeverityChange = (event: SelectChangeEvent) => {
+        setSeverity(event.target.value as LogType | "all-severities");
+    };
 
     return (
         <>
@@ -161,32 +197,70 @@ export default function LiveTailLogs() {
                     </Stack>
                     <Button
                         variant="outlined"
-                        startIcon={<PauseIcon fontSize="small" />}
+                        startIcon={isPaused ? <PlayArrowIcon fontSize="small" /> : <PauseIcon fontSize="small" />}
+                        onClick={isPaused ? handleResume : handlePause}
                         sx={{
                             color: "#9e9e9e",
                             borderColor: "rgba(255,255,255,0.15)",
                             textTransform: "none",
                             fontSize: 13,
                             py: 0.5,
+                            minWidth: 105,
                         }}
                     >
-                        Pause
+                        {isPaused ? "Continue" : "Pause"}
                     </Button>
                 </Box>
 
                 {/* Filters Row */}
-                {/* TODO: add more filters */}
                 <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
-                    <Select value="all-services" size="small">
-                        <MenuItem value="all-services">All services</MenuItem>
-                    </Select>
+                    <FormControl variant="outlined" sx={{ minWidth: 130 }}>
+                        <InputLabel>Services</InputLabel>
+                        <Select value={service} size="small" label="Services" onChange={handleServiceChange}>
+                            <MenuItem value="all-services">All services</MenuItem>
+                            {/* TODO: update service filters */}
+                            <MenuItem value="service-1">Service 1</MenuItem>
+                            <MenuItem value="service-2">Service 2</MenuItem>
+                        </Select>
+                    </FormControl>
 
-                    <Select value="all-severities" size="small">
-                        <MenuItem value="all-severities">All severities</MenuItem>
-                    </Select>
+                    <FormControl variant="outlined" sx={{ minWidth: 130 }}>
+                        <InputLabel>Severity level</InputLabel>
+                        <Select value={severity} size="small" label="Severity level" onChange={handleSeverityChange}>
+                            <MenuItem value="all-severities">All severities</MenuItem>
+                            {LOG_TYPES.map((type) => (
+                                <MenuItem key={type} value={type}>
+                                    {type.toUpperCase()}
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
 
                     <TextField placeholder="Search body..." size="small" />
                 </Stack>
+
+                {/* Pause alert bar */}
+                {isPaused && (
+                    <Box
+                        sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1,
+                            width: "100%",
+                            px: 2,
+                            py: 1,
+                            border: "1px solid #78450a",
+                            backgroundColor: "rgba(120, 69, 10, 0.15)",
+                            borderRadius: "6px",
+                            mb: 3,
+                        }}
+                    >
+                        <PauseIcon sx={{ fontSize: 16, color: "#c97316" }} />
+                        <Typography variant="body2" sx={{ color: "#c97316" }}>
+                            Tail paused — new logs buffering
+                        </Typography>
+                    </Box>
+                )}
 
                 {/* Table Headers */}
                 <Box
@@ -202,7 +276,7 @@ export default function LiveTailLogs() {
                         sx={{
                             width: columnWidths.time,
                             textAlign: "left",
-                            fontSize: 11,
+                            fontSize: 13,
                             color: "#6e7681",
                             fontWeight: 600,
                         }}
@@ -213,7 +287,7 @@ export default function LiveTailLogs() {
                         sx={{
                             width: columnWidths.service,
                             textAlign: "left",
-                            fontSize: 11,
+                            fontSize: 13,
                             color: "#6e7681",
                             fontWeight: 600,
                         }}
@@ -224,7 +298,7 @@ export default function LiveTailLogs() {
                         sx={{
                             width: columnWidths.severity,
                             textAlign: "left",
-                            fontSize: 11,
+                            fontSize: 13,
                             color: "#6e7681",
                             fontWeight: 600,
                         }}
@@ -232,7 +306,7 @@ export default function LiveTailLogs() {
                         SEVERITY
                     </Typography>
                     <Typography
-                        sx={{ flexGrow: 1, textAlign: "left", fontSize: 11, color: "#6e7681", fontWeight: 600 }}
+                        sx={{ flexGrow: 1, textAlign: "left", fontSize: 13, color: "#6e7681", fontWeight: 600 }}
                     >
                         BODY
                     </Typography>
