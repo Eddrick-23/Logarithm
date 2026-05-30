@@ -106,12 +106,13 @@ func (nb *NatsBroker) PublishLogs(ctx context.Context, subject string, payload [
 	return nil
 }
 
-func (nb *NatsBroker) NewDurableConsumer(ctx context.Context, stream jetstream.Stream, consumerName string) (*NatsJSConsumer, error) {
+func (nb *NatsBroker) NewDurableConsumer(ctx context.Context, stream jetstream.Stream, consumerName string, maxDeliver int, backoff []time.Duration) (*NatsJSConsumer, error) {
 	cons, err := stream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
 		Name:       consumerName,
 		Durable:    consumerName,
 		AckPolicy:  jetstream.AckExplicitPolicy,
-		MaxDeliver: 5,
+		MaxDeliver: maxDeliver,
+		BackOff:    backoff,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create jetstream consumer: %w", err)
