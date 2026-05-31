@@ -282,7 +282,12 @@ func (s *ClickHouseStore) Close() error {
 }
 
 func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLogRecord) error {
-	batch, err := s.conn.PrepareBatch(ctx, "INSERT INTO "+s.dbAndTable)
+	// must explicitly state all cols since we have an extra insertAt column
+	// that clickhouse will fill in itself
+	insertStatement := "INSERT INTO " + s.dbAndTable +
+		` (Timestamp, TraceId, SpanId, SeverityText, SeverityNumber,
+         ServiceName, Body, LogAttrKeys, LogAttrValues, ResAttrKeys, ResAttrValues)`
+	batch, err := s.conn.PrepareBatch(ctx, insertStatement)
 
 	if err != nil {
 		slog.Error("Failed to prepare batch: %v", "err", err)
