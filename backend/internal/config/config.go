@@ -1,47 +1,42 @@
 package config
 
 import (
-	"log/slog"
-	"os"
+	"context"
+	"fmt"
+	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/nats-io/nats.go"
+	"github.com/sethvargo/go-envconfig"
 )
 
 type Config struct {
-	IngesterPort 	string
-	AppPort 		string
-	DBAddress 		string
-	DBUser 			string
-	DBPassword		string
-	DBName 			string
-	DBTableName		string
-	NatsURL			string
+	IngesterHost             string          `env:"INGESTER_HOST, default=localhost"`
+	IngesterPort             string          `env:"INGESTER_PORT, default=8090"`
+	AppPort                  string          `env:"APP_PORT, default=8091"`
+	DBAddress                string          `env:"DB_ADDRESS, default=localhost:9000"`
+	DBUser                   string          `env:"DB_USER, required"`
+	DBPassword               string          `env:"DB_PASSWORD, required"`
+	DBName                   string          `env:"DB_NAME, default=logarithm"`
+	DBTableName              string          `env:"DB_TABLE_NAME, default=logs"`
+	NatsURL                  string          `env:"NATS_URL, default=nats://127.0.0.1:4222"`
+	NatsSubject              string          `env:"NATS_SUBJECT, default=logs.>"`
+	NatsPublishSubjectPrefix string          `env:"NATS_PUBLISH_PREFIX, default=logs."`
+	NatsStreamMaxAge         time.Duration   `env:"NATS_STREAM_MAX_AGE, default=12h"`
+	NatsMaxDeliver           int             `env:"NATS_MAX_DELIVER, default=10"`
+	NatsBackoff              []time.Duration `env:"NATS_BACKOFF, default=5s,30s,60s,300s,3600s"`
+	WorkerLogLevel           string          `env:"WORKER_LOG_LEVEL, default=INFO"`
+	WorkerMaxBatch           int             `env:"WORKER_MAX_BATCH, default=10"`
+	WorkerMaxWait            time.Duration   `env:"WORKER_MAX_WAIT, default=2s"`
+	WorkerBackoff            []time.Duration `env:"WORKER_BACKOFF, default=5s,30s,60s,300s,3600s"`
 }
 
-func LoadConfig() *Config {
-	if err := godotenv.Load(); err != nil{
-		slog.Info("No .env found. Reading directly and using fallbacks if needed.")
+func LoadConfig(ctx context.Context) (*Config, error) {
+	if err := godotenv.Load(".env.local", ".env"); err != nil {
+		fmt.Println("Note: No .env found. using system environment variables with default fallbacks if needed.")
 	}
-
-	return &Config{
-		IngesterPort: getEnv("INGESTER_PORT", "8090"),
-		AppPort: getEnv("APP_PORT", "8091"),
-		DBAddress: getEnv("DB_ADDRESS", "localhost:9000"),
-		DBUser: getEnv("DB_USER", "admin"),
-		DBPassword: getEnv("DB_PASSWORD", "strongpassword"),
-		DBName: getEnv("DB_NAME", "logarithm"),
-		DBTableName: getEnv("DB_TABLE_NAME", "logs"),
-		NatsURL: getEnv("NATS_URL", nats.DefaultURL),
+	var c Config
+	if err := envconfig.Process(ctx, &c); err != nil {
+		return nil, fmt.Errorf("failed to load config from environment variables: %w", err)
 	}
-}
-
-func getEnv(key string, fallback string) string{
-	value, exists:= os.LookupEnv(key)
-
-	if (exists) {
-		return value
-	}
-	return fallback
-	
+	return &c, nil
 }

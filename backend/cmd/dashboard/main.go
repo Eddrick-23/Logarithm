@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -8,11 +9,28 @@ import (
 
 	"github.com/Eddrick-23/Logarithm/internal/config"
 	"github.com/Eddrick-23/Logarithm/internal/dashboard"
+	"github.com/Eddrick-23/Logarithm/internal/storage"
 )
 
 func main() {
+	ctx := context.Background()
 	router := dashboard.NewRouter()
-	config := config.LoadConfig()
+	config, err := config.LoadConfig(ctx)
+	if err != nil {
+		slog.Error("failed to load config", "err", err)
+		panic(err)
+	}
+
+	logStore, err := storage.NewClickHouseStore(ctx, config.DBAddress, config.DBName, config.DBTableName, config.DBUser, config.DBPassword)
+	if err != nil {
+		slog.Error("failed to connect to db", "err", err)
+		panic(err)
+	}
+
+	// seeding database with dummy data
+	if err := logStore.InitDB(ctx); err != nil {
+		slog.Error("initdb failed", "err", err)
+	}
 
 	port, err := strconv.Atoi(config.AppPort)
 	if err != nil {
