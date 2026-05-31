@@ -15,14 +15,15 @@ var _ Consumer = (*NatsJSConsumer)(nil)
 
 const logStreamName = "LOGS" // infrastructure constant, not configurable
 
-type ProcessLogFunc func(payload [][]byte) error // call back to consume from stream
+type ProcessLogFunc func(payload [][]byte) error  // callback to consume from stream
+type DelayCalcFunc func(int uint64) time.Duration // callback to determine delay for NakWithDelay
 
 type Producer interface { // for ingestion endpoint to push payload
 	PublishLogs(context.Context, string, []byte) error
 }
 
 type Consumer interface { // for worker to read logs from stream
-	ConsumeLogs(ctx context.Context, handler ProcessLogFunc, maxBatch int, maxWait time.Duration) error
+	ConsumeLogs(ctx context.Context, logHandler ProcessLogFunc, delayHandler DelayCalcFunc, maxBatch int, maxWait time.Duration) error
 }
 
 type NatsBroker struct {
@@ -106,12 +107,13 @@ func (nb *NatsBroker) PublishLogs(ctx context.Context, subject string, payload [
 	return nil
 }
 
-func (nb *NatsBroker) NewDurableConsumer(ctx context.Context, stream jetstream.Stream, consumerName string) (*NatsJSConsumer, error) {
+func (nb *NatsBroker) NewDurableConsumer(ctx context.Context, stream jetstream.Stream, consumerName string, maxDeliver int, backoff []time.Duration) (*NatsJSConsumer, error) {
 	cons, err := stream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
 		Name:       consumerName,
 		Durable:    consumerName,
 		AckPolicy:  jetstream.AckExplicitPolicy,
-		MaxDeliver: 5,
+		MaxDeliver: maxDeliver,
+		BackOff:    backoff, // does not affect Nak, it defines how long nats waits for an Ack() before it times out
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create jetstream consumer: %w", err)
@@ -119,7 +121,7 @@ func (nb *NatsBroker) NewDurableConsumer(ctx context.Context, stream jetstream.S
 	return &NatsJSConsumer{cons, nb.logger}, nil
 }
 
-func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, handler ProcessLogFunc, maxBatch int, maxWait time.Duration) error {
+func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, logHandler ProcessLogFunc, delayHandler DelayCalcFunc, maxBatch int, maxWait time.Duration) error {
 
 	msgCh := make(chan jetstream.Msg, maxBatch*2) // buffered channel between NATS and batching loop
 	nc.logger.Info("starting streaming from jetstream to database")
@@ -162,11 +164,20 @@ func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, handler ProcessLogFun
 			payloads[i] = msg.Data()
 		}
 
-		if err := handler(payloads); err != nil {
+		if err := logHandler(payloads); err != nil {
 			nc.logger.Error("batch insert failed, NAKing messages", "err", err, "batchsize", len(batch))
 
 			for _, msg := range batch {
-				msg.Nak()
+				var delay time.Duration
+				metadata, err := msg.Metadata()
+
+				if err != nil {
+					nc.logger.Error("cannot extract message metadata defaulting delay duration to 30s")
+					delay = 30 * time.Second
+				}
+
+				delay = delayHandler(metadata.NumDelivered)
+				msg.NakWithDelay(delay)
 			}
 		} else {
 			for _, msg := range batch {
