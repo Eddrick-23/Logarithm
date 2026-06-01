@@ -12,6 +12,7 @@ import (
 type Config struct {
 	IngesterHost             string          `env:"INGESTER_HOST, default=localhost"`
 	IngesterPort             string          `env:"INGESTER_PORT, default=8090"`
+	AppHost                  string          `env:"APP_HOST, default=dashboard-api"`
 	AppPort                  string          `env:"APP_PORT, default=8091"`
 	DBAddress                string          `env:"DB_ADDRESS, default=localhost:9000"`
 	DBUser                   string          `env:"DB_USER, required"`
