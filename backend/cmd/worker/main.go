@@ -15,7 +15,7 @@ import (
 )
 
 func run(ctx context.Context, w io.Writer) error {
-	const workerName = "worker"
+	workerName := "worker"
 
 	config, err := config.LoadConfig(ctx)
 	if err != nil {
@@ -65,20 +65,28 @@ func run(ctx context.Context, w io.Writer) error {
 		workerLogger.Info("clickhouse connection closed")
 	}()
 
-	stream, err := natsBroker.EnsureStream(ctx, config.NatsSubject, config.NatsStreamMaxAge)
+	stream, err := natsBroker.EnsureLogStream(ctx, transport.LogStreamName, config.NatsSubject, config.NatsStreamMaxAge)
 	if err != nil {
-		return fmt.Errorf("failed to ensure stream: %w", err)
+		return fmt.Errorf("failed to ensure log stream: %w", err)
 	}
 
 	consumer, err := natsBroker.NewDurableConsumer(ctx, stream, workerName, config.NatsMaxDeliver, config.NatsBackoff)
 	if err != nil {
 		return fmt.Errorf("failed to create durable consumer: %w", err)
 	}
+
+	_, err = natsBroker.EnsureDLQStream(ctx, transport.DLQStreamName, transport.DLQSubject, 5*config.NatsStreamMaxAge) // set longer max age for debugging
+	if err != nil {
+		return fmt.Errorf("failed to ensure dlq stream: %w", err)
+	}
+
 	return consumer.ConsumeLogs(ctx,
 		ConsumeCallback(workerLogger, store),
+		DLQCallback(natsBroker, transport.DLQSubject),
 		DelayCalculator(config.WorkerBackoff),
 		config.WorkerMaxBatch,
-		config.WorkerMaxWait)
+		config.WorkerMaxWait,
+	)
 }
 
 func main() {
