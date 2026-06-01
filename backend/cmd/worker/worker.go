@@ -8,6 +8,7 @@ import (
 
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
+	"github.com/Eddrick-23/Logarithm/internal/transport"
 )
 
 func ConsumeCallback(logger *slog.Logger, store storage.LogStore) func([][]byte) error {
@@ -38,6 +39,15 @@ func ConsumeCallback(logger *slog.Logger, store storage.LogStore) func([][]byte)
 		}
 
 		return nil
+	}
+}
+
+func DLQCallback(producer transport.Producer, subject string) func([]byte) error {
+
+	return func(payload []byte) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		return producer.PublishLogs(ctx, subject, payload)
 	}
 }
 

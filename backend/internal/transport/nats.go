@@ -13,17 +13,17 @@ import (
 var _ Producer = (*NatsBroker)(nil)
 var _ Consumer = (*NatsJSConsumer)(nil)
 
-const logStreamName = "LOGS" // infrastructure constant, not configurable
-
-type ProcessLogFunc func(payload [][]byte) error  // callback to consume from stream
-type DelayCalcFunc func(int uint64) time.Duration // callback to determine delay for NakWithDelay
+type ProcessLogFunc func(payload [][]byte) error         // callback to consume from stream
+type DLQFunc func(payload []byte) error                  // callback to move data to dlq stream
+type DelayCalcFunc func(maxDeliver uint64) time.Duration // callback to determine delay for NakWithDelay
 
 type Producer interface { // for ingestion endpoint to push payload
 	PublishLogs(context.Context, string, []byte) error
 }
 
 type Consumer interface { // for worker to read logs from stream
-	ConsumeLogs(ctx context.Context, logHandler ProcessLogFunc, delayHandler DelayCalcFunc, maxBatch int, maxWait time.Duration) error
+	ConsumeLogs(ctx context.Context, logHandler ProcessLogFunc, dlqHandler DLQFunc, delayHandler DelayCalcFunc,
+		maxBatch int, maxWait time.Duration) error
 }
 
 type NatsBroker struct {
@@ -33,13 +33,9 @@ type NatsBroker struct {
 }
 
 type NatsJSConsumer struct {
-	consumer jetstream.Consumer
-	logger   *slog.Logger
-}
-
-type TransimittedLog struct {
-	Payload []byte
-	Ack     func() error
+	consumer   jetstream.Consumer
+	logger     *slog.Logger
+	maxDeliver uint64
 }
 
 func NewNatsBroker(ctx context.Context, logger *slog.Logger, natsUrl string) (*NatsBroker, error) {
@@ -75,11 +71,11 @@ func (nb *NatsBroker) Close() {
 	}
 }
 
-func (nb *NatsBroker) EnsureStream(ctx context.Context, subject string, NatsStreamMaxAge time.Duration) (jetstream.Stream, error) {
+func (nb *NatsBroker) EnsureStream(ctx context.Context, streamName string, subject string, NatsStreamMaxAge time.Duration) (jetstream.Stream, error) {
 	nb.logger.Info("Ensuring stream exists", "subject", subject)
 
 	stream, err := nb.js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
-		Name:        logStreamName,
+		Name:        streamName,
 		Description: "unified log stream for all client services",
 		Subjects:    []string{subject},
 		Storage:     jetstream.FileStorage, // Persist to disk for durable queue
@@ -89,7 +85,7 @@ func (nb *NatsBroker) EnsureStream(ctx context.Context, subject string, NatsStre
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
 
-	nb.logger.Info("stream created", "name", logStreamName, "subject", subject)
+	nb.logger.Info("stream created", "name", streamName, "subject", subject)
 	return stream, nil
 }
 
@@ -118,10 +114,11 @@ func (nb *NatsBroker) NewDurableConsumer(ctx context.Context, stream jetstream.S
 	if err != nil {
 		return nil, fmt.Errorf("failed to create jetstream consumer: %w", err)
 	}
-	return &NatsJSConsumer{cons, nb.logger}, nil
+	return &NatsJSConsumer{cons, nb.logger, uint64(maxDeliver)}, nil
 }
 
-func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, logHandler ProcessLogFunc, delayHandler DelayCalcFunc, maxBatch int, maxWait time.Duration) error {
+func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, logHandler ProcessLogFunc, dlqHandler DLQFunc, delayHandler DelayCalcFunc,
+	maxBatch int, maxWait time.Duration) error {
 
 	msgCh := make(chan jetstream.Msg, maxBatch*2) // buffered channel between NATS and batching loop
 	nc.logger.Info("starting streaming from jetstream to database")
@@ -174,10 +171,22 @@ func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, logHandler ProcessLog
 				if err != nil {
 					nc.logger.Error("cannot extract message metadata defaulting delay duration to 30s")
 					delay = 30 * time.Second
+					msg.NakWithDelay(delay)
+					continue
+				}
+				if metadata.NumDelivered >= nc.maxDeliver {
+					if err := dlqHandler(msg.Data()); err != nil {
+						nc.logger.Error("Failed to publish to DLQ, message will be lost",
+							"err", err,
+							"payload", string(msg.Data()),
+							"num_delivered", metadata.NumDelivered,
+						)
+					}
+					msg.Ack()
+				} else {
+					msg.NakWithDelay(delayHandler(metadata.NumDelivered))
 				}
 
-				delay = delayHandler(metadata.NumDelivered)
-				msg.NakWithDelay(delay)
 			}
 		} else {
 			for _, msg := range batch {
