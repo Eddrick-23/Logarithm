@@ -14,12 +14,8 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 )
 
-const logStreamName = "LOGS"     // keep non configurable
-const dlqStreamName = "LOGS_DLQ" // keep non configurable
-const dlqSubject = "logs.dlq"    // inject to functions
-const workerName = "worker"      // inject to functions
-
 func run(ctx context.Context, w io.Writer) error {
+	workerName := "worker"
 
 	config, err := config.LoadConfig(ctx)
 	if err != nil {
@@ -69,7 +65,7 @@ func run(ctx context.Context, w io.Writer) error {
 		workerLogger.Info("clickhouse connection closed")
 	}()
 
-	stream, err := natsBroker.EnsureStream(ctx, logStreamName, config.NatsSubject, config.NatsStreamMaxAge)
+	stream, err := natsBroker.EnsureLogStream(ctx, transport.LogStreamName, config.NatsSubject, config.NatsStreamMaxAge)
 	if err != nil {
 		return fmt.Errorf("failed to ensure log stream: %w", err)
 	}
@@ -79,14 +75,14 @@ func run(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("failed to create durable consumer: %w", err)
 	}
 
-	_, err = natsBroker.EnsureStream(ctx, dlqStreamName, dlqSubject, 5*config.NatsStreamMaxAge) // create dlq stream
+	_, err = natsBroker.EnsureDLQStream(ctx, transport.DLQStreamName, transport.DLQSubject, 5*config.NatsStreamMaxAge) // set longer max age for debugging
 	if err != nil {
 		return fmt.Errorf("failed to ensure dlq stream: %w", err)
 	}
 
 	return consumer.ConsumeLogs(ctx,
 		ConsumeCallback(workerLogger, store),
-		DLQCallback(natsBroker, dlqSubject),
+		DLQCallback(natsBroker, transport.DLQSubject),
 		DelayCalculator(config.WorkerBackoff),
 		config.WorkerMaxBatch,
 		config.WorkerMaxWait,

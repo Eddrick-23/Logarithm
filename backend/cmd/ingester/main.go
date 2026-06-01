@@ -48,7 +48,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		return fmt.Errorf("failed to crate nats broker: %w", err)
 	}
 
-	if _, err = natsBroker.EnsureStream(ctx, config.NatsSubject, config.NatsStreamMaxAge); err != nil {
+	if _, err = natsBroker.EnsureLogStream(ctx, transport.LogStreamName, config.NatsSubject, config.NatsStreamMaxAge); err != nil {
 		return fmt.Errorf("failed to ensure stream: %w", err)
 	}
 

@@ -10,6 +10,12 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
+const (
+	LogStreamName = "LOGS"
+	DLQStreamName = "LOGS_DLQ"
+	DLQSubject    = "dlq.logs"
+)
+
 var _ Producer = (*NatsBroker)(nil)
 var _ Consumer = (*NatsJSConsumer)(nil)
 
@@ -71,12 +77,21 @@ func (nb *NatsBroker) Close() {
 	}
 }
 
-func (nb *NatsBroker) EnsureStream(ctx context.Context, streamName string, subject string, NatsStreamMaxAge time.Duration) (jetstream.Stream, error) {
+func (nb *NatsBroker) EnsureLogStream(ctx context.Context, streamName string, subject string, maxAge time.Duration) (jetstream.Stream, error) {
+	return nb.ensureStream(ctx, streamName, "unified log stream for all client services", subject, maxAge)
+}
+
+func (nb *NatsBroker) EnsureDLQStream(ctx context.Context, streamName string, subject string, maxAge time.Duration) (jetstream.Stream, error) {
+	return nb.ensureStream(ctx, streamName, "dead letter queue for failed log deliveries", subject, maxAge)
+}
+
+func (nb *NatsBroker) ensureStream(ctx context.Context, streamName string, description string,
+	subject string, NatsStreamMaxAge time.Duration) (jetstream.Stream, error) {
 	nb.logger.Info("Ensuring stream exists", "subject", subject)
 
 	stream, err := nb.js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:        streamName,
-		Description: "unified log stream for all client services",
+		Description: description,
 		Subjects:    []string{subject},
 		Storage:     jetstream.FileStorage, // Persist to disk for durable queue
 		MaxAge:      NatsStreamMaxAge,
