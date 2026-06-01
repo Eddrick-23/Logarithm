@@ -352,3 +352,38 @@ func TestSearchLogs(t *testing.T) {
 		})
 	}
 }
+
+func TestCountInsertedWithin(t *testing.T) {
+	ctx := context.Background()
+	logStore, err := storage.NewClickHouseStore(context.Background(), dbAddr, dbname, dbtablename, user, password)
+	if err != nil {
+		t.Fatalf("failed to establish db connection: %v", err)
+	}
+
+	conn, err := getRawDBConn()
+	if err != nil {
+		t.Fatalf("failed to get raw db conn: %v", err)
+	}
+	conn.Exec(ctx, "TRUNCATE TABLE logarithm.logs")
+
+	count, err := logStore.CountInsertedWithin(ctx, 1)
+	if err != nil {
+		t.Fatalf("count failed: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected 0 count on empty table got: %v", count)
+	}
+
+	records := []core.FlatLogRecord{testRecord1, testRecord2, testRecord3}
+	if err = logStore.BatchInsert(ctx, records); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	count, err = logStore.CountInsertedWithin(ctx, 1)
+	if err != nil {
+		t.Fatalf("count failed: %v", err)
+	}
+	if count != uint64(len(records)) {
+		t.Fatalf("expected %v count on empty table got: %v", len(records), count)
+	}
+}

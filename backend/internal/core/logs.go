@@ -36,6 +36,7 @@ FlatLogRecord is optimized for storage in ClickHouse
 */
 type FlatLogRecord struct {
 	Timestamp      time.Time `ch:"Timestamp"`
+	InsertedAt     time.Time `ch:"InsertedAt"` // not mapped when unflattening, for now no need to expose to frontend
 	TraceId        string    `ch:"TraceId"`
 	SpanId         string    `ch:"SpanId"`
 	SeverityText   string    `ch:"SeverityText"`

@@ -282,7 +282,12 @@ func (s *ClickHouseStore) Close() error {
 }
 
 func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLogRecord) error {
-	batch, err := s.conn.PrepareBatch(ctx, "INSERT INTO "+s.dbAndTable)
+	// must explicitly state all cols since we have an extra insertAt column
+	// that clickhouse will fill in itself
+	insertStatement := "INSERT INTO " + s.dbAndTable +
+		` (Timestamp, TraceId, SpanId, SeverityText, SeverityNumber,
+         ServiceName, Body, LogAttrKeys, LogAttrValues, ResAttrKeys, ResAttrValues)`
+	batch, err := s.conn.PrepareBatch(ctx, insertStatement)
 
 	if err != nil {
 		slog.Error("Failed to prepare batch: %v", "err", err)
@@ -397,4 +402,16 @@ func (s *ClickHouseStore) GetFilteredLogsCount(ctx context.Context, filter core.
 		return 0, err
 	}
 	return int(count), nil
+}
+
+func (s *ClickHouseStore) CountInsertedWithin(ctx context.Context, minutes uint64) (uint64, error) {
+	whereClause := "WHERE InsertedAt >= now() - toIntervalMinute(@mins)"
+	queryString := "SELECT count() FROM " + s.dbAndTable + " " + whereClause
+
+	var count uint64
+	if err := s.conn.QueryRow(ctx, queryString, clickhouse.Named("mins", minutes)).Scan(&count); err != nil {
+		return 0, fmt.Errorf("failed to fetch row count: %v", err)
+	}
+
+	return count, nil
 }
