@@ -2,6 +2,7 @@ CREATE DATABASE IF NOT EXISTS logarithm;
 
 CREATE TABLE IF NOT EXISTS logarithm.logs (
     Timestamp DateTime64(9, 'UTC') CODEC(DoubleDelta, LZ4),
+    InsertedAt DateTime DEFAULT now() CODEC(DoubleDelta, LZ4),
     
     -- OTLP Tracing Data
     TraceId FixedString(32) CODEC(ZSTD(1)),
@@ -18,6 +19,8 @@ CREATE TABLE IF NOT EXISTS logarithm.logs (
     LogAttrValues Array(String),
     ResAttrKeys Array(String),
     ResAttrValues Array(String),
+
+    INDEX idx_inserted_at InsertedAt TYPE minmax GRANULARITY 2
 ) 
 ENGINE = MergeTree()
 PARTITION BY toYYYYMMDD(Timestamp)
