@@ -70,12 +70,13 @@ func run(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("failed to ensure stream: %w", err)
 	}
 
-	consumer, err := natsBroker.NewDurableConsumer(ctx, stream, workerName)
+	consumer, err := natsBroker.NewDurableConsumer(ctx, stream, workerName, config.NatsMaxDeliver, config.NatsBackoff)
 	if err != nil {
 		return fmt.Errorf("failed to create durable consumer: %w", err)
 	}
 	return consumer.ConsumeLogs(ctx,
-		ConsumeCallback(store),
+		ConsumeCallback(workerLogger, store),
+		DelayCalculator(config.WorkerBackoff),
 		config.WorkerMaxBatch,
 		config.WorkerMaxWait)
 }
