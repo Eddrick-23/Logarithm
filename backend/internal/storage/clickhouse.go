@@ -403,3 +403,15 @@ func (s *ClickHouseStore) GetFilteredLogsCount(ctx context.Context, filter core.
 	}
 	return int(count), nil
 }
+
+func (s *ClickHouseStore) CountInsertedWithin(ctx context.Context, minutes uint64) (uint64, error) {
+	whereClause := "WHERE InsertedAt >= now() - toIntervalMinute(@mins)"
+	queryString := "SELECT count() FROM " + s.dbAndTable + " " + whereClause
+
+	var count uint64
+	if err := s.conn.QueryRow(ctx, queryString, clickhouse.Named("mins", minutes)).Scan(&count); err != nil {
+		return 0, fmt.Errorf("failed to fetch row count: %v", err)
+	}
+
+	return count, nil
+}
