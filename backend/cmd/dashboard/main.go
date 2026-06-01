@@ -18,9 +18,9 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 )
 
-func NewServer(logger *slog.Logger, config *config.Config) http.Handler {
+func NewServer(logger *slog.Logger, config *config.Config, logStore *storage.ClickHouseStore) http.Handler {
 	mux := http.NewServeMux()
-	dashboard.AddRoutes(mux, logger)
+	dashboard.AddRoutes(mux, logger, config, logStore)
 
 	var handler http.Handler = mux
 	// add middlewares if any
@@ -54,7 +54,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		databaseLogger.Error("initdb failed", "err", err)
 	}
 
-	srv := NewServer(httpLogger, config)
+	srv := NewServer(httpLogger, config, logStore)
 
 	httpServer := &http.Server{
 		Addr:    net.JoinHostPort(config.AppHost, config.AppPort),

@@ -17,10 +17,12 @@ import (
 func AddRoutes(
 	mux *http.ServeMux,
 	logger *slog.Logger,
+	config *config.Config,
+	logStore *storage.ClickHouseStore,
 ) {
 	mux.HandleFunc("GET /", handleRoot(logger))
 	mux.HandleFunc("GET /health", handleHealth(logger))
-	mux.Handle("GET /api/data", handleLogs(logger))
+	mux.Handle("GET /api/data", handleLogs(logger, logStore))
 }
 
 func handleRoot(logger *slog.Logger) http.HandlerFunc {
@@ -51,7 +53,7 @@ func handleHealth(logger *slog.Logger) http.HandlerFunc {
 	}
 }
 
-func handleLogs(logger *slog.Logger) http.HandlerFunc {
+func handleLogs(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
 		layout := "2006-01-02T15:04:05" // reference layout for time
@@ -115,20 +117,6 @@ func handleLogs(logger *slog.Logger) http.HandlerFunc {
 		}
 
 		ctx := context.Background()
-		cfg, err := config.LoadConfig(ctx)
-		if err != nil {
-			logger.Error("failed to load config", "err", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-
-		logStore, err := storage.NewClickHouseStore(ctx, cfg.DBAddress, cfg.DBName, cfg.DBTableName, cfg.DBUser, cfg.DBPassword)
-		if err != nil {
-			logger.Error("failed to search logs", "err", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-
 		filter := core.LogQueryFilter{
 			StartTime:      startTime,
 			EndTime:        endTime,
