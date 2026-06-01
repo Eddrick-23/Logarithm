@@ -1,7 +1,7 @@
 import IngestionGraph from "../components/IngestionGraph";
 import { Grid, Box, Stack, Typography } from "@mui/material";
 import ServiceOverview from "../components/ServiceOverview";
-import LatencyView from "../components/LatencyView";
+import LatencyView from "../components/ServiceError";
 import LiveTailLogs from "../components/LiveTailLogs";
 import { pulseSx } from "../theme/tokens";
 
@@ -38,7 +38,7 @@ export default function Dashboard() {
                 <Grid size="grow">
                     <IngestionGraph />
                 </Grid>
-                <Grid size={2}>
+                <Grid size={2.75}>
                     <LatencyView />
                 </Grid>
             </Grid>
