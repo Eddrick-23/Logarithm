@@ -11,7 +11,7 @@ import {
     InputLabel,
 } from "@mui/material";
 import type { LogType } from "../types/LogType";
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { card, logRowSx, pulseSx, sectionLabel } from "../theme/tokens";
 import PauseIcon from "@mui/icons-material/Pause";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
@@ -164,6 +164,58 @@ function TailLogRow({ time, service, severity, message }: TailLogProps) {
 }
 
 export default function LiveTailLogs() {
+    const wsRef = useRef<WebSocket | null>(null);
+    const reconnectAttempts = useRef(0);
+    const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const connect = useCallback(() => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) return;
+
+        const ws = new WebSocket("ws://localhost:8091/ws/logs/tail");
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+            console.log("connected");
+            reconnectAttempts.current = 0; // reset backoff on successful connect
+        };
+
+        ws.onmessage = (e) => {
+            console.log("data", e.data);
+            // setLogs((prev) => [...prev, e.data]);
+        };
+
+        ws.onerror = (e) => console.error("ws error", e);
+
+        ws.onclose = (e) => {
+            wsRef.current = null;
+
+            if (e.code === 1000) return; // intentional close, don't reconnect
+
+            const maxAttempts = 5;
+            if (reconnectAttempts.current >= maxAttempts) {
+                console.error("max reconnect attempts reached");
+                return;
+            }
+
+            // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+            const delay = Math.min(1000 * 2 ** reconnectAttempts.current, 30_000);
+            reconnectAttempts.current += 1;
+
+            console.log(`reconnecting in ${delay}ms (attempt ${reconnectAttempts.current})`);
+            reconnectTimer.current = setTimeout(connect, delay);
+        };
+    }, []);
+
+    useEffect(() => {
+        connect();
+
+        return () => {
+            // Cancel any pending reconnect
+            if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+            wsRef.current?.close(1000, "component unmounted");
+        };
+    }, [connect]);
+
     // TODO: connect to backend API and update logs in real time
     const [severity, setSeverity] = useState<LogType | "all-severities">("all-severities");
     const [service, setService] = useState<string>("all-services");

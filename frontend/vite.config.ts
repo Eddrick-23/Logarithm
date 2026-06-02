@@ -9,6 +9,8 @@ export default defineConfig(({ mode }) => {
 
     const apiUrl = env.VITE_API_URL;
     console.log("My API url is: ", apiUrl);
+    const websocketUrl = env.VITE_WEBSOCKET_URL;
+    console.log("My Websocket url is: ", websocketUrl);
 
     return {
         plugins: [
@@ -30,6 +32,10 @@ export default defineConfig(({ mode }) => {
                     target: apiUrl,
                     changeOrigin: true,
                     secure: false,
+                },
+                "/ws": {
+                    target: websocketUrl,
+                    ws: true,
                 },
             },
         },
