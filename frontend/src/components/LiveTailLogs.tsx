@@ -117,6 +117,32 @@ export default function LiveTailLogs() {
     const reconnectAttempts = useRef(0);
     const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [logs, setLogs] = useState<LogsState>({});
+    const [severity, setSeverity] = useState<LogType | "all-severities">("all-severities");
+    const [service, setService] = useState<string>("all-services");
+    const [isPaused, setIsPaused] = useState<boolean>(false);
+    const isPausedRef = useRef<boolean>(isPaused);
+    const bufferRef = useRef<LogIngestRequest[]>([]);
+
+    const processIncomingData = useCallback((incomingData: LogIngestRequest) => {
+        const { serviceName, resourceAttributes, records } = incomingData;
+
+        setLogs((prev) => {
+            const existingService = prev[serviceName] || {
+                serviceName: serviceName,
+                resourceAttributes: resourceAttributes,
+                records: [],
+            };
+
+            return {
+                ...prev,
+                [serviceName]: {
+                    ...existingService,
+                    // Append incoming records and keep latest 10, while keeping other services unchanged
+                    records: [...existingService.records, ...records].slice(-10),
+                },
+            };
+        });
+    }, []);
 
     const connect = useCallback(() => {
         if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -130,24 +156,15 @@ export default function LiveTailLogs() {
 
         ws.onmessage = (e) => {
             const incomingData = JSON.parse(e.data);
-            const { serviceName, resourceAttributes, records } = incomingData;
 
-            setLogs((prev) => {
-                const existingService = prev[serviceName] || {
-                    serviceName: serviceName,
-                    resourceAttributes: resourceAttributes,
-                    records: [],
-                };
+            // if paused, push to buffer array and stop processing
+            if (isPausedRef.current) {
+                bufferRef.current.push(incomingData);
+                return;
+            }
 
-                return {
-                    ...prev,
-                    [serviceName]: {
-                        ...existingService,
-                        // Append incoming records and keep latest 10, while keeping other services unchanged
-                        records: [...existingService.records, ...records].slice(-10),
-                    },
-                };
-            });
+            // else process data
+            processIncomingData(incomingData);
         };
 
         ws.onerror = (e) => console.error("ws error", e);
@@ -180,18 +197,26 @@ export default function LiveTailLogs() {
         };
     }, [connect]);
 
-    // TODO: connect to backend API and update logs in real time
-    const [severity, setSeverity] = useState<LogType | "all-severities">("all-severities");
-    const [service, setService] = useState<string>("all-services");
-    const [isPaused, setIsPaused] = useState<boolean>(false);
+    useEffect(() => {
+        isPausedRef.current = isPaused;
+    }, [isPaused]);
+
     const handlePause = () => {
-        // TODO: add fetching logic
         setIsPaused(true);
     };
 
     const handleResume = () => {
-        // TODO: add fetching logic
         setIsPaused(false);
+
+        // Flush all buffered logs into the state
+        if (bufferRef.current.length > 0) {
+            bufferRef.current.forEach((data) => {
+                processIncomingData(data);
+            });
+
+            // Clear buffer after processing it
+            bufferRef.current = [];
+        }
     };
 
     const handleServiceChange = (event: SelectChangeEvent) => {
