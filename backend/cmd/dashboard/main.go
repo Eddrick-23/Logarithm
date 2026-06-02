@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Eddrick-23/Logarithm/api/schemas"
 	"github.com/Eddrick-23/Logarithm/internal/config"
-	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/dashboard"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
@@ -62,13 +62,13 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		for {
 			select {
 			case <-ticker.C:
-				req := core.LogIngestRequest{
+				req := schemas.LogIngestRequest{
 					ServiceName: "auth-service",
-					ResourceAttributes: []core.KeyValue{
+					ResourceAttributes: []schemas.KeyValue{
 						{Key: "environment", Value: "production"},
 						{Key: "host.name", Value: "auth-worker-01"},
 					},
-					Records: []core.LogRecordDTO{
+					Records: []schemas.LogRecordDTO{
 						{
 							Timestamp:      time.Now(),
 							TraceId:        "5b8aa5a2d2c8646c14e138a83416a41f",
@@ -76,7 +76,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 							SeverityText:   "INFO",
 							SeverityNumber: 9,
 							Body:           "User authenticated successfully.",
-							LogAttributes: []core.KeyValue{
+							LogAttributes: []schemas.KeyValue{
 								{Key: "user_id", Value: "usr_987654321"},
 								{Key: "ip_address", Value: "192.168.1.104"},
 							},
@@ -88,7 +88,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 							SeverityText:   "ERROR",
 							SeverityNumber: 17,
 							Body:           "Failed to connect to database cache.",
-							LogAttributes: []core.KeyValue{
+							LogAttributes: []schemas.KeyValue{
 								{Key: "cache_host", Value: "redis-cluster.local"},
 								{Key: "timeout_ms", Value: "5000"},
 							},
