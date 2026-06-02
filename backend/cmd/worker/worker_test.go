@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Eddrick-23/Logarithm/api/schemas"
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/stretchr/testify/assert"
 )
@@ -15,21 +16,21 @@ import (
 func TestExtractAttributes(t *testing.T) {
 	tests := []struct {
 		name           string
-		attributes     []core.KeyValue
+		attributes     []schemas.KeyValue
 		expectedKeys   []string
 		expectedValues []string
 	}{
 		{"slice with full KeyValue pairs",
-			[]core.KeyValue{{Key: "key1", Value: "val1"}, {Key: "key2", Value: "val2"}, {Key: "key3", Value: "val3"}},
+			[]schemas.KeyValue{{Key: "key1", Value: "val1"}, {Key: "key2", Value: "val2"}, {Key: "key3", Value: "val3"}},
 			[]string{"key1", "key2", "key3"},
 			[]string{"val1", "val2", "val3"},
 		},
 		{"KeyValue pair empty value",
-			[]core.KeyValue{{Key: "key1", Value: ""}},
+			[]schemas.KeyValue{{Key: "key1", Value: ""}},
 			[]string{"key1"},
 			[]string{""},
 		},
-		{"empty KeyValue slice", []core.KeyValue{}, []string{}, []string{}},
+		{"empty KeyValue slice", []schemas.KeyValue{}, []string{}, []string{}},
 	}
 
 	for _, tc := range tests {
@@ -42,11 +43,11 @@ func TestExtractAttributes(t *testing.T) {
 	}
 }
 
-func newBaseRequest() core.LogIngestRequest {
+func newBaseRequest() schemas.LogIngestRequest {
 	mockTime := time.Date(2026, time.May, 30, 12, 0, 0, 0, time.UTC)
-	return core.LogIngestRequest{
+	return schemas.LogIngestRequest{
 		ServiceName: "default-service",
-		Records: []core.LogRecordDTO{
+		Records: []schemas.LogRecordDTO{
 			{
 				Timestamp:      mockTime,
 				TraceId:        "default-trace",
@@ -59,7 +60,7 @@ func newBaseRequest() core.LogIngestRequest {
 	}
 }
 
-func buildTestRequest(template core.LogIngestRequest, resAttr []core.KeyValue, logAttr []core.KeyValue) core.LogIngestRequest {
+func buildTestRequest(template schemas.LogIngestRequest, resAttr []schemas.KeyValue, logAttr []schemas.KeyValue) schemas.LogIngestRequest {
 	template.ResourceAttributes = resAttr
 
 	for i := range template.Records { // reference by index so we modify the actual underlying slice
@@ -71,8 +72,8 @@ func buildTestRequest(template core.LogIngestRequest, resAttr []core.KeyValue, l
 func TestFlattenLogs(t *testing.T) {
 	tests := []struct {
 		name                     string
-		customResourceAttributes []core.KeyValue
-		customLogAttributes      []core.KeyValue
+		customResourceAttributes []schemas.KeyValue
+		customLogAttributes      []schemas.KeyValue
 		expectedResKeys          []string
 		expectedResValues        []string
 		expectedLogKeys          []string
@@ -80,8 +81,8 @@ func TestFlattenLogs(t *testing.T) {
 	}{
 		{
 			"map attributes correctly",
-			[]core.KeyValue{{Key: "res-key1", Value: "res-val1"}},
-			[]core.KeyValue{{Key: "log-key1", Value: "log-val1"}},
+			[]schemas.KeyValue{{Key: "res-key1", Value: "res-val1"}},
+			[]schemas.KeyValue{{Key: "log-key1", Value: "log-val1"}},
 			[]string{"res-key1"},
 			[]string{"res-val1"},
 			[]string{"log-key1"},
@@ -89,8 +90,8 @@ func TestFlattenLogs(t *testing.T) {
 		},
 		{
 			"map multiple attributes correctly",
-			[]core.KeyValue{{Key: "res-key1", Value: "res-val1"}, {Key: "res-key2", Value: "res-val2"}},
-			[]core.KeyValue{{Key: "log-key1", Value: "log-val1"}, {Key: "log-key2", Value: "log-val2"}},
+			[]schemas.KeyValue{{Key: "res-key1", Value: "res-val1"}, {Key: "res-key2", Value: "res-val2"}},
+			[]schemas.KeyValue{{Key: "log-key1", Value: "log-val1"}, {Key: "log-key2", Value: "log-val2"}},
 			[]string{"res-key1", "res-key2"},
 			[]string{"res-val1", "res-val2"},
 			[]string{"log-key1", "log-key2"},
@@ -98,8 +99,8 @@ func TestFlattenLogs(t *testing.T) {
 		},
 		{
 			"empty attributes",
-			[]core.KeyValue{},
-			[]core.KeyValue{},
+			[]schemas.KeyValue{},
+			[]schemas.KeyValue{},
 			[]string{},
 			[]string{},
 			[]string{},
@@ -275,7 +276,7 @@ func TestConsumeCallback(t *testing.T) {
 			if tc.expectedInsertCount > 0 && !tc.expectedErr {
 				expectedCount := 0
 				for _, p := range tc.payloads {
-					var data core.LogIngestRequest
+					var data schemas.LogIngestRequest
 					if err := json.Unmarshal(p, &data); err != nil {
 						continue
 					}

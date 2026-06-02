@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/Eddrick-23/Logarithm/api/schemas"
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
@@ -20,7 +21,7 @@ func ConsumeCallback(logger *slog.Logger, store storage.LogStore) func([][]byte)
 		// estimate around 500 logs per ingested Request to prealloc memory
 		var records []core.FlatLogRecord = make([]core.FlatLogRecord, 0, len(payloads)*500)
 		for _, payload := range payloads {
-			var jsonPayload core.LogIngestRequest
+			var jsonPayload schemas.LogIngestRequest
 			if err := json.Unmarshal(payload, &jsonPayload); err != nil {
 				slog.Error("dropped malformed log payload", "err", err, "payload_preview", string(payload))
 				continue

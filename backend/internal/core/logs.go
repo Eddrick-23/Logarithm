@@ -2,34 +2,9 @@ package core
 
 import (
 	"time"
+
+	"github.com/Eddrick-23/Logarithm/api/schemas"
 )
-
-// KeyValue represents the standard OTel key-value pair.
-type KeyValue struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
-}
-
-// LogRecordDTO represents the individual record payload from the frontend/client.
-type LogRecordDTO struct {
-	Timestamp      time.Time  `json:"timestamp"`
-	TraceId        string     `json:"traceId"`
-	SpanId         string     `json:"spanId"`
-	SeverityText   string     `json:"severityText"`
-	SeverityNumber uint8      `json:"severityNumber"`
-	Body           string     `json:"body"`
-	LogAttributes  []KeyValue `json:"logAttributes"`
-}
-
-/*
-LogIngestRequest handles batch logs sent by clients.
-Includes ServiceName and ResourceAttributes once in the grouped JSON.
-*/
-type LogIngestRequest struct {
-	ServiceName        string         `json:"serviceName"`
-	ResourceAttributes []KeyValue     `json:"resourceAttributes,omitempty"`
-	Records            []LogRecordDTO `json:"records"`
-}
 
 /*
 FlatLogRecord is optimized for storage in ClickHouse
@@ -54,15 +29,15 @@ LogRecord represents the complete structure when reading back
 from ClickHouse to display on the frontend.
 */
 type LogRecord struct {
-	Timestamp          time.Time  `json:"timestamp"`
-	TraceId            string     `json:"traceId"`
-	SpanId             string     `json:"spanId"`
-	SeverityText       string     `json:"severityText"`
-	SeverityNumber     uint8      `json:"severityNumber"`
-	ServiceName        string     `json:"serviceName"`
-	Body               string     `json:"body"`
-	LogAttributes      []KeyValue `json:"logAttributes"`
-	ResourceAttributes []KeyValue `json:"resourceAttributes"`
+	Timestamp          time.Time          `json:"timestamp"`
+	TraceId            string             `json:"traceId"`
+	SpanId             string             `json:"spanId"`
+	SeverityText       string             `json:"severityText"`
+	SeverityNumber     uint8              `json:"severityNumber"`
+	ServiceName        string             `json:"serviceName"`
+	Body               string             `json:"body"`
+	LogAttributes      []schemas.KeyValue `json:"logAttributes"`
+	ResourceAttributes []schemas.KeyValue `json:"resourceAttributes"`
 }
 
 type OrderByField string
@@ -97,22 +72,22 @@ func ParseOrderByField(s string) OrderByField {
 }
 
 func unflattenLogRecord(flat FlatLogRecord) LogRecord {
-	logAttributes := make([]KeyValue, 0, len(flat.LogAttrKeys))
+	logAttributes := make([]schemas.KeyValue, 0, len(flat.LogAttrKeys))
 	for i, key := range flat.LogAttrKeys {
 		value := ""
 		if i < len(flat.LogAttrValues) {
 			value = flat.LogAttrValues[i]
 		}
-		logAttributes = append(logAttributes, KeyValue{Key: key, Value: value})
+		logAttributes = append(logAttributes, schemas.KeyValue{Key: key, Value: value})
 	}
 
-	resourceAttributes := make([]KeyValue, 0, len(flat.ResAttrKeys))
+	resourceAttributes := make([]schemas.KeyValue, 0, len(flat.ResAttrKeys))
 	for i, key := range flat.ResAttrKeys {
 		value := ""
 		if i < len(flat.ResAttrValues) {
 			value = flat.ResAttrValues[i]
 		}
-		resourceAttributes = append(resourceAttributes, KeyValue{Key: key, Value: value})
+		resourceAttributes = append(resourceAttributes, schemas.KeyValue{Key: key, Value: value})
 	}
 
 	return LogRecord{
