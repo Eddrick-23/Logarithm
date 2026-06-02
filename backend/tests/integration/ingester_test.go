@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Eddrick-23/Logarithm/internal/core"
+	"github.com/Eddrick-23/Logarithm/api/schemas"
 	"github.com/Eddrick-23/Logarithm/internal/ingester"
 	"github.com/stretchr/testify/assert"
 )
@@ -27,25 +27,25 @@ func (m *MockProducer) PublishLogs(context.Context, string, []byte) error {
 	return m.Err
 }
 
-var testLogRecordDTO core.LogRecordDTO = core.LogRecordDTO{
+var testLogRecordDTO schemas.LogRecordDTO = schemas.LogRecordDTO{
 	Timestamp:      time.Date(2024, 5, 20, 10, 0, 0, 0, time.UTC),
 	TraceId:        "4bf92f3577b34da6a3ce929d0e0e4736",
 	SpanId:         "00f067aa0ba902b7",
 	SeverityText:   "ERROR",
 	SeverityNumber: 17,
 	Body:           "Failed to process transaction due to timeout",
-	LogAttributes:  []core.KeyValue{{Key: "http.method", Value: "POST"}},
+	LogAttributes:  []schemas.KeyValue{{Key: "http.method", Value: "POST"}},
 }
 
-var testIngestRequest core.LogIngestRequest = core.LogIngestRequest{
+var testIngestRequest schemas.LogIngestRequest = schemas.LogIngestRequest{
 	ServiceName:        "test-service",
-	ResourceAttributes: []core.KeyValue{{Key: "host.name", Value: "prod-payment-02"}},
-	Records:            []core.LogRecordDTO{testLogRecordDTO},
+	ResourceAttributes: []schemas.KeyValue{{Key: "host.name", Value: "prod-payment-02"}},
+	Records:            []schemas.LogRecordDTO{testLogRecordDTO},
 }
-var testIngestRequestNoServiceName core.LogIngestRequest = core.LogIngestRequest{
+var testIngestRequestNoServiceName schemas.LogIngestRequest = schemas.LogIngestRequest{
 	ServiceName:        "",
-	ResourceAttributes: []core.KeyValue{{Key: "host.name", Value: "prod-payment-02"}},
-	Records:            []core.LogRecordDTO{testLogRecordDTO},
+	ResourceAttributes: []schemas.KeyValue{{Key: "host.name", Value: "prod-payment-02"}},
+	Records:            []schemas.LogRecordDTO{testLogRecordDTO},
 }
 
 func setupTestApp(producerErr error) http.Handler {

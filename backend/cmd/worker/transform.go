@@ -1,8 +1,11 @@
 package main
 
-import "github.com/Eddrick-23/Logarithm/internal/core"
+import (
+	"github.com/Eddrick-23/Logarithm/api/schemas"
+	"github.com/Eddrick-23/Logarithm/internal/core"
+)
 
-func extractAttributes(attributes []core.KeyValue) ([]string, []string) {
+func extractAttributes(attributes []schemas.KeyValue) ([]string, []string) {
 	numAttributes := len(attributes)
 
 	keys := make([]string, 0, numAttributes)
@@ -16,7 +19,7 @@ func extractAttributes(attributes []core.KeyValue) ([]string, []string) {
 	return keys, values
 }
 
-func flattenLogs(ingestedReq core.LogIngestRequest, buffer []core.FlatLogRecord) []core.FlatLogRecord {
+func flattenLogs(ingestedReq schemas.LogIngestRequest, buffer []core.FlatLogRecord) []core.FlatLogRecord {
 	resKeys, resValues := extractAttributes(ingestedReq.ResourceAttributes)
 
 	for _, logDTO := range ingestedReq.Records {
