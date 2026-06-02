@@ -10,7 +10,7 @@ import {
 import { IconButton, Tooltip } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import type { KeyValue, LogRecord } from "../types/LogRecord";
+import type { KeyValue, LogRecord } from "../types/Log";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import axios from "axios";

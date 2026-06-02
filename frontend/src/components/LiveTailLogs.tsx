@@ -10,13 +10,15 @@ import {
     FormControl,
     InputLabel,
 } from "@mui/material";
-import type { LogType } from "../types/LogType";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { card, logRowSx, pulseSx, sectionLabel } from "../theme/tokens";
 import PauseIcon from "@mui/icons-material/Pause";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import type { LogIngestRequest, LogType } from "../types/Log";
 
 const LOG_TYPES: LogType[] = ["debug", "info", "warning", "error"];
+
+type LogsState = Record<string, LogIngestRequest>;
 
 interface TailLogProps {
     time: string;
@@ -24,65 +26,6 @@ interface TailLogProps {
     severity: LogType;
     message: string;
 }
-
-// TODO: replace dummy data with live data
-const logData: TailLogProps[] = [
-    {
-        time: "14:18:00.422",
-        service: "payments",
-        severity: "error",
-        message: "health check passed, all dependencies reachable",
-    },
-    {
-        time: "14:17:59.607",
-        service: "notifier",
-        severity: "error",
-        message: "stock low for item_id=4491, qty=3 remaining",
-    },
-    {
-        time: "14:17:58.804",
-        service: "payments",
-        severity: "info",
-        message: "stock low for item_id=4491, qty=3 remaining",
-    },
-    {
-        time: "14:17:58.004",
-        service: "auth-svc",
-        severity: "info",
-        message: "smtp timeout after 5000ms, retrying (2/3)",
-    },
-    {
-        time: "14:17:57.201",
-        service: "worker",
-        severity: "error",
-        message: "charge processed txn_id=TXN-08441 — $48.00",
-    },
-    { time: "14:17:56.393", service: "auth-svc", severity: "warning", message: "token validated for user_id=8821" },
-    {
-        time: "14:17:55.579",
-        service: "worker",
-        severity: "info",
-        message: "cache miss for key user:9912, fetching from db",
-    },
-    {
-        time: "14:17:54.770",
-        service: "db-proxy",
-        severity: "info",
-        message: "health check passed, all dependencies reachable",
-    },
-    {
-        time: "14:17:53.969",
-        service: "inventory",
-        severity: "warning",
-        message: "rate limit exceeded for client_id=772",
-    },
-    {
-        time: "14:17:53.144",
-        service: "payments",
-        severity: "debug",
-        message: "bug in payment processes",
-    },
-];
 
 // Styling maps for the severity badges
 const severityStyles: Record<LogType, { bg: string; text: string }> = {
@@ -94,9 +37,15 @@ const severityStyles: Record<LogType, { bg: string; text: string }> = {
 
 // Centralized fixed widths for perfect alignment
 const columnWidths = {
-    time: 130,
+    time: 160,
     service: 110,
     severity: 110,
+};
+
+const parseSeverity = (severityText: string): LogType => {
+    const lower = severityText.toLowerCase();
+
+    return lower as LogType;
 };
 
 function TailLogRow({ time, service, severity, message }: TailLogProps) {
@@ -167,6 +116,7 @@ export default function LiveTailLogs() {
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectAttempts = useRef(0);
     const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [logs, setLogs] = useState<LogsState>({});
 
     const connect = useCallback(() => {
         if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -175,13 +125,29 @@ export default function LiveTailLogs() {
         wsRef.current = ws;
 
         ws.onopen = () => {
-            console.log("connected");
             reconnectAttempts.current = 0; // reset backoff on successful connect
         };
 
         ws.onmessage = (e) => {
-            console.log("data", e.data);
-            // setLogs((prev) => [...prev, e.data]);
+            const incomingData = JSON.parse(e.data);
+            const { serviceName, resourceAttributes, records } = incomingData;
+
+            setLogs((prev) => {
+                const existingService = prev[serviceName] || {
+                    serviceName: serviceName,
+                    resourceAttributes: resourceAttributes,
+                    records: [],
+                };
+
+                return {
+                    ...prev,
+                    [serviceName]: {
+                        ...existingService,
+                        // Append incoming records and keep latest 10, while keeping other services unchanged
+                        records: [...existingService.records, ...records].slice(-10),
+                    },
+                };
+            });
         };
 
         ws.onerror = (e) => console.error("ws error", e);
@@ -200,8 +166,6 @@ export default function LiveTailLogs() {
             // Exponential backoff: 1s, 2s, 4s, 8s, 16s
             const delay = Math.min(1000 * 2 ** reconnectAttempts.current, 30_000);
             reconnectAttempts.current += 1;
-
-            console.log(`reconnecting in ${delay}ms (attempt ${reconnectAttempts.current})`);
             reconnectTimer.current = setTimeout(connect, delay);
         };
     }, []);
@@ -366,15 +330,26 @@ export default function LiveTailLogs() {
 
                 {/* Logs List */}
                 <Box>
-                    {logData.map((log, index) => (
-                        <TailLogRow
-                            key={`${log.time}-${index}`}
-                            time={log.time}
-                            service={log.service}
-                            severity={log.severity}
-                            message={log.message}
-                        />
-                    ))}
+                    {Object.values(logs)
+                        // Flatten all records into a single array, attaching the service name to each
+                        .flatMap((serviceData) =>
+                            serviceData.records.map((log) => ({
+                                log,
+                                serviceName: serviceData.serviceName,
+                            })),
+                        )
+                        // Sort the flattened array by timestamp descending (newest first)
+                        .sort((a, b) => new Date(b.log.timestamp).getTime() - new Date(a.log.timestamp).getTime())
+                        // Map the sorted array to  rows
+                        .map(({ log, serviceName }, index) => (
+                            <TailLogRow
+                                key={`${serviceName}-${log.timestamp}-${index}`}
+                                time={new Date(log.timestamp).toLocaleString()}
+                                service={serviceName}
+                                severity={parseSeverity(log.severityText)}
+                                message={log.body}
+                            />
+                        ))}
                 </Box>
             </Box>
         </>

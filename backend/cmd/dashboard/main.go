@@ -56,7 +56,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 
 	// Mocking live updates
 	go func() {
-		ticker := time.NewTicker(1 * time.Second)
+		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 
 		for {
@@ -91,6 +91,32 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 							LogAttributes: []schemas.KeyValue{
 								{Key: "cache_host", Value: "redis-cluster.local"},
 								{Key: "timeout_ms", Value: "5000"},
+							},
+						},
+						{
+							Timestamp:      time.Now(),
+							TraceId:        "0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d",
+							SpanId:         "1a2b3c4d5e6f7a8b",
+							SeverityText:   "DEBUG",
+							SeverityNumber: 5,
+							Body:           "Database connection pool statistics updated.",
+							LogAttributes: []schemas.KeyValue{
+								{Key: "active_connections", Value: "14"},
+								{Key: "idle_connections", Value: "6"},
+								{Key: "pool_name", Value: "primary-replica"},
+							},
+						},
+						{
+							Timestamp:      time.Now(),
+							TraceId:        "f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0",
+							SpanId:         "8b7a6f5e4d3c2b1a",
+							SeverityText:   "WARNING",
+							SeverityNumber: 13,
+							Body:           "API request latency exceeded threshold limit.",
+							LogAttributes: []schemas.KeyValue{
+								{Key: "endpoint", Value: "/api/v1/analytics"},
+								{Key: "duration_ms", Value: "1250"},
+								{Key: "threshold_ms", Value: "1000"},
 							},
 						},
 					},
