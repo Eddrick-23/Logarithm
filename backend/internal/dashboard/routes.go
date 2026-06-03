@@ -25,7 +25,7 @@ func AddRoutes(
 ) {
 	mux.HandleFunc("GET /", handleRoot(logger))
 	mux.HandleFunc("GET /health", handleHealth(logger))
-	mux.Handle("GET /api/data", handleLogs(logger, logStore))
+	mux.Handle("GET /api/search", handleLogs(logger, logStore))
 	mux.Handle("GET /api/services", handleDistinctServices(logger, logStore))
 	mux.Handle("GET /ws/logs/tail", handleLiveTail(logger, broker, config))
 }
