@@ -1,5 +1,7 @@
 {
   "seed": 42,
+  "poolSize": 500,
+  "healthUrl": "http://localhost:8090/health",
   "targetUrl": "http://localhost:8090/ingest",
   "method": "POST",
   "rps": 10,

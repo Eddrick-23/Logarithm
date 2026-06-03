@@ -13,6 +13,7 @@ func BenchmarkGenerateRequest(b *testing.B) {
 	cfg := config.CleanConfig{
 		Seed:                 1,
 		PoolSize:             5000,
+		HealthUrl:            "",
 		TargetUrl:            "",
 		Method:               "",
 		Rps:                  1,

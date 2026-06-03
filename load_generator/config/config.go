@@ -17,6 +17,7 @@ type BodyTokenFormat struct {
 type RawConfig struct {
 	Seed                 int                `json:"seed"`
 	PoolSize             int                `json:"poolSize"`
+	HealthUrl            string             `json:"healthUrl"`
 	TargetUrl            string             `json:"targetUrl"`
 	Method               string             `json:"method"`
 	Rps                  int                `json:"rps"`
@@ -32,6 +33,7 @@ type RawConfig struct {
 type CleanConfig struct {
 	Seed                 int                `json:"seed"`
 	PoolSize             int                `json:"poolSize"`
+	HealthUrl            string             `json:"healthUrl"`
 	TargetUrl            string             `json:"targetUrl"`
 	Method               string             `json:"method"`
 	Rps                  int                `json:"rps"`
@@ -63,7 +65,7 @@ func ValidateAndCleanConfig(rawCfg RawConfig) CleanConfig {
 	for _, p := range rawCfg.SeverityDistribution {
 		sumProb += p
 	}
-	if len(rawCfg.SeverityDistribution) != 4 || !floatEquals(sumProb, 1.0) {
+	if len(rawCfg.SeverityDistribution) != 5 || !floatEquals(sumProb, 1.0) {
 		fmt.Println("invalid severity distribution, defaulting to [0.1, 0.6, 0.1, 0.1, 0.1] for [DEBUG, INFO, WARNING, ERROR, FATAL]")
 		dist = []float64{0.1, 0.6, 0.1, 0.1, 0.1}
 	}
@@ -81,6 +83,7 @@ func ValidateAndCleanConfig(rawCfg RawConfig) CleanConfig {
 	return CleanConfig{
 		Seed:                 rawCfg.Seed,
 		PoolSize:             poolSize,
+		HealthUrl:            rawCfg.HealthUrl,
 		TargetUrl:            rawCfg.TargetUrl,
 		Method:               rawCfg.Method,
 		Rps:                  rawCfg.Rps,

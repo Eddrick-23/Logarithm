@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -99,30 +100,57 @@ func parseConfig(configPath string) (*config.CleanConfig, error) {
 	return &cfg, nil
 }
 
-func printJson(obj interface{}) {
+func printJson(obj any) {
 	bytes, _ := json.MarshalIndent(obj, "", "\t")
 	fmt.Println(string(bytes))
 }
 
-func run(ctx context.Context, configPath string, interval int) error {
-	// TODO work on config parsing from config.json
-	// need to standardise payload randomisation schema
-	// TODO, find how to send POST requests and whethere we can randomise payloads
-	cfg, err := parseConfig(configPath)
+func checkHealth(url string) error {
+	fmt.Println("checking health at: " + url)
+	resp, err := http.Get(url)
 	if err != nil {
 		return err
 	}
-	printJson(*cfg)
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("service returned unhealthy status: %d", resp.StatusCode)
+	}
+
+	fmt.Println("endpoint healthy")
+	return nil
+}
+
+func run(ctx context.Context, configPath string, interval int, showConfig bool) error {
+	// TODO, find how to send POST requests and whethere we can randomise payloads
+	cfg, err := parseConfig(configPath) // load config
+	if err != nil {
+		return err
+	}
+
+	if showConfig {
+		printJson(*cfg)
+	} else {
+		fmt.Printf("Test configs: RPS: %v, BatchSize:%v, Duration, %v\n",
+			cfg.Rps,
+			cfg.BatchSize,
+			cfg.Duration,
+		)
+	}
+
+	if err := checkHealth(cfg.HealthUrl); err != nil { // check endpoint health
+		return err
+	}
+
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	resultsFile, err := createResultFile()
+	resultsFile, err := createResultFile() // create output file
 	if err != nil {
 		return fmt.Errorf("failed to create results file: %w", err)
 	}
 	defer resultsFile.Close()
 
-	var metrics vegeta.Metrics
+	var metrics vegeta.Metrics //setup controllers and attackers
 	startAttack := setupAttack(10, 10*time.Second)
 	enc := vegeta.NewEncoder(resultsFile)
 	ticker := time.NewTicker(time.Duration(interval) * time.Second)
@@ -158,16 +186,19 @@ func run(ctx context.Context, configPath string, interval int) error {
 	}()
 	wg.Wait()
 	metrics.Close()
-	fmt.Println(metrics.Latencies.P99)
-	fmt.Println(metrics.Throughput)
-	fmt.Println(metrics.Requests)
-	fmt.Println(metrics.StatusCodes)
+	fmt.Printf("Test Summary: P99 Latency: %v | Throughput: %vrps | Requests Sent: %v | successRate: %v",
+		metrics.Latencies.P99,
+		metrics.Throughput,
+		metrics.Requests,
+		metrics.Success*100,
+	)
 	return nil
 }
 
 func main() {
 	pathToConfigPtr := flag.String("config", "", "path to config.json file")
 	intervalPtr := flag.Int("interval", 1, "how often to log attack progress (seconds)")
+	showConfigPtr := flag.Bool("showConfig", false, "display parsed config once at startup")
 
 	flag.Parse()
 
@@ -176,7 +207,7 @@ func main() {
 		os.Exit(1)
 	}
 	ctx := context.Background()
-	if err := run(ctx, *pathToConfigPtr, *intervalPtr); err != nil {
+	if err := run(ctx, *pathToConfigPtr, *intervalPtr, *showConfigPtr); err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}
