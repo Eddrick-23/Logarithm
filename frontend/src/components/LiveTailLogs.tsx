@@ -11,107 +11,21 @@ import {
     InputLabel,
 } from "@mui/material";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { card, logRowSx, pulseSx, sectionLabel } from "../theme/tokens";
+import { card, pulseSx, sectionLabel } from "../theme/tokens";
 import PauseIcon from "@mui/icons-material/Pause";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import type { FlatLogEntry, LogIngestRequest, LogType } from "../types/Log";
 import { useDistinctServices } from "../hooks/useDistinctServices";
+import TailLogRow, { columnWidths } from "./TailLogRow";
 
 const LOG_TYPES: LogType[] = ["debug", "info", "warning", "error"];
-
-interface TailLogProps {
-    time: string;
-    service: string;
-    severity: LogType;
-    message: string;
-}
-
-// Styling maps for the severity badges
-const severityStyles: Record<LogType, { bg: string; text: string }> = {
-    debug: { bg: "rgba(100, 181, 246, 0.15)", text: "#64b5f6" }, // Blue
-    info: { bg: "rgba(102, 187, 106, 0.15)", text: "#66bb6a" }, // Green
-    warning: { bg: "rgba(255, 167, 38, 0.15)", text: "#ffa726" }, // Orange
-    error: { bg: "rgba(239, 83, 80, 0.15)", text: "#ef5350" }, // Red
-};
-
-// Centralized fixed widths for perfect alignment
-const columnWidths = {
-    time: 160,
-    service: 110,
-    severity: 110,
-};
+const MAX_GLOBAL_LOGS = 300;
+const MAX_DISPLAY_LOGS = 15;
 
 const parseSeverity = (severityText: string): LogType => {
     const lower = severityText.toLowerCase();
     return lower as LogType;
 };
-
-function TailLogRow({ time, service, severity, message }: TailLogProps) {
-    return (
-        <Box sx={{ ...logRowSx, display: "flex", alignItems: "center", py: 1.5, fontSize: 14 }}>
-            {/* TIME */}
-            <Typography
-                sx={{ width: columnWidths.time, textAlign: "left", flexShrink: 0, fontSize: 13, fontWeight: "bold" }}
-            >
-                {time}
-            </Typography>
-
-            {/* SERVICE TAG */}
-            <Box sx={{ width: columnWidths.service, flexShrink: 0, textAlign: "left" }}>
-                <Box
-                    sx={{
-                        display: "inline-block",
-                        border: "1px solid rgba(255,255,255,0.15)",
-                        borderRadius: 1,
-                        px: 1,
-                        py: 0.25,
-                    }}
-                >
-                    <Typography sx={{ fontSize: 12, color: "#9e9e9e" }}>{service}</Typography>
-                </Box>
-            </Box>
-
-            {/* SEVERITY TAG */}
-            <Box sx={{ width: columnWidths.severity, flexShrink: 0, textAlign: "left" }}>
-                <Box
-                    sx={{
-                        display: "inline-block",
-                        backgroundColor: severityStyles[severity].bg,
-                        borderRadius: 1,
-                        px: 1,
-                        py: 0.25,
-                    }}
-                >
-                    <Typography
-                        sx={{
-                            fontSize: 11,
-                            fontWeight: "bold",
-                            color: severityStyles[severity].text,
-                        }}
-                    >
-                        {severity.toUpperCase()}
-                    </Typography>
-                </Box>
-            </Box>
-
-            {/* BODY */}
-            <Typography
-                sx={{
-                    flexGrow: 1,
-                    textAlign: "left",
-                    fontSize: 13,
-                    color: "#9e9e9e",
-                    overflowWrap: "break-word",
-                }}
-            >
-                {message}
-            </Typography>
-        </Box>
-    );
-}
-
-const MAX_GLOBAL_LOGS = 300;
-const MAX_DISPLAY_LOGS = 15;
 
 export default function LiveTailLogs() {
     const wsRef = useRef<WebSocket | null>(null);
