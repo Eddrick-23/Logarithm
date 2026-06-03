@@ -1,0 +1,53 @@
+{
+  "seed": 42,
+  "targetUrl": "http://localhost:8090/ingest",
+  "method": "POST",
+  "rps": 10,
+  "duration": "10s",
+  "batchSize": 10,
+  "severityDistribution": [0.1, 0.6, 0.1, 0.1, 0.1],
+  "serviceNames": [
+    "testservice1",
+    "testservice2",
+    "testservice3",
+    "testservice4"
+  ],
+  "bodyTokens": {
+    "min": 5,
+    "max": 25,
+    "dictionary": [
+      "failed",
+      "process",
+      "transaction",
+      "invalid",
+      "account",
+      "timeout",
+      "database",
+      "connection",
+      "lost",
+      "retry",
+      "success",
+      "user",
+      "authenticated",
+      "payload",
+      "too",
+      "large"
+    ]
+  },
+  "resourceAttributes": [
+    {
+      "key": "host.name",
+      "value": "prod-payment-02"
+    },
+    {
+      "key": "environment",
+      "value": "production"
+    }
+  ],
+  "logAttributes": [
+    {
+      "key": "http.method",
+      "value": "POST"
+    }
+  ]
+}

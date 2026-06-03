@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Eddrick-23/Logarithm/load_generator/config"
 	"github.com/Eddrick-23/Logarithm/load_generator/files"
 	vegeta "github.com/tsenart/vegeta/v12/lib"
 )
@@ -67,10 +69,50 @@ func setupAttack(rps int, duration time.Duration) func() <-chan *vegeta.Result {
 	}
 }
 
+func parseConfig(configPath string) (*config.CleanConfig, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+
+	exists, err := files.FileExists(filepath.Join(dir, configPath))
+	if err != nil {
+		return nil, err
+	}
+
+	if !exists {
+		return nil, fmt.Errorf("config file does not exist")
+	}
+
+	content, err := os.ReadFile(filepath.Join(dir, configPath))
+	if err != nil {
+		return nil, err
+	}
+
+	var rawCfg config.RawConfig
+	if err = json.Unmarshal(content, &rawCfg); err != nil {
+		return nil, err
+	}
+
+	cfg := config.ValidateAndCleanConfig(rawCfg)
+
+	return &cfg, nil
+}
+
+func printJson(obj interface{}) {
+	bytes, _ := json.MarshalIndent(obj, "", "\t")
+	fmt.Println(string(bytes))
+}
+
 func run(ctx context.Context, configPath string, interval int) error {
 	// TODO work on config parsing from config.json
 	// need to standardise payload randomisation schema
 	// TODO, find how to send POST requests and whethere we can randomise payloads
+	cfg, err := parseConfig(configPath)
+	if err != nil {
+		return err
+	}
+	printJson(*cfg)
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 

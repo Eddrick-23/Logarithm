@@ -34,3 +34,6 @@ go.work.sum
 
 # Load test results
 results/*
+
+#others
+*.pprof
