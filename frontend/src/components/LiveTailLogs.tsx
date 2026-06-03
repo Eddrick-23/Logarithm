@@ -15,6 +15,7 @@ import { card, logRowSx, pulseSx, sectionLabel } from "../theme/tokens";
 import PauseIcon from "@mui/icons-material/Pause";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import type { FlatLogEntry, LogIngestRequest, LogType } from "../types/Log";
+import { useDistinctServices } from "../hooks/useDistinctServices";
 
 const LOG_TYPES: LogType[] = ["debug", "info", "warning", "error"];
 
@@ -119,16 +120,13 @@ export default function LiveTailLogs() {
     const [logs, setLogs] = useState<FlatLogEntry[]>([]);
     const [severity, setSeverity] = useState<LogType | "all-severities">("all-severities");
     const [service, setService] = useState<string>("all-services");
-    const [serviceOptions, setServiceOptions] = useState<string[]>([]);
     const [isPaused, setIsPaused] = useState<boolean>(false);
     const isPausedRef = useRef<boolean>(isPaused);
     const bufferRef = useRef<LogIngestRequest[]>([]);
+    const { data: serviceOptions, isLoading } = useDistinctServices();
 
     const processIncomingData = useCallback((incomingData: LogIngestRequest) => {
         const { serviceName, records } = incomingData;
-
-        // keep track of unique services
-        setServiceOptions((prev) => (prev.includes(serviceName) ? prev : [...prev, serviceName]));
 
         // transform incoming data into flat format
         const newEntries: FlatLogEntry[] = records.map((log) => ({
@@ -257,9 +255,15 @@ export default function LiveTailLogs() {
                 <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
                     <FormControl variant="outlined" sx={{ minWidth: 130 }}>
                         <InputLabel>Services</InputLabel>
-                        <Select value={service} size="small" label="Services" onChange={handleServiceChange}>
-                            <MenuItem value="all-services">All services</MenuItem>
-                            {serviceOptions.map((serviceOption) => (
+                        <Select
+                            value={service}
+                            size="small"
+                            label="Services"
+                            onChange={handleServiceChange}
+                            disabled={isLoading}
+                        >
+                            <MenuItem value="all-services">{isLoading ? "Loading..." : "All services"}</MenuItem>{" "}
+                            {serviceOptions?.services.map((serviceOption) => (
                                 <MenuItem key={serviceOption} value={serviceOption}>
                                     {serviceOption}
                                 </MenuItem>

@@ -26,6 +26,7 @@ func AddRoutes(
 	mux.HandleFunc("GET /", handleRoot(logger))
 	mux.HandleFunc("GET /health", handleHealth(logger))
 	mux.Handle("GET /api/data", handleLogs(logger, logStore))
+	mux.Handle("GET /api/services", handleDistinctServices(logger, logStore))
 	mux.Handle("GET /ws/logs/tail", handleLiveTail(logger, broker, config))
 }
 
@@ -164,6 +165,33 @@ func handleLogs(logger *slog.Logger, logStore *storage.ClickHouseStore) http.Han
 			}{
 				TotalRowCount: logsCount,
 			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		err = json.NewEncoder(w).Encode(response)
+		if err != nil {
+			logger.Error("failed to write response", "err", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+	}
+}
+
+func handleDistinctServices(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		ctx := context.Background()
+
+		distinctServices, err := logStore.GetDistinctServices(ctx)
+		if err != nil {
+			logger.Error("failed to get distinct services", "err", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		response := map[string]any{
+			"services": distinctServices,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
