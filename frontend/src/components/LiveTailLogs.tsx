@@ -14,11 +14,9 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { card, logRowSx, pulseSx, sectionLabel } from "../theme/tokens";
 import PauseIcon from "@mui/icons-material/Pause";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import type { LogIngestRequest, LogType } from "../types/Log";
+import type { FlatLogEntry, LogIngestRequest, LogType } from "../types/Log";
 
 const LOG_TYPES: LogType[] = ["debug", "info", "warning", "error"];
-
-type LogsState = Record<string, LogIngestRequest>;
 
 interface TailLogProps {
     time: string;
@@ -44,7 +42,6 @@ const columnWidths = {
 
 const parseSeverity = (severityText: string): LogType => {
     const lower = severityText.toLowerCase();
-
     return lower as LogType;
 };
 
@@ -112,35 +109,38 @@ function TailLogRow({ time, service, severity, message }: TailLogProps) {
     );
 }
 
+const MAX_GLOBAL_LOGS = 300;
+const MAX_DISPLAY_LOGS = 15;
+
 export default function LiveTailLogs() {
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectAttempts = useRef(0);
     const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const [logs, setLogs] = useState<LogsState>({});
+    const [logs, setLogs] = useState<FlatLogEntry[]>([]);
     const [severity, setSeverity] = useState<LogType | "all-severities">("all-severities");
     const [service, setService] = useState<string>("all-services");
+    const [serviceOptions, setServiceOptions] = useState<string[]>([]);
     const [isPaused, setIsPaused] = useState<boolean>(false);
     const isPausedRef = useRef<boolean>(isPaused);
     const bufferRef = useRef<LogIngestRequest[]>([]);
 
     const processIncomingData = useCallback((incomingData: LogIngestRequest) => {
-        const { serviceName, resourceAttributes, records } = incomingData;
+        const { serviceName, records } = incomingData;
+
+        // keep track of unique services
+        setServiceOptions((prev) => (prev.includes(serviceName) ? prev : [...prev, serviceName]));
+
+        // transform incoming data into flat format
+        const newEntries: FlatLogEntry[] = records.map((log) => ({
+            serviceName,
+            log,
+        }));
 
         setLogs((prev) => {
-            const existingService = prev[serviceName] || {
-                serviceName: serviceName,
-                resourceAttributes: resourceAttributes,
-                records: [],
-            };
-
-            return {
-                ...prev,
-                [serviceName]: {
-                    ...existingService,
-                    // Append incoming records and keep latest 10, while keeping other services unchanged
-                    records: [...existingService.records, ...records].slice(-10),
-                },
-            };
+            // merge existing logs with incoming logs, sorted by newest firwst
+            const combined = [...prev, ...newEntries];
+            combined.sort((a, b) => new Date(b.log.timestamp).getTime() - new Date(a.log.timestamp).getTime());
+            return combined.slice(0, MAX_GLOBAL_LOGS);
         });
     }, []);
 
@@ -259,9 +259,11 @@ export default function LiveTailLogs() {
                         <InputLabel>Services</InputLabel>
                         <Select value={service} size="small" label="Services" onChange={handleServiceChange}>
                             <MenuItem value="all-services">All services</MenuItem>
-                            {/* TODO: update service filters */}
-                            <MenuItem value="service-1">Service 1</MenuItem>
-                            <MenuItem value="service-2">Service 2</MenuItem>
+                            {serviceOptions.map((serviceOption) => (
+                                <MenuItem key={serviceOption} value={serviceOption}>
+                                    {serviceOption}
+                                </MenuItem>
+                            ))}
                         </Select>
                     </FormControl>
 
@@ -355,17 +357,14 @@ export default function LiveTailLogs() {
 
                 {/* Logs List */}
                 <Box>
-                    {Object.values(logs)
-                        // Flatten all records into a single array, attaching the service name to each
-                        .flatMap((serviceData) =>
-                            serviceData.records.map((log) => ({
-                                log,
-                                serviceName: serviceData.serviceName,
-                            })),
-                        )
-                        // Sort the flattened array by timestamp descending (newest first)
-                        .sort((a, b) => new Date(b.log.timestamp).getTime() - new Date(a.log.timestamp).getTime())
-                        // Map the sorted array to  rows
+                    {logs
+                        .filter(({ log, serviceName }) => {
+                            if (service !== "all-services" && serviceName !== service) return false;
+                            if (severity !== "all-severities" && parseSeverity(log.severityText) !== severity)
+                                return false;
+                            return true;
+                        })
+                        .slice(0, MAX_DISPLAY_LOGS)
                         .map(({ log, serviceName }, index) => (
                             <TailLogRow
                                 key={`${serviceName}-${log.timestamp}-${index}`}

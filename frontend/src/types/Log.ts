@@ -17,7 +17,7 @@ export type LogRecord = {
 };
 
 export type LogRecordDTO = {
-    timestamp: Date;
+    timestamp: string;
     traceId: string;
     spanId: string;
     severityText: LogType;
@@ -29,4 +29,9 @@ export type LogIngestRequest = {
     serviceName: string;
     resourceAttributes: KeyValue[];
     records: LogRecordDTO[];
+};
+
+export type FlatLogEntry = {
+    serviceName: string;
+    log: LogRecordDTO;
 };
