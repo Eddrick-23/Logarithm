@@ -25,9 +25,10 @@ type Attack struct {
 	pool       []schemas.LogRecordDTO
 	cfg        *config.CleanConfig
 	attacker   *vegeta.Attacker
+	duration   time.Duration
 }
 
-func NewAttack(cfg *config.CleanConfig) (*Attack, error) {
+func NewAttack(cfg *config.CleanConfig, duration time.Duration) (*Attack, error) {
 	var counter atomic.Uint64
 
 	fmt.Printf("setting up attack. Generating randomised pool of size: %v \n", cfg.PoolSize)
@@ -43,6 +44,7 @@ func NewAttack(cfg *config.CleanConfig) (*Attack, error) {
 		attacker: vegeta.NewAttacker(),
 		pool:     logPool,
 		cfg:      cfg,
+		duration: duration,
 		randPool: sync.Pool{
 			New: func() any {
 				n := counter.Add(1)
@@ -116,7 +118,7 @@ func (a *Attack) Start() <-chan *vegeta.Result {
 		tgt.URL = a.cfg.TargetUrl
 		return nil
 	}
-	return a.attacker.Attack(targeter, rate, a.cfg.Duration, "logarithm load generator")
+	return a.attacker.Attack(targeter, rate, a.duration, "logarithm load generator")
 }
 
 func (a *Attack) Stop() {

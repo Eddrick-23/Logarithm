@@ -6,7 +6,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/Eddrick-23/Logarithm/api/schemas"
 	"github.com/Eddrick-23/Logarithm/load_generator/files"
@@ -26,7 +25,6 @@ type RawConfig struct {
 	Method               string             `json:"method"`
 	Gzip                 bool               `json:"gzip"`
 	Rps                  int                `json:"rps"`
-	DurationStr          string             `json:"duration"`
 	BatchSize            int                `json:"batchSize"`
 	SeverityDistribution []float64          `json:"severityDistribution"`
 	ServiceNames         []string           `json:"serviceNames"`
@@ -43,7 +41,6 @@ type CleanConfig struct {
 	Method               string             `json:"method"`
 	Gzip                 bool               `json:"gzip"`
 	Rps                  int                `json:"rps"`
-	Duration             time.Duration      `json:"duration"`
 	BatchSize            int                `json:"batchSize"`
 	SeverityDistribution []float64          `json:"severityDistribution"`
 	ServiceNames         []string           `json:"serviceNames"`
@@ -60,11 +57,6 @@ func floatEquals(f1 float64, f2 float64) bool {
 func validateAndCleanConfig(rawCfg RawConfig) CleanConfig {
 	const poolSizeLimit = 10000
 	const poolSizeDefault = 1000
-	duration, err := time.ParseDuration(rawCfg.DurationStr)
-	if err != nil {
-		fmt.Println("error parsing duration, defaulting to 10s")
-		duration = 10 * time.Second
-	}
 
 	dist := rawCfg.SeverityDistribution
 	sumProb := 0.0
@@ -94,7 +86,6 @@ func validateAndCleanConfig(rawCfg RawConfig) CleanConfig {
 		Method:               rawCfg.Method,
 		Gzip:                 rawCfg.Gzip,
 		Rps:                  rawCfg.Rps,
-		Duration:             duration,
 		BatchSize:            rawCfg.BatchSize,
 		SeverityDistribution: dist,
 		ServiceNames:         rawCfg.ServiceNames,

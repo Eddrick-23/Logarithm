@@ -6,7 +6,6 @@
   "method": "POST",
   "gzip": false,
   "rps": 100,
-  "duration": "10s",
   "batchSize": 500,
   "severityDistribution": [0.1, 0.6, 0.1, 0.1, 0.1],
   "serviceNames": [
