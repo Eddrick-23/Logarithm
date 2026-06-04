@@ -78,6 +78,7 @@ export default function LiveTailLogs() {
         ws.onerror = (e) => {
             console.error("ws error", e);
             setHasConnectionError(true);
+            handlePause();
         };
 
         ws.onclose = (e) => {
@@ -131,6 +132,11 @@ export default function LiveTailLogs() {
             processBatch(bufferRef.current);
             bufferRef.current = [];
         }
+    };
+
+    const handleReconnect = () => {
+        reconnectAttempts.current = 0;
+        connect();
     };
 
     const handleServiceChange = (event: SelectChangeEvent) => {
@@ -222,8 +228,23 @@ export default function LiveTailLogs() {
                     >
                         <ErrorIcon sx={{ fontSize: 16, color: "#ef4444" }} />
                         <Typography variant="body2" sx={{ color: "#ef4444" }}>
-                            Connection lost. Failed to connect to the live tail server.
+                            Connection lost. Failed to connect to the live tail server.{" "}
                         </Typography>
+                        <Button
+                            size="small"
+                            sx={{
+                                ml: "auto",
+                                color: "#ef4444",
+                                borderColor: "#ef4444",
+                                textTransform: "none",
+                                fontSize: 12,
+                                "&:hover": { borderColor: "#ef4444", backgroundColor: "rgba(239, 68, 68, 0.08)" },
+                            }}
+                            variant="outlined"
+                            onClick={handleReconnect}
+                        >
+                            Retry
+                        </Button>
                     </Box>
                 )}
 
