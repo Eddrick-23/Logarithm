@@ -39,6 +39,7 @@ export default function LiveTailLogs() {
     const [isPaused, setIsPaused] = useState<boolean>(false);
     const isPausedRef = useRef<boolean>(isPaused);
     const bufferRef = useRef<LogIngestRequest[]>([]);
+    const isInitializing = useRef(true); // true until first successful connect or intentional close
     const { data: serviceOptions, isLoading } = useDistinctServices();
 
     const processBatch = useCallback((batch: LogIngestRequest[]) => {
@@ -61,6 +62,7 @@ export default function LiveTailLogs() {
 
         ws.onopen = () => {
             reconnectAttempts.current = 0; // reset backoff on successful connect
+            isInitializing.current = false;
             setHasConnectionError(false);
         };
 
@@ -77,6 +79,7 @@ export default function LiveTailLogs() {
 
         ws.onerror = (e) => {
             console.error("ws error", e);
+            if (isInitializing.current) return; // suppress mount-time error
             setHasConnectionError(true);
             handlePause();
         };
@@ -86,6 +89,7 @@ export default function LiveTailLogs() {
             if (wsRef.current !== ws) return;
 
             wsRef.current = null;
+            isInitializing.current = false;
             if (e.code === 1000) return; // intentional close, don't reconnect
 
             const maxAttempts = 5;
