@@ -75,8 +75,10 @@ export default function LiveTailLogs() {
         ws.onerror = (e) => console.error("ws error", e);
 
         ws.onclose = (e) => {
-            wsRef.current = null;
+            // Close ghost websocket so that it does not trigger a reconnect
+            if (wsRef.current !== ws) return;
 
+            wsRef.current = null;
             if (e.code === 1000) return; // intentional close, don't reconnect
 
             const maxAttempts = 5;
@@ -95,11 +97,16 @@ export default function LiveTailLogs() {
     useEffect(() => {
         connect();
 
-        return () => {
-            // Cancel any pending reconnect
-            if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
-            wsRef.current?.close(1000, "component unmounted");
+        const cleanupConnection = () => {
+            if (reconnectTimer.current) {
+                clearTimeout(reconnectTimer.current);
+            }
+            if (wsRef.current) {
+                wsRef.current.close(1000, "navigating away");
+            }
         };
+
+        return () => cleanupConnection();
     }, [connect]);
 
     useEffect(() => {
