@@ -39,17 +39,12 @@ export default function LiveTailLogs() {
     const bufferRef = useRef<LogIngestRequest[]>([]);
     const { data: serviceOptions, isLoading } = useDistinctServices();
 
-    const processIncomingData = useCallback((incomingData: LogIngestRequest) => {
-        const { serviceName, records } = incomingData;
-
-        // transform incoming data into flat format
-        const newEntries: FlatLogEntry[] = records.map((log) => ({
-            serviceName,
-            log,
-        }));
+    const processBatch = useCallback((batch: LogIngestRequest[]) => {
+        const newEntries: FlatLogEntry[] = batch.flatMap(({ serviceName, records }) =>
+            records.map((log) => ({ serviceName, log })),
+        );
 
         setLogs((prev) => {
-            // merge existing logs with incoming logs, sorted by newest firwst
             const combined = [...prev, ...newEntries];
             combined.sort((a, b) => new Date(b.log.timestamp).getTime() - new Date(a.log.timestamp).getTime());
             return combined.slice(0, MAX_GLOBAL_LOGS);
@@ -67,16 +62,14 @@ export default function LiveTailLogs() {
         };
 
         ws.onmessage = (e) => {
-            const incomingData = JSON.parse(e.data);
+            const batch: LogIngestRequest[] = JSON.parse(e.data);
 
-            // if paused, push to buffer array and stop processing
             if (isPausedRef.current) {
-                bufferRef.current.push(incomingData);
+                bufferRef.current.push(...batch); // spread entire batch into buffer
                 return;
             }
 
-            // else process data
-            processIncomingData(incomingData);
+            processBatch(batch);
         };
 
         ws.onerror = (e) => console.error("ws error", e);
@@ -120,13 +113,8 @@ export default function LiveTailLogs() {
     const handleResume = () => {
         setIsPaused(false);
 
-        // Flush all buffered logs into the state
         if (bufferRef.current.length > 0) {
-            bufferRef.current.forEach((data) => {
-                processIncomingData(data);
-            });
-
-            // Clear buffer after processing it
+            processBatch(bufferRef.current);
             bufferRef.current = [];
         }
     };

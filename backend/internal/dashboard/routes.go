@@ -246,6 +246,11 @@ func handleLiveTail(logger *slog.Logger, broker *transport.NatsBroker, config *c
 		}
 		defer cleanup() // ensure NATS consumer stops when the websocket closes
 
+		ticker := time.NewTicker(1000 * time.Millisecond) // flush interval: 1s
+		defer ticker.Stop()
+
+		var batch []json.RawMessage // accumulate payloads between ticks
+
 		// pump NATS messages to the WebSocket
 		for {
 			select {
@@ -257,13 +262,24 @@ func handleLiveTail(logger *slog.Logger, broker *transport.NatsBroker, config *c
 					// channel closed
 					return
 				}
+				batch = append(batch, json.RawMessage(payload))
 
+			case <-ticker.C:
+				if len(batch) == 0 {
+					continue
+				}
+				out, err := json.Marshal(batch)
+				if err != nil {
+					logger.Error("Failed to marshal batch", "error", err)
+					return
+				}
 				// write the log payload directly to the WebSocket
-				err = ws.WriteMessage(websocket.TextMessage, payload)
+				err = ws.WriteMessage(websocket.TextMessage, out)
 				if err != nil {
 					logger.Error("Failed to write to websocket", "error", err)
 					return // exiting the loop triggers defer cleanup() and cancel()
 				}
+				batch = batch[:0]
 			}
 		}
 	}
