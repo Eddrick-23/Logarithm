@@ -132,7 +132,7 @@ func run(ctx context.Context, configPath string, interval int, duration time.Dur
 	wg.Wait()
 	metrics.Close()
 
-	fmt.Printf("Test Summary\n: P99 Latency: %v\n Throughput: %vrps\n Requests Sent: %v\n SuccessRate: %v\n TotalLogsSent: %v\n Logs/sec: %v\n",
+	fmt.Printf("Test Summary:\n P99 Latency: %v\n Throughput: %vrps\n Requests Sent: %v\n SuccessRate: %v\n TotalLogsSent: %v\n Logs/sec: %v\n",
 		metrics.Latencies.P99,
 		metrics.Throughput,
 		metrics.Requests,
