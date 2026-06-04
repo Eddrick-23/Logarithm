@@ -3,6 +3,7 @@ package generator
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"math/rand/v2"
 	"strings"
 	"time"
@@ -13,8 +14,7 @@ import (
 )
 
 func randInteger(customRand *rand.Rand, min int, max int) int {
-	result := customRand.IntN(max - min + 1)
-	return result
+	return customRand.IntN(max-min+1) + min
 }
 
 func severityTextRandNumber(customRand *rand.Rand, text string) int {
@@ -34,6 +34,10 @@ func severityTextRandNumber(customRand *rand.Rand, text string) int {
 }
 
 func randomisedBody(customRand *rand.Rand, dictionary []string, min int, max int) string {
+	if len(dictionary) == 0 {
+		return ""
+	}
+
 	length := randInteger(customRand, min, max)
 	var result strings.Builder
 	for i := 0; i < length; i++ {
@@ -47,14 +51,18 @@ func randomisedBody(customRand *rand.Rand, dictionary []string, min int, max int
 	return result.String()
 }
 
-func GenerateLogRecordPool(customRand *rand.Rand, cfg config.CleanConfig) []schemas.LogRecordDTO {
-	chooser, _ := weightedrand.NewChooser(
+func GenerateLogRecordPool(customRand *rand.Rand, cfg *config.CleanConfig) ([]schemas.LogRecordDTO, error) {
+	chooser, err := weightedrand.NewChooser(
 		weightedrand.NewChoice("DEBUG", int(cfg.SeverityDistribution[0]*100)),
 		weightedrand.NewChoice("INFO", int(cfg.SeverityDistribution[1]*100)),
 		weightedrand.NewChoice("WARNING", int(cfg.SeverityDistribution[2]*100)),
 		weightedrand.NewChoice("ERROR", int(cfg.SeverityDistribution[3]*100)),
 		weightedrand.NewChoice("FATAL", int(cfg.SeverityDistribution[4]*100)),
 	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create weighted chooser: %w", err)
+	}
 
 	pool := make([]schemas.LogRecordDTO, cfg.PoolSize)
 
@@ -72,7 +80,7 @@ func GenerateLogRecordPool(customRand *rand.Rand, cfg config.CleanConfig) []sche
 			LogAttributes: cfg.LogAttributes,
 		}
 	}
-	return pool
+	return pool, nil
 }
 
 func GenerateSpanID(customRand *rand.Rand) string {
@@ -92,7 +100,7 @@ func GenerateTraceID(customRand *rand.Rand) string {
 	return id
 }
 
-func GenerateRequest(customRand *rand.Rand, cfg config.CleanConfig, logRecordPool []schemas.LogRecordDTO) schemas.LogIngestRequest {
+func GenerateRequest(customRand *rand.Rand, cfg *config.CleanConfig, logRecordPool []schemas.LogRecordDTO) schemas.LogIngestRequest {
 	records := make([]schemas.LogRecordDTO, cfg.BatchSize)
 	// timestamp for every record is heavy and nanosecond granularity anyway
 	timestamp := time.Now().UTC()

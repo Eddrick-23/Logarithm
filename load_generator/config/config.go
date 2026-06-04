@@ -1,11 +1,15 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/api/schemas"
+	"github.com/Eddrick-23/Logarithm/load_generator/files"
 )
 
 type BodyTokenFormat struct {
@@ -20,6 +24,7 @@ type RawConfig struct {
 	HealthUrl            string             `json:"healthUrl"`
 	TargetUrl            string             `json:"targetUrl"`
 	Method               string             `json:"method"`
+	Gzip                 bool               `json:"gzip"`
 	Rps                  int                `json:"rps"`
 	DurationStr          string             `json:"duration"`
 	BatchSize            int                `json:"batchSize"`
@@ -36,6 +41,7 @@ type CleanConfig struct {
 	HealthUrl            string             `json:"healthUrl"`
 	TargetUrl            string             `json:"targetUrl"`
 	Method               string             `json:"method"`
+	Gzip                 bool               `json:"gzip"`
 	Rps                  int                `json:"rps"`
 	Duration             time.Duration      `json:"duration"`
 	BatchSize            int                `json:"batchSize"`
@@ -51,7 +57,7 @@ func floatEquals(f1 float64, f2 float64) bool {
 	return math.Abs(f1-f2) < epsilon
 }
 
-func ValidateAndCleanConfig(rawCfg RawConfig) CleanConfig {
+func validateAndCleanConfig(rawCfg RawConfig) CleanConfig {
 	const poolSizeLimit = 10000
 	const poolSizeDefault = 1000
 	duration, err := time.ParseDuration(rawCfg.DurationStr)
@@ -70,13 +76,13 @@ func ValidateAndCleanConfig(rawCfg RawConfig) CleanConfig {
 		dist = []float64{0.1, 0.6, 0.1, 0.1, 0.1}
 	}
 
-	var poolSize int
+	poolSize := rawCfg.PoolSize
 	if rawCfg.PoolSize < 0 {
-		fmt.Printf("negative pool size not allowed, setting to default size: %v\n", poolSizeDefault)
+		fmt.Printf("negative pool size not allowed, defaulting to: %v\n", poolSizeDefault)
 		poolSize = poolSizeDefault
 	}
 	if rawCfg.PoolSize > poolSizeLimit {
-		fmt.Printf("poolSize over limit, setting to limit of: %v\n", poolSizeLimit)
+		fmt.Printf("poolSize over limit, capping to: %v\n", poolSizeLimit)
 		poolSize = poolSizeLimit
 	}
 
@@ -86,6 +92,7 @@ func ValidateAndCleanConfig(rawCfg RawConfig) CleanConfig {
 		HealthUrl:            rawCfg.HealthUrl,
 		TargetUrl:            rawCfg.TargetUrl,
 		Method:               rawCfg.Method,
+		Gzip:                 rawCfg.Gzip,
 		Rps:                  rawCfg.Rps,
 		Duration:             duration,
 		BatchSize:            rawCfg.BatchSize,
@@ -95,4 +102,35 @@ func ValidateAndCleanConfig(rawCfg RawConfig) CleanConfig {
 		LogAttributes:        rawCfg.LogAttributes,
 		ResourceAttributes:   rawCfg.ResourceAttributes,
 	}
+}
+
+func ParseConfig(configPath string) (*CleanConfig, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+
+	path := filepath.Join(dir, configPath)
+	exists, err := files.FileExists(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if !exists {
+		return nil, fmt.Errorf("config file does not exist")
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var rawCfg RawConfig
+	if err = json.Unmarshal(content, &rawCfg); err != nil {
+		return nil, err
+	}
+
+	cfg := validateAndCleanConfig(rawCfg)
+
+	return &cfg, nil
 }

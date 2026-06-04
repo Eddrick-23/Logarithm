@@ -1,12 +1,13 @@
 {
   "seed": 42,
-  "poolSize": 500,
+  "poolSize": 5000,
   "healthUrl": "http://localhost:8090/health",
   "targetUrl": "http://localhost:8090/ingest",
   "method": "POST",
-  "rps": 10,
+  "gzip": false,
+  "rps": 100,
   "duration": "10s",
-  "batchSize": 10,
+  "batchSize": 500,
   "severityDistribution": [0.1, 0.6, 0.1, 0.1, 0.1],
   "serviceNames": [
     "testservice1",
@@ -16,7 +17,7 @@
   ],
   "bodyTokens": {
     "min": 5,
-    "max": 25,
+    "max": 5,
     "dictionary": [
       "failed",
       "process",

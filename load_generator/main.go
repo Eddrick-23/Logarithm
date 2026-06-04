@@ -8,97 +8,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
-	"strconv"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/Eddrick-23/Logarithm/load_generator/attack"
 	"github.com/Eddrick-23/Logarithm/load_generator/config"
 	"github.com/Eddrick-23/Logarithm/load_generator/files"
 	vegeta "github.com/tsenart/vegeta/v12/lib"
 )
-
-func createResultFile() (*os.File, error) {
-	const resultsDir = "results"
-	dir, err := os.Getwd()
-	if err != nil {
-		fmt.Printf("Error getting current directory: %v", err)
-		return nil, err
-	}
-	exists, err := files.FolderExists(filepath.Join(dir, resultsDir))
-	if err != nil {
-		fmt.Printf("Could not verify if results folder exists: %v", err)
-		return nil, err
-	}
-
-	if !exists {
-		// 0755 give read/write/execute to owner
-		if err := os.Mkdir(filepath.Join(dir, resultsDir), 0755); err != nil {
-			fmt.Printf("failed to create results directory: %v", err)
-			return nil, err
-		}
-	}
-
-	count, err := files.NumFilesInFolder(filepath.Join(dir, resultsDir))
-
-	filename := "results"
-	if count > 0 {
-		filename = filename + strconv.Itoa(count)
-	}
-	filename += ".bin"
-
-	file, err := os.Create(filepath.Join(dir, "results", filename))
-	if err != nil {
-		fmt.Printf("error creating results file: %v", err)
-		return nil, err
-	}
-	return file, nil
-}
-
-func setupAttack(rps int, duration time.Duration) func() <-chan *vegeta.Result {
-	return func() <-chan *vegeta.Result {
-		rate := vegeta.Rate{Freq: rps, Per: time.Second}
-
-		targeter := vegeta.NewStaticTargeter(vegeta.Target{
-			Method: "GET",
-			URL:    "http://localhost:8090/health",
-		})
-
-		attacker := vegeta.NewAttacker()
-		return attacker.Attack(targeter, rate, duration, "logarithm load generator")
-	}
-}
-
-func parseConfig(configPath string) (*config.CleanConfig, error) {
-	dir, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-
-	exists, err := files.FileExists(filepath.Join(dir, configPath))
-	if err != nil {
-		return nil, err
-	}
-
-	if !exists {
-		return nil, fmt.Errorf("config file does not exist")
-	}
-
-	content, err := os.ReadFile(filepath.Join(dir, configPath))
-	if err != nil {
-		return nil, err
-	}
-
-	var rawCfg config.RawConfig
-	if err = json.Unmarshal(content, &rawCfg); err != nil {
-		return nil, err
-	}
-
-	cfg := config.ValidateAndCleanConfig(rawCfg)
-
-	return &cfg, nil
-}
 
 func printJson(obj any) {
 	bytes, _ := json.MarshalIndent(obj, "", "\t")
@@ -121,8 +39,7 @@ func checkHealth(url string) error {
 }
 
 func run(ctx context.Context, configPath string, interval int, showConfig bool) error {
-	// TODO, find how to send POST requests and whethere we can randomise payloads
-	cfg, err := parseConfig(configPath) // load config
+	cfg, err := config.ParseConfig(configPath) // load config
 	if err != nil {
 		return err
 	}
@@ -130,10 +47,11 @@ func run(ctx context.Context, configPath string, interval int, showConfig bool) 
 	if showConfig {
 		printJson(*cfg)
 	} else {
-		fmt.Printf("Test configs: RPS: %v, BatchSize:%v, Duration, %v\n",
+		fmt.Printf("Test configs: RPS: %v, BatchSize:%v, Duration: %v, useGzip: %v\n",
 			cfg.Rps,
 			cfg.BatchSize,
 			cfg.Duration,
+			cfg.Gzip,
 		)
 	}
 
@@ -144,17 +62,23 @@ func run(ctx context.Context, configPath string, interval int, showConfig bool) 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	resultsFile, err := createResultFile() // create output file
+	resultsFile, err := files.CreateResultFile() // create output file
 	if err != nil {
 		return fmt.Errorf("failed to create results file: %w", err)
 	}
 	defer resultsFile.Close()
 
 	var metrics vegeta.Metrics //setup controllers and attackers
-	startAttack := setupAttack(10, 10*time.Second)
+	attack, err := attack.NewAttack(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create attacker: %w", err)
+	}
+
 	enc := vegeta.NewEncoder(resultsFile)
 	ticker := time.NewTicker(time.Duration(interval) * time.Second)
-	resultsChan := startAttack()
+	defer ticker.Stop()
+
+	resultsChan := attack.Start()
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -186,11 +110,13 @@ func run(ctx context.Context, configPath string, interval int, showConfig bool) 
 	}()
 	wg.Wait()
 	metrics.Close()
-	fmt.Printf("Test Summary: P99 Latency: %v | Throughput: %vrps | Requests Sent: %v | successRate: %v",
+	fmt.Printf("Test Summary\n: P99 Latency: %v\n Throughput: %vrps\n Requests Sent: %v\n SuccessRate: %v\n TotalLogsSent: %v\n Logs/sec: %v\n",
 		metrics.Latencies.P99,
 		metrics.Throughput,
 		metrics.Requests,
 		metrics.Success*100,
+		cfg.BatchSize*int(metrics.Requests),
+		(cfg.BatchSize*int(metrics.Requests))/int(cfg.Duration.Seconds()),
 	)
 	return nil
 }
