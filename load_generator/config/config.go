@@ -55,7 +55,7 @@ func floatEquals(f1 float64, f2 float64) bool {
 }
 
 func validateAndCleanConfig(rawCfg RawConfig) CleanConfig {
-	const poolSizeLimit = 10000
+	const poolSizeLimit = 1_000_000
 	const poolSizeDefault = 1000
 
 	dist := rawCfg.SeverityDistribution

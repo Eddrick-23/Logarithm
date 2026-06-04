@@ -74,6 +74,11 @@ func run(ctx context.Context, configPath string, interval int, duration time.Dur
 		for range warmupChan {
 			// Do nothing.
 		}
+
+		restDuration := 5 * time.Second
+		fmt.Printf("Warmup complete. Resting for %v to allow queue to drain...\n", restDuration)
+		time.Sleep(restDuration)
+
 		fmt.Println("Warmup complete. Starting main test...")
 	}
 
@@ -102,10 +107,10 @@ func run(ctx context.Context, configPath string, interval int, duration time.Dur
 		for {
 			select {
 			case <-ticker.C:
-				fmt.Printf("[%s] Reqests sent: %-6d | Last Latency: %dms\n",
+				fmt.Printf("[%s] Reqests sent: %-6d | Last Latency: %v\n",
 					time.Now().Format("15:04:05"),
 					metrics.Requests,
-					lastLatency.Milliseconds(),
+					lastLatency.String(),
 				)
 			case res, ok := <-resultsChan:
 				if !ok {
