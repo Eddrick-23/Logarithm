@@ -13,6 +13,7 @@ import {
 import { useState, useRef, useEffect, useCallback } from "react";
 import { card, pulseSx, sectionLabel } from "../theme/tokens";
 import PauseIcon from "@mui/icons-material/Pause";
+import ErrorIcon from "@mui/icons-material/Error";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import type { FlatLogEntry, LogIngestRequest, LogType } from "../types/Log";
 import { useDistinctServices } from "../hooks/useDistinctServices";
@@ -34,6 +35,7 @@ export default function LiveTailLogs() {
     const [logs, setLogs] = useState<FlatLogEntry[]>([]);
     const [severity, setSeverity] = useState<LogType | "all-severities">("all-severities");
     const [service, setService] = useState<string>("all-services");
+    const [hasConnectionError, setHasConnectionError] = useState<boolean>(false);
     const [isPaused, setIsPaused] = useState<boolean>(false);
     const isPausedRef = useRef<boolean>(isPaused);
     const bufferRef = useRef<LogIngestRequest[]>([]);
@@ -59,6 +61,7 @@ export default function LiveTailLogs() {
 
         ws.onopen = () => {
             reconnectAttempts.current = 0; // reset backoff on successful connect
+            setHasConnectionError(false);
         };
 
         ws.onmessage = (e) => {
@@ -72,7 +75,10 @@ export default function LiveTailLogs() {
             processBatch(batch);
         };
 
-        ws.onerror = (e) => console.error("ws error", e);
+        ws.onerror = (e) => {
+            console.error("ws error", e);
+            setHasConnectionError(true);
+        };
 
         ws.onclose = (e) => {
             // Close ghost websocket so that it does not trigger a reconnect
@@ -84,6 +90,7 @@ export default function LiveTailLogs() {
             const maxAttempts = 5;
             if (reconnectAttempts.current >= maxAttempts) {
                 console.error("max reconnect attempts reached");
+                setHasConnectionError(true);
                 return;
             }
 
@@ -140,13 +147,14 @@ export default function LiveTailLogs() {
                 {/* Top Bar (Title and Pause button) */}
                 <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
                     <Stack direction="row" sx={{ alignItems: "center" }} spacing={1}>
-                        <Box sx={{ ...pulseSx, color: "success.main" }} />
+                        <Box sx={{ ...pulseSx, bgcolor: hasConnectionError ? "error.main" : "success.main" }} />
                         <Typography sx={{ ...sectionLabel }}>Live Tail</Typography>
                     </Stack>
                     <Button
                         variant="outlined"
                         startIcon={isPaused ? <PlayArrowIcon fontSize="small" /> : <PauseIcon fontSize="small" />}
                         onClick={isPaused ? handleResume : handlePause}
+                        disabled={hasConnectionError}
                         sx={{
                             color: "#9e9e9e",
                             borderColor: "rgba(255,255,255,0.15)",
@@ -154,6 +162,7 @@ export default function LiveTailLogs() {
                             fontSize: 13,
                             py: 0.5,
                             minWidth: 105,
+                            "&.Mui-disabled": { borderColor: "rgba(255,255,255,0.05)" },
                         }}
                     >
                         {isPaused ? "Continue" : "Pause"}
@@ -195,8 +204,31 @@ export default function LiveTailLogs() {
                     <TextField placeholder="Search body..." size="small" />
                 </Stack>
 
+                {/* WebSocket Error Alert Bar */}
+                {hasConnectionError && (
+                    <Box
+                        sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1,
+                            width: "100%",
+                            px: 2,
+                            py: 1,
+                            border: "1px solid #7f1d1d",
+                            backgroundColor: "rgba(127, 29, 29, 0.15)",
+                            borderRadius: "6px",
+                            mb: 3,
+                        }}
+                    >
+                        <ErrorIcon sx={{ fontSize: 16, color: "#ef4444" }} />
+                        <Typography variant="body2" sx={{ color: "#ef4444" }}>
+                            Connection lost. Failed to connect to the live tail server.
+                        </Typography>
+                    </Box>
+                )}
+
                 {/* Pause alert bar */}
-                {isPaused && (
+                {isPaused && !hasConnectionError && (
                     <Box
                         sx={{
                             display: "flex",
