@@ -3,7 +3,6 @@ package generator
 import (
 	"math/rand/v2"
 	"testing"
-	"time"
 
 	"github.com/Eddrick-23/Logarithm/api/schemas"
 	"github.com/Eddrick-23/Logarithm/load_generator/config"
@@ -17,7 +16,6 @@ func BenchmarkGenerateRequest(b *testing.B) {
 		TargetUrl:            "",
 		Method:               "",
 		Rps:                  1,
-		Duration:             1 * time.Second,
 		BatchSize:            500,
 		SeverityDistribution: []float64{0.1, 0.6, 0.1, 0.1, 0.1},
 		ServiceNames:         []string{"testservice1", "testservice2", "testservice3"},
@@ -52,9 +50,13 @@ func BenchmarkGenerateRequest(b *testing.B) {
 		},
 	}
 	customRand := rand.New(rand.NewPCG(uint64(cfg.Seed), 2))
-	pool := GenerateLogRecordPool(customRand, cfg)
+	pool, err := GenerateLogRecordPool(customRand, &cfg)
+
+	if err != nil {
+		b.Fatalf("failed to generate record pool: %v", err)
+	}
 
 	for b.Loop() {
-		GenerateRequest(customRand, cfg, pool)
+		GenerateRequest(customRand, &cfg, pool)
 	}
 }
