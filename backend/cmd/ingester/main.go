@@ -55,8 +55,12 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	srv := NewServer(httpLogger, config, natsBroker)
 
 	httpServer := &http.Server{
-		Addr:    net.JoinHostPort(config.IngesterHost, config.IngesterPort),
-		Handler: srv,
+		Addr:              net.JoinHostPort(config.IngesterHost, config.IngesterPort),
+		Handler:           srv,
+		ReadHeaderTimeout: config.IngesterReadHeaderTimeout,
+		ReadTimeout:       config.IngesterReadTimeout,
+		WriteTimeout:      config.IngesterWriteTimeout,
+		IdleTimeout:       config.IngesterIdleTimeout,
 	}
 
 	go func() {
