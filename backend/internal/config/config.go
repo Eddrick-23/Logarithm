@@ -33,6 +33,8 @@ type Config struct {
 	WorkerMaxBatch            int             `env:"WORKER_MAX_BATCH, default=10"`
 	WorkerMaxWait             time.Duration   `env:"WORKER_MAX_WAIT, default=2s"`
 	WorkerBackoff             []time.Duration `env:"WORKER_BACKOFF, default=5s,30s,60s,300s,3600s"`
+	EnablePprof               bool            `env:"ENABLE_PPROF, default=false"`
+	PprofHost                 string          `env:"PPROF_HOST, default=0.0.0.0"`
 }
 
 func LoadConfig(ctx context.Context) (*Config, error) {

@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,7 +17,21 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 )
 
+func startPprof(logger *slog.Logger, config *config.Config) {
+	if !config.EnablePprof {
+		return
+	}
+	addr := net.JoinHostPort(config.PprofHost, "6061")
+	go func() {
+		logger.Info("pprof listening on", "addr", addr)
+		if err := http.ListenAndServe(addr, nil); err != nil {
+			logger.Error("pprof server stopped", "err", err)
+		}
+	}()
+}
+
 func run(ctx context.Context, w io.Writer) error {
+
 	workerName := "worker"
 
 	config, err := config.LoadConfig(ctx)
@@ -34,7 +51,10 @@ func run(ctx context.Context, w io.Writer) error {
 	)
 	workerLogger := logger.With("component", "worker")
 	natsLogger := logger.With("component", "nats")
+	pprofLogger := logger.With("component", "pprof")
 	// TODO refactor db to support logger via dependency injection
+
+	startPprof(pprofLogger, config)
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
