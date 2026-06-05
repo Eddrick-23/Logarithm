@@ -33,7 +33,7 @@ func startPprof(logger *slog.Logger, config *config.Config) {
 	if !config.EnablePprof {
 		return
 	}
-	addr := net.JoinHostPort(config.PprofHost, "6061")
+	addr := net.JoinHostPort(config.PprofHost, "6060")
 	go func() {
 		logger.Info("pprof listening on", "addr", addr)
 		if err := http.ListenAndServe(addr, nil); err != nil {
