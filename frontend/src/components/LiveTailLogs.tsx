@@ -45,7 +45,6 @@ export default function LiveTailLogs() {
     const [isPaused, setIsPaused] = useState<boolean>(false);
     const isPausedRef = useRef<boolean>(isPaused);
     const bufferRef = useRef<LogIngestRequest[]>([]);
-    const isInitializing = useRef(true); // true until first successful connect or intentional close
     const { data: serviceOptions, isLoading } = useDistinctServices();
 
     const processBatch = useCallback((batch: LogIngestRequest[]) => {
@@ -68,7 +67,6 @@ export default function LiveTailLogs() {
 
         ws.onopen = () => {
             reconnectAttempts.current = 0; // reset backoff on successful connect
-            isInitializing.current = false;
             setHasConnectionError(false);
         };
 
@@ -85,9 +83,6 @@ export default function LiveTailLogs() {
 
         ws.onerror = (e) => {
             console.error("ws error", e);
-            if (isInitializing.current) return; // suppress mount-time error
-            setHasConnectionError(true);
-            handlePause();
         };
 
         ws.onclose = (e) => {
@@ -95,7 +90,6 @@ export default function LiveTailLogs() {
             if (wsRef.current !== ws) return;
 
             wsRef.current = null;
-            isInitializing.current = false;
             if (e.code === 1000) return; // intentional close, don't reconnect
 
             const maxAttempts = 5;
@@ -105,6 +99,7 @@ export default function LiveTailLogs() {
                 return;
             }
 
+            setHasConnectionError(false);
             // Exponential backoff: 1s, 2s, 4s, 8s, 16s
             const delay = Math.min(1000 * 2 ** reconnectAttempts.current, 30_000);
             reconnectAttempts.current += 1;
@@ -122,6 +117,7 @@ export default function LiveTailLogs() {
             if (wsRef.current) {
                 wsRef.current.close(1000, "navigating away");
             }
+            setHasConnectionError(false);
         };
 
         return () => cleanupConnection();
@@ -151,6 +147,7 @@ export default function LiveTailLogs() {
     };
 
     const handleReconnect = () => {
+        setHasConnectionError(false);
         reconnectAttempts.current = 0;
         connect();
     };
