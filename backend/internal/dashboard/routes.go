@@ -238,7 +238,7 @@ func handleLiveTail(logger *slog.Logger, broker *transport.NatsBroker, config *c
 
 		// start tailing NATS
 		subjectToTail := config.NatsSubject
-		logCh, cleanup, err := broker.TailLiveLogs(ctx, transport.LogStreamName, subjectToTail)
+		logCh, cleanup, err := broker.TailLiveLogs(ctx, transport.LogStreamName, subjectToTail, config.LiveTailMaxBatch)
 		if err != nil {
 			logger.Error("Failed to start NATS tail", "error", err)
 			ws.WriteMessage(websocket.CloseMessage, []byte("Internal Server Error"))
@@ -246,7 +246,7 @@ func handleLiveTail(logger *slog.Logger, broker *transport.NatsBroker, config *c
 		}
 		defer cleanup() // ensure NATS consumer stops when the websocket closes
 
-		ticker := time.NewTicker(1000 * time.Millisecond) // flush interval: 1s
+		ticker := time.NewTicker(time.Duration(config.LiveTailRefreshInterval) * time.Millisecond) // default flush interval: 500ms
 		defer ticker.Stop()
 
 		var batch []json.RawMessage // accumulate payloads between ticks

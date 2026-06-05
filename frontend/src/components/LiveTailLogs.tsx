@@ -26,6 +26,8 @@ import TailLogRow, { columnWidths } from "./TailLogRow";
 const LOG_TYPES: LogType[] = ["debug", "info", "warning", "error"];
 const MAX_GLOBAL_LOGS = 300;
 const MAX_DISPLAY_LOGS = 15;
+const WEBSOCKET_NORMAL_CLOSURE = 1000;
+const DEBOUNCE_TIMEOUT = 300;
 
 const parseSeverity = (severityText: string): LogType => {
     const lower = severityText.toLowerCase();
@@ -90,7 +92,7 @@ export default function LiveTailLogs() {
             if (wsRef.current !== ws) return;
 
             wsRef.current = null;
-            if (e.code === 1000) return; // intentional close, don't reconnect
+            if (e.code === WEBSOCKET_NORMAL_CLOSURE) return; // intentional close, don't reconnect
 
             const maxAttempts = 5;
             if (reconnectAttempts.current >= maxAttempts) {
@@ -115,7 +117,7 @@ export default function LiveTailLogs() {
                 clearTimeout(reconnectTimer.current);
             }
             if (wsRef.current) {
-                wsRef.current.close(1000, "navigating away");
+                wsRef.current.close(WEBSOCKET_NORMAL_CLOSURE, "navigating away");
             }
             setHasConnectionError(false);
         };
@@ -129,7 +131,7 @@ export default function LiveTailLogs() {
 
     useEffect(() => {
         // set a delay until the user stops entering any search input
-        const timer = setTimeout(() => setDebouncedSearch(searchInput), 300);
+        const timer = setTimeout(() => setDebouncedSearch(searchInput), DEBOUNCE_TIMEOUT);
         return () => clearTimeout(timer);
     }, [searchInput]);
 

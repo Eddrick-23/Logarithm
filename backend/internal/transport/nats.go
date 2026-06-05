@@ -231,7 +231,7 @@ func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, logHandler ProcessLog
 	}
 }
 
-func (nb *NatsBroker) TailLiveLogs(ctx context.Context, streamName string, subject string) (<-chan []byte, func(), error) {
+func (nb *NatsBroker) TailLiveLogs(ctx context.Context, streamName string, subject string, maxBatch int) (<-chan []byte, func(), error) {
 	// Retrieve the stream
 	stream, err := nb.js.Stream(ctx, streamName)
 	if err != nil {
@@ -247,7 +247,7 @@ func (nb *NatsBroker) TailLiveLogs(ctx context.Context, streamName string, subje
 	}
 
 	// Buffer the channel to handle slight backpressure from the websocket
-	logCh := make(chan []byte, 100)
+	logCh := make(chan []byte, maxBatch)
 
 	// Start consuming asynchronously
 	cc, err := cons.Consume(func(msg jetstream.Msg) {
