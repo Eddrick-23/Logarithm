@@ -38,7 +38,8 @@ func checkHealth(url string) error {
 	return nil
 }
 
-func run(ctx context.Context, configPath string, interval int, duration time.Duration, warmupDuration time.Duration, showConfig bool) error {
+func run(ctx context.Context, configPath string, interval int, duration time.Duration,
+	warmupDuration time.Duration, restDuration time.Duration, showConfig bool) error {
 	cfg, err := config.ParseConfig(configPath) // load config
 	if err != nil {
 		return err
@@ -75,7 +76,6 @@ func run(ctx context.Context, configPath string, interval int, duration time.Dur
 			// Do nothing.
 		}
 
-		restDuration := 5 * time.Second
 		fmt.Printf("Warmup complete. Resting for %v to allow queue to drain...\n", restDuration)
 		time.Sleep(restDuration)
 
@@ -145,9 +145,10 @@ func run(ctx context.Context, configPath string, interval int, duration time.Dur
 
 func main() {
 	pathToConfigPtr := flag.String("config", "", "path to config.json file")
-	intervalPtr := flag.Int("interval", 1, "how often to log attack progress (seconds)")
+	intervalPtr := flag.Int("interval", 1, "how often to log attack progress in seconds")
 	durationPtr := flag.Int("duration", 1, "test duration in seconds")
 	warmupPtr := flag.Int("warmup", 0, "warmup duration in seconds")
+	warmupRestPtr := flag.Int("rest", 5, "resting duration after warmup in seconds")
 	showConfigPtr := flag.Bool("showConfig", false, "display parsed config once at startup")
 
 	flag.Parse()
@@ -163,10 +164,11 @@ func main() {
 	}
 
 	warmupDuration := time.Duration(*warmupPtr) * time.Second
+	restDuration := time.Duration(*warmupRestPtr) * time.Second
 	testDuration := time.Duration(*durationPtr) * time.Second
 
 	ctx := context.Background()
-	if err := run(ctx, *pathToConfigPtr, *intervalPtr, testDuration, warmupDuration, *showConfigPtr); err != nil {
+	if err := run(ctx, *pathToConfigPtr, *intervalPtr, testDuration, warmupDuration, restDuration, *showConfigPtr); err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}

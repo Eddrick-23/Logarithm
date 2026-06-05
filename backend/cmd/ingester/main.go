@@ -10,6 +10,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -33,6 +34,8 @@ func startPprof(logger *slog.Logger, config *config.Config) {
 	if !config.EnablePprof {
 		return
 	}
+	runtime.SetMutexProfileFraction(100)
+	runtime.SetBlockProfileRate(100000)
 	addr := net.JoinHostPort(config.PprofHost, "6060")
 	go func() {
 		logger.Info("pprof listening on", "addr", addr)
@@ -48,7 +51,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	)
 	natsLogger := logger.With("component", "nats")
 	httpLogger := logger.With("component", "ingester")
-	pprofLogger := logger.With("compoenent", "pprof")
+	pprofLogger := logger.With("component", "pprof")
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()

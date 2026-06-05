@@ -10,6 +10,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 
 	"github.com/Eddrick-23/Logarithm/internal/config"
@@ -21,6 +22,8 @@ func startPprof(logger *slog.Logger, config *config.Config) {
 	if !config.EnablePprof {
 		return
 	}
+	runtime.SetMutexProfileFraction(100)
+	runtime.SetBlockProfileRate(100000)
 	addr := net.JoinHostPort(config.PprofHost, "6061")
 	go func() {
 		logger.Info("pprof listening on", "addr", addr)
