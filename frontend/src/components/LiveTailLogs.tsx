@@ -9,12 +9,16 @@ import {
     type SelectChangeEvent,
     FormControl,
     InputLabel,
+    InputAdornment,
+    IconButton,
 } from "@mui/material";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { card, pulseSx, sectionLabel } from "../theme/tokens";
 import PauseIcon from "@mui/icons-material/Pause";
 import ErrorIcon from "@mui/icons-material/Error";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import SearchIcon from "@mui/icons-material/Search";
+import ClearIcon from "@mui/icons-material/Clear";
 import type { FlatLogEntry, LogIngestRequest, LogType } from "../types/Log";
 import { useDistinctServices } from "../hooks/useDistinctServices";
 import TailLogRow, { columnWidths } from "./TailLogRow";
@@ -35,6 +39,8 @@ export default function LiveTailLogs() {
     const [logs, setLogs] = useState<FlatLogEntry[]>([]);
     const [severity, setSeverity] = useState<LogType | "all-severities">("all-severities");
     const [service, setService] = useState<string>("all-services");
+    const [searchInput, setSearchInput] = useState<string>("");
+    const [debouncedSearch, setDebouncedSearch] = useState<string>("");
     const [hasConnectionError, setHasConnectionError] = useState<boolean>(false);
     const [isPaused, setIsPaused] = useState<boolean>(false);
     const isPausedRef = useRef<boolean>(isPaused);
@@ -125,6 +131,12 @@ export default function LiveTailLogs() {
         isPausedRef.current = isPaused;
     }, [isPaused]);
 
+    useEffect(() => {
+        // set a delay until the user stops entering any search input
+        const timer = setTimeout(() => setDebouncedSearch(searchInput), 300);
+        return () => clearTimeout(timer);
+    }, [searchInput]);
+
     const handlePause = () => {
         setIsPaused(true);
     };
@@ -150,6 +162,23 @@ export default function LiveTailLogs() {
     const handleSeverityChange = (event: SelectChangeEvent) => {
         setSeverity(event.target.value as LogType | "all-severities");
     };
+
+    const handleClear = () => {
+        setSearchInput("");
+    };
+
+    const filteredLogs = logs.filter(({ log, serviceName }) => {
+        if (service !== "all-services" && serviceName !== service) return false;
+        if (severity !== "all-severities" && parseSeverity(log.severityText) !== severity) return false;
+
+        if (debouncedSearch.trim()) {
+            const lower = debouncedSearch.toLowerCase();
+            const bodyMatch = log.body.toLowerCase().includes(lower);
+            if (!bodyMatch) return false;
+        }
+
+        return true;
+    });
 
     return (
         <>
@@ -211,7 +240,28 @@ export default function LiveTailLogs() {
                         </Select>
                     </FormControl>
 
-                    <TextField placeholder="Search body..." size="small" />
+                    <TextField
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
+                        placeholder="Search body..."
+                        size="small"
+                        slotProps={{
+                            input: {
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon color="action" />
+                                    </InputAdornment>
+                                ),
+                                endAdornment: searchInput && (
+                                    <InputAdornment position="end">
+                                        <IconButton onClick={handleClear} edge="end" size="small">
+                                            <ClearIcon />
+                                        </IconButton>
+                                    </InputAdornment>
+                                ),
+                            },
+                        }}
+                    />
                 </Stack>
 
                 {/* WebSocket Error Alert Bar */}
@@ -327,23 +377,21 @@ export default function LiveTailLogs() {
 
                 {/* Logs List */}
                 <Box>
-                    {logs
-                        .filter(({ log, serviceName }) => {
-                            if (service !== "all-services" && serviceName !== service) return false;
-                            if (severity !== "all-severities" && parseSeverity(log.severityText) !== severity)
-                                return false;
-                            return true;
-                        })
-                        .slice(0, MAX_DISPLAY_LOGS)
-                        .map(({ log, serviceName }, index) => (
-                            <TailLogRow
-                                key={`${serviceName}-${log.timestamp}-${index}`}
-                                time={new Date(log.timestamp).toLocaleString()}
-                                service={serviceName}
-                                severity={parseSeverity(log.severityText)}
-                                message={log.body}
-                            />
-                        ))}
+                    {filteredLogs.slice(0, MAX_DISPLAY_LOGS).map(({ log, serviceName }, index) => (
+                        <TailLogRow
+                            key={`${serviceName}-${log.timestamp}-${index}`}
+                            time={new Date(log.timestamp).toLocaleString()}
+                            service={serviceName}
+                            severity={parseSeverity(log.severityText)}
+                            message={log.body}
+                        />
+                    ))}
+
+                    {filteredLogs.length === 0 && (
+                        <Box sx={{ textAlign: "center", py: 3, color: "#6e7681" }}>
+                            <Typography variant="body2">No logs match your filters</Typography>
+                        </Box>
+                    )}
                 </Box>
             </Box>
         </>
