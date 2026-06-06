@@ -9,173 +9,159 @@ import {
     type SelectChangeEvent,
     FormControl,
     InputLabel,
+    InputAdornment,
+    IconButton,
+    CircularProgress,
 } from "@mui/material";
-import type { LogType } from "../types/LogType";
-import { useState } from "react";
-import { card, logRowSx, pulseSx, sectionLabel } from "../theme/tokens";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { card, pulseSx, sectionLabel } from "../theme/tokens";
 import PauseIcon from "@mui/icons-material/Pause";
+import ErrorIcon from "@mui/icons-material/Error";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import SearchIcon from "@mui/icons-material/Search";
+import ClearIcon from "@mui/icons-material/Clear";
+import type { FlatLogEntry, LogIngestRequest, LogType } from "../types/Log";
+import { useDistinctServices } from "../hooks/useDistinctServices";
+import TailLogRow, { columnWidths } from "./TailLogRow";
+
+type ConnectionStatus = "connecting" | "connected" | "error";
 
 const LOG_TYPES: LogType[] = ["debug", "info", "warning", "error"];
+const MAX_GLOBAL_LOGS = 300;
+const MAX_DISPLAY_LOGS = 15;
+const WEBSOCKET_NORMAL_CLOSURE = 1000;
+const DEBOUNCE_TIMEOUT = 300;
 
-interface TailLogProps {
-    time: string;
-    service: string;
-    severity: LogType;
-    message: string;
-}
-
-// TODO: replace dummy data with live data
-const logData: TailLogProps[] = [
-    {
-        time: "14:18:00.422",
-        service: "payments",
-        severity: "error",
-        message: "health check passed, all dependencies reachable",
-    },
-    {
-        time: "14:17:59.607",
-        service: "notifier",
-        severity: "error",
-        message: "stock low for item_id=4491, qty=3 remaining",
-    },
-    {
-        time: "14:17:58.804",
-        service: "payments",
-        severity: "info",
-        message: "stock low for item_id=4491, qty=3 remaining",
-    },
-    {
-        time: "14:17:58.004",
-        service: "auth-svc",
-        severity: "info",
-        message: "smtp timeout after 5000ms, retrying (2/3)",
-    },
-    {
-        time: "14:17:57.201",
-        service: "worker",
-        severity: "error",
-        message: "charge processed txn_id=TXN-08441 — $48.00",
-    },
-    { time: "14:17:56.393", service: "auth-svc", severity: "warning", message: "token validated for user_id=8821" },
-    {
-        time: "14:17:55.579",
-        service: "worker",
-        severity: "info",
-        message: "cache miss for key user:9912, fetching from db",
-    },
-    {
-        time: "14:17:54.770",
-        service: "db-proxy",
-        severity: "info",
-        message: "health check passed, all dependencies reachable",
-    },
-    {
-        time: "14:17:53.969",
-        service: "inventory",
-        severity: "warning",
-        message: "rate limit exceeded for client_id=772",
-    },
-    {
-        time: "14:17:53.144",
-        service: "payments",
-        severity: "debug",
-        message: "bug in payment processes",
-    },
-];
-
-// Styling maps for the severity badges
-const severityStyles: Record<LogType, { bg: string; text: string }> = {
-    debug: { bg: "rgba(100, 181, 246, 0.15)", text: "#64b5f6" }, // Blue
-    info: { bg: "rgba(102, 187, 106, 0.15)", text: "#66bb6a" }, // Green
-    warning: { bg: "rgba(255, 167, 38, 0.15)", text: "#ffa726" }, // Orange
-    error: { bg: "rgba(239, 83, 80, 0.15)", text: "#ef5350" }, // Red
+const parseSeverity = (severityText: string): LogType => {
+    const lower = severityText.toLowerCase();
+    return lower as LogType;
 };
-
-// Centralized fixed widths for perfect alignment
-const columnWidths = {
-    time: 130,
-    service: 110,
-    severity: 110,
-};
-
-function TailLogRow({ time, service, severity, message }: TailLogProps) {
-    return (
-        <Box sx={{ ...logRowSx, display: "flex", alignItems: "center", py: 1.5, fontSize: 14 }}>
-            {/* TIME */}
-            <Typography
-                sx={{ width: columnWidths.time, textAlign: "left", flexShrink: 0, fontSize: 13, fontWeight: "bold" }}
-            >
-                {time}
-            </Typography>
-
-            {/* SERVICE TAG */}
-            <Box sx={{ width: columnWidths.service, flexShrink: 0, textAlign: "left" }}>
-                <Box
-                    sx={{
-                        display: "inline-block",
-                        border: "1px solid rgba(255,255,255,0.15)",
-                        borderRadius: 1,
-                        px: 1,
-                        py: 0.25,
-                    }}
-                >
-                    <Typography sx={{ fontSize: 12, color: "#9e9e9e" }}>{service}</Typography>
-                </Box>
-            </Box>
-
-            {/* SEVERITY TAG */}
-            <Box sx={{ width: columnWidths.severity, flexShrink: 0, textAlign: "left" }}>
-                <Box
-                    sx={{
-                        display: "inline-block",
-                        backgroundColor: severityStyles[severity].bg,
-                        borderRadius: 1,
-                        px: 1,
-                        py: 0.25,
-                    }}
-                >
-                    <Typography
-                        sx={{
-                            fontSize: 11,
-                            fontWeight: "bold",
-                            color: severityStyles[severity].text,
-                        }}
-                    >
-                        {severity.toUpperCase()}
-                    </Typography>
-                </Box>
-            </Box>
-
-            {/* BODY */}
-            <Typography
-                sx={{
-                    flexGrow: 1,
-                    textAlign: "left",
-                    fontSize: 13,
-                    color: "#9e9e9e",
-                    overflowWrap: "break-word",
-                }}
-            >
-                {message}
-            </Typography>
-        </Box>
-    );
-}
 
 export default function LiveTailLogs() {
-    // TODO: connect to backend API and update logs in real time
+    const wsRef = useRef<WebSocket | null>(null);
+    const reconnectAttempts = useRef(0);
+    const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [logs, setLogs] = useState<FlatLogEntry[]>([]);
     const [severity, setSeverity] = useState<LogType | "all-severities">("all-severities");
     const [service, setService] = useState<string>("all-services");
+    const [searchInput, setSearchInput] = useState<string>("");
+    const [debouncedSearch, setDebouncedSearch] = useState<string>("");
+    const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
     const [isPaused, setIsPaused] = useState<boolean>(false);
+    const isPausedRef = useRef<boolean>(isPaused);
+    const bufferRef = useRef<LogIngestRequest[]>([]);
+    const { data: serviceOptions, isLoading } = useDistinctServices();
+    const dotColour = {
+        connected: "success.main",
+        connecting: "warning.main",
+        error: "error.main",
+    }[connectionStatus];
+
+    const processBatch = useCallback((batch: LogIngestRequest[]) => {
+        const newEntries: FlatLogEntry[] = batch.flatMap(({ serviceName, records }) =>
+            records.map((log) => ({ serviceName, log })),
+        );
+
+        setLogs((prev) => {
+            const combined = [...prev, ...newEntries];
+            combined.sort((a, b) => new Date(b.log.timestamp).getTime() - new Date(a.log.timestamp).getTime());
+            return combined.slice(0, MAX_GLOBAL_LOGS);
+        });
+    }, []);
+
+    const connect = useCallback(() => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) return;
+
+        const ws = new WebSocket("ws://localhost:8091/ws/logs/tail");
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+            reconnectAttempts.current = 0; // reset backoff on successful connect
+            setConnectionStatus("connected");
+        };
+
+        ws.onmessage = (e) => {
+            const batch: LogIngestRequest[] = JSON.parse(e.data);
+
+            if (isPausedRef.current) {
+                bufferRef.current.push(...batch); // spread entire batch into buffer
+                bufferRef.current = bufferRef.current.slice(-MAX_GLOBAL_LOGS);
+                return;
+            }
+
+            processBatch(batch);
+        };
+
+        ws.onerror = (e) => {
+            console.error("ws error", e);
+            setConnectionStatus("error");
+        };
+
+        ws.onclose = (e) => {
+            // Close ghost websocket so that it does not trigger a reconnect
+            if (wsRef.current !== ws) return;
+
+            wsRef.current = null;
+            if (e.code === WEBSOCKET_NORMAL_CLOSURE) return; // intentional close, don't reconnect
+
+            const maxAttempts = 5;
+            if (reconnectAttempts.current >= maxAttempts) {
+                console.error("max reconnect attempts reached");
+                setConnectionStatus("error");
+                return;
+            }
+
+            setConnectionStatus("connecting");
+            // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+            const delay = Math.min(1000 * 2 ** reconnectAttempts.current, 30_000);
+            reconnectAttempts.current += 1;
+            reconnectTimer.current = setTimeout(connect, delay);
+        };
+    }, []);
+
+    useEffect(() => {
+        connect();
+
+        const cleanupConnection = () => {
+            if (reconnectTimer.current) {
+                clearTimeout(reconnectTimer.current);
+            }
+            if (wsRef.current) {
+                wsRef.current.close(WEBSOCKET_NORMAL_CLOSURE, "navigating away");
+            }
+            setConnectionStatus("error");
+        };
+
+        return () => cleanupConnection();
+    }, [connect]);
+
+    useEffect(() => {
+        isPausedRef.current = isPaused;
+    }, [isPaused]);
+
+    useEffect(() => {
+        // set a delay until the user stops entering any search input
+        const timer = setTimeout(() => setDebouncedSearch(searchInput), DEBOUNCE_TIMEOUT);
+        return () => clearTimeout(timer);
+    }, [searchInput]);
+
     const handlePause = () => {
-        // TODO: add fetching logic
         setIsPaused(true);
     };
 
     const handleResume = () => {
-        // TODO: add fetching logic
         setIsPaused(false);
+
+        if (bufferRef.current.length > 0) {
+            processBatch(bufferRef.current);
+            bufferRef.current = [];
+        }
+    };
+
+    const handleReconnect = () => {
+        setConnectionStatus("connecting");
+        reconnectAttempts.current = 0;
+        connect();
     };
 
     const handleServiceChange = (event: SelectChangeEvent) => {
@@ -186,19 +172,37 @@ export default function LiveTailLogs() {
         setSeverity(event.target.value as LogType | "all-severities");
     };
 
+    const handleClear = () => {
+        setSearchInput("");
+    };
+
+    const filteredLogs = logs.filter(({ log, serviceName }) => {
+        if (service !== "all-services" && serviceName !== service) return false;
+        if (severity !== "all-severities" && parseSeverity(log.severityText) !== severity) return false;
+
+        if (debouncedSearch.trim()) {
+            const lower = debouncedSearch.toLowerCase();
+            const bodyMatch = log.body.toLowerCase().includes(lower);
+            if (!bodyMatch) return false;
+        }
+
+        return true;
+    });
+
     return (
         <>
             <Box sx={{ ...card, width: "100%" }}>
                 {/* Top Bar (Title and Pause button) */}
                 <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
                     <Stack direction="row" sx={{ alignItems: "center" }} spacing={1}>
-                        <Box sx={{ ...pulseSx, color: "success.main" }} />
+                        <Box sx={{ ...pulseSx, bgcolor: dotColour }} />
                         <Typography sx={{ ...sectionLabel }}>Live Tail</Typography>
                     </Stack>
                     <Button
                         variant="outlined"
                         startIcon={isPaused ? <PlayArrowIcon fontSize="small" /> : <PauseIcon fontSize="small" />}
                         onClick={isPaused ? handleResume : handlePause}
+                        disabled={connectionStatus !== "connected"}
                         sx={{
                             color: "#9e9e9e",
                             borderColor: "rgba(255,255,255,0.15)",
@@ -206,6 +210,7 @@ export default function LiveTailLogs() {
                             fontSize: 13,
                             py: 0.5,
                             minWidth: 105,
+                            "&.Mui-disabled": { borderColor: "rgba(255,255,255,0.05)" },
                         }}
                     >
                         {isPaused ? "Continue" : "Pause"}
@@ -216,17 +221,32 @@ export default function LiveTailLogs() {
                 <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
                     <FormControl variant="outlined" sx={{ minWidth: 130 }}>
                         <InputLabel>Services</InputLabel>
-                        <Select value={service} size="small" label="Services" onChange={handleServiceChange}>
-                            <MenuItem value="all-services">All services</MenuItem>
-                            {/* TODO: update service filters */}
-                            <MenuItem value="service-1">Service 1</MenuItem>
-                            <MenuItem value="service-2">Service 2</MenuItem>
+                        <Select
+                            value={service}
+                            size="small"
+                            label="Services"
+                            onChange={handleServiceChange}
+                            disabled={isLoading}
+                            aria-label="services"
+                        >
+                            <MenuItem value="all-services">{isLoading ? "Loading..." : "All services"}</MenuItem>{" "}
+                            {serviceOptions?.services.map((serviceOption) => (
+                                <MenuItem key={serviceOption} value={serviceOption}>
+                                    {serviceOption}
+                                </MenuItem>
+                            ))}
                         </Select>
                     </FormControl>
 
                     <FormControl variant="outlined" sx={{ minWidth: 130 }}>
                         <InputLabel>Severity level</InputLabel>
-                        <Select value={severity} size="small" label="Severity level" onChange={handleSeverityChange}>
+                        <Select
+                            value={severity}
+                            size="small"
+                            label="Severity level"
+                            onChange={handleSeverityChange}
+                            aria-label="severity level"
+                        >
                             <MenuItem value="all-severities">All severities</MenuItem>
                             {LOG_TYPES.map((type) => (
                                 <MenuItem key={type} value={type}>
@@ -236,11 +256,93 @@ export default function LiveTailLogs() {
                         </Select>
                     </FormControl>
 
-                    <TextField placeholder="Search body..." size="small" />
+                    <TextField
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
+                        placeholder="Search body..."
+                        size="small"
+                        slotProps={{
+                            input: {
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon color="action" />
+                                    </InputAdornment>
+                                ),
+                                endAdornment: searchInput && (
+                                    <InputAdornment position="end">
+                                        <IconButton onClick={handleClear} edge="end" size="small">
+                                            <ClearIcon />
+                                        </IconButton>
+                                    </InputAdornment>
+                                ),
+                            },
+                        }}
+                    />
                 </Stack>
 
+                {/* WebSocket Error Alert Bar */}
+                {connectionStatus === "error" && (
+                    <Box
+                        sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1,
+                            width: "100%",
+                            px: 2,
+                            py: 1,
+                            border: "1px solid #7f1d1d",
+                            backgroundColor: "rgba(127, 29, 29, 0.15)",
+                            borderRadius: "6px",
+                            mb: 3,
+                        }}
+                    >
+                        <ErrorIcon sx={{ fontSize: 16, color: "#ef4444" }} />
+                        <Typography variant="body2" sx={{ color: "#ef4444" }}>
+                            Connection lost. Failed to connect to the live tail server.{" "}
+                        </Typography>
+                        <Button
+                            size="small"
+                            sx={{
+                                ml: "auto",
+                                color: "#ef4444",
+                                borderColor: "#ef4444",
+                                textTransform: "none",
+                                fontSize: 12,
+                                "&:hover": { borderColor: "#ef4444", backgroundColor: "rgba(239, 68, 68, 0.08)" },
+                            }}
+                            variant="outlined"
+                            onClick={handleReconnect}
+                        >
+                            Retry
+                        </Button>
+                    </Box>
+                )}
+
+                {/* Connecting alert bar */}
+                {connectionStatus === "connecting" && (
+                    <Box
+                        sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1,
+                            width: "100%",
+                            px: 2,
+                            py: 1,
+                            border: "1px solid rgba(20, 184, 166, 0.4)",
+                            backgroundColor: "rgba(20, 184, 166, 0.08)",
+                            borderRadius: "6px",
+                            mb: 3,
+                        }}
+                    >
+                        <CircularProgress size={14} thickness={5} sx={{ color: "#2dd4bf" }} />{" "}
+                        <Typography variant="body2" sx={{ color: "#2dd4bf" }}>
+                            Connecting to live tail server...
+                        </Typography>
+                    </Box>
+                )}
+
                 {/* Pause alert bar */}
-                {isPaused && (
+                {isPaused && connectionStatus !== "error" && (
                     <Box
                         sx={{
                             display: "flex",
@@ -314,15 +416,21 @@ export default function LiveTailLogs() {
 
                 {/* Logs List */}
                 <Box>
-                    {logData.map((log, index) => (
+                    {filteredLogs.slice(0, MAX_DISPLAY_LOGS).map(({ log, serviceName }, index) => (
                         <TailLogRow
-                            key={`${log.time}-${index}`}
-                            time={log.time}
-                            service={log.service}
-                            severity={log.severity}
-                            message={log.message}
+                            key={`${serviceName}-${log.timestamp}-${index}`}
+                            time={new Date(log.timestamp).toLocaleString()}
+                            service={serviceName}
+                            severity={parseSeverity(log.severityText)}
+                            message={log.body}
                         />
                     ))}
+
+                    {filteredLogs.length === 0 && (
+                        <Box sx={{ textAlign: "center", py: 3, color: "#6e7681" }}>
+                            <Typography variant="body2">No logs match your filters</Typography>
+                        </Box>
+                    )}
                 </Box>
             </Box>
         </>

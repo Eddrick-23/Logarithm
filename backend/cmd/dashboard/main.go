@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,14 +14,16 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Eddrick-23/Logarithm/api/schemas"
 	"github.com/Eddrick-23/Logarithm/internal/config"
 	"github.com/Eddrick-23/Logarithm/internal/dashboard"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
+	"github.com/Eddrick-23/Logarithm/internal/transport"
 )
 
-func NewServer(logger *slog.Logger, config *config.Config, logStore *storage.ClickHouseStore) http.Handler {
+func NewServer(logger *slog.Logger, config *config.Config, logStore *storage.ClickHouseStore, broker *transport.NatsBroker) http.Handler {
 	mux := http.NewServeMux()
-	dashboard.AddRoutes(mux, logger, config, logStore)
+	dashboard.AddRoutes(mux, logger, config, logStore, broker)
 
 	var handler http.Handler = mux
 	// add middlewares if any
@@ -34,6 +37,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	)
 	httpLogger := logger.With("component", "dashboard")
 	databaseLogger := logger.With("component", "database")
+	natsLogger := logger.With("component", "nats")
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -42,6 +46,171 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+
+	broker, err := transport.NewNatsBroker(ctx, natsLogger, config.NatsURL)
+	if err != nil {
+		natsLogger.Error("failed to initialise NATS broker", "err", err)
+		os.Exit(1)
+	}
+	defer broker.Close()
+
+	// Mocking live updates
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				req := schemas.LogIngestRequest{
+					ServiceName: "auth-service",
+					ResourceAttributes: []schemas.KeyValue{
+						{Key: "environment", Value: "production"},
+						{Key: "host.name", Value: "auth-worker-01"},
+					},
+					Records: []schemas.LogRecordDTO{
+						{
+							Timestamp:      time.Now(),
+							TraceId:        "5b8aa5a2d2c8646c14e138a83416a41f",
+							SpanId:         "f96ea2a71a065463",
+							SeverityText:   "INFO",
+							SeverityNumber: 9,
+							Body:           "User authenticated successfully.",
+							LogAttributes: []schemas.KeyValue{
+								{Key: "user_id", Value: "usr_987654321"},
+								{Key: "ip_address", Value: "192.168.1.104"},
+							},
+						},
+						{
+							Timestamp:      time.Now(),
+							TraceId:        "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+							SpanId:         "a1b2c3d4e5f6a7b8",
+							SeverityText:   "ERROR",
+							SeverityNumber: 17,
+							Body:           "Failed to connect to database cache.",
+							LogAttributes: []schemas.KeyValue{
+								{Key: "cache_host", Value: "redis-cluster.local"},
+								{Key: "timeout_ms", Value: "5000"},
+							},
+						},
+						{
+							Timestamp:      time.Now(),
+							TraceId:        "0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d",
+							SpanId:         "1a2b3c4d5e6f7a8b",
+							SeverityText:   "DEBUG",
+							SeverityNumber: 5,
+							Body:           "Database connection pool statistics updated.",
+							LogAttributes: []schemas.KeyValue{
+								{Key: "active_connections", Value: "14"},
+								{Key: "idle_connections", Value: "6"},
+								{Key: "pool_name", Value: "primary-replica"},
+							},
+						},
+						{
+							Timestamp:      time.Now(),
+							TraceId:        "f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0",
+							SpanId:         "8b7a6f5e4d3c2b1a",
+							SeverityText:   "WARNING",
+							SeverityNumber: 13,
+							Body:           "API request latency exceeded threshold limit.",
+							LogAttributes: []schemas.KeyValue{
+								{Key: "endpoint", Value: "/api/v1/analytics"},
+								{Key: "duration_ms", Value: "1250"},
+								{Key: "threshold_ms", Value: "1000"},
+							},
+						},
+					},
+				}
+
+				// Marshal the struct into a JSON byte slice
+				payload, err := json.Marshal(req)
+				if err != nil {
+					natsLogger.Error("failed to marshal log payload:", "err", err)
+					continue
+				}
+
+				// Publish the marshaled JSON bytes
+				if err := broker.PublishLogs(ctx, "logs.service-a", payload); err != nil {
+					natsLogger.Error("publish error:", "err", err)
+				}
+
+				req2 := schemas.LogIngestRequest{
+					ServiceName: "logging-service",
+					ResourceAttributes: []schemas.KeyValue{
+						{Key: "environment", Value: "production"},
+						{Key: "host.name", Value: "auth-worker-01"},
+					},
+					Records: []schemas.LogRecordDTO{
+						{
+							Timestamp:      time.Now(),
+							TraceId:        "5b8aa5a2d2c8646c14e138a83416a41f",
+							SpanId:         "f96ea2a71a065463",
+							SeverityText:   "INFO",
+							SeverityNumber: 9,
+							Body:           "User authenticated successfully.",
+							LogAttributes: []schemas.KeyValue{
+								{Key: "user_id", Value: "usr_987654321"},
+								{Key: "ip_address", Value: "192.168.1.104"},
+							},
+						},
+						{
+							Timestamp:      time.Now(),
+							TraceId:        "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+							SpanId:         "a1b2c3d4e5f6a7b8",
+							SeverityText:   "ERROR",
+							SeverityNumber: 17,
+							Body:           "Failed to connect to database cache.",
+							LogAttributes: []schemas.KeyValue{
+								{Key: "cache_host", Value: "redis-cluster.local"},
+								{Key: "timeout_ms", Value: "5000"},
+							},
+						},
+						{
+							Timestamp:      time.Now(),
+							TraceId:        "0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d",
+							SpanId:         "1a2b3c4d5e6f7a8b",
+							SeverityText:   "DEBUG",
+							SeverityNumber: 5,
+							Body:           "Database connection pool statistics updated.",
+							LogAttributes: []schemas.KeyValue{
+								{Key: "active_connections", Value: "14"},
+								{Key: "idle_connections", Value: "6"},
+								{Key: "pool_name", Value: "primary-replica"},
+							},
+						},
+						{
+							Timestamp:      time.Now(),
+							TraceId:        "f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0",
+							SpanId:         "8b7a6f5e4d3c2b1a",
+							SeverityText:   "WARNING",
+							SeverityNumber: 13,
+							Body:           "API request latency exceeded threshold limit.",
+							LogAttributes: []schemas.KeyValue{
+								{Key: "endpoint", Value: "/api/v1/analytics"},
+								{Key: "duration_ms", Value: "1250"},
+								{Key: "threshold_ms", Value: "1000"},
+							},
+						},
+					},
+				}
+
+				// Marshal the struct into a JSON byte slice
+				payload, err = json.Marshal(req2)
+				if err != nil {
+					natsLogger.Error("failed to marshal log payload:", "err", err)
+					continue
+				}
+
+				// Publish the marshaled JSON bytes
+				if err := broker.PublishLogs(ctx, "logs.service-a", payload); err != nil {
+					natsLogger.Error("publish error:", "err", err)
+				}
+
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 
 	logStore, err := storage.NewClickHouseStore(ctx, config.DBAddress, config.DBName, config.DBTableName, config.DBUser, config.DBPassword)
 	if err != nil {
@@ -54,7 +223,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		databaseLogger.Error("initdb failed", "err", err)
 	}
 
-	srv := NewServer(httpLogger, config, logStore)
+	srv := NewServer(httpLogger, config, logStore, broker)
 
 	httpServer := &http.Server{
 		Addr:    net.JoinHostPort(config.AppHost, config.AppPort),
@@ -96,5 +265,4 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}
-
 }

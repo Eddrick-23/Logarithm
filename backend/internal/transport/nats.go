@@ -230,3 +230,45 @@ func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, logHandler ProcessLog
 
 	}
 }
+
+func (nb *NatsBroker) TailLiveLogs(ctx context.Context, streamName string, subject string, maxBatch int) (<-chan []byte, func(), error) {
+	// Retrieve the stream
+	stream, err := nb.js.Stream(ctx, streamName)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get stream for tailing: %w", err)
+	}
+
+	cons, err := stream.OrderedConsumer(ctx, jetstream.OrderedConsumerConfig{
+		FilterSubjects: []string{subject},
+		DeliverPolicy:  jetstream.DeliverNewPolicy, // Start tailing from "now"
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create ordered consumer: %w", err)
+	}
+
+	// Buffer the channel to handle slight backpressure from the websocket
+	logCh := make(chan []byte, maxBatch)
+
+	// Start consuming asynchronously
+	cc, err := cons.Consume(func(msg jetstream.Msg) {
+		select {
+		case logCh <- msg.Data():
+			// For a live tail, we don't necessarily need to Ack() since it's an ordered
+			// consumer and we don't care about redelivery if the websocket drops.
+		case <-ctx.Done():
+			// Context cancelled, stop processing
+		}
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to start consuming for tail: %w", err)
+	}
+
+	// Provide a cleanup function to stop the NATS consumer and close the channel
+	cleanup := func() {
+		cc.Stop()
+		close(logCh)
+		nb.logger.Debug("stopped live tail consumer", "subject", subject)
+	}
+
+	return logCh, cleanup, nil
+}

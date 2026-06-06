@@ -18,6 +18,8 @@ type Config struct {
 	IngesterIdleTimeout       time.Duration   `env:"INGESTER_IDLE_TIMEOUT, default=60s"`
 	AppHost                   string          `env:"APP_HOST, default=dashboard-api"`
 	AppPort                   string          `env:"APP_PORT, default=8091"`
+    LiveTailRefreshInterval   int             `env:"LIVE_TAIL_REFRESH_INTERVAL, default=500"`
+	LiveTailMaxBatch          int             `env:"LIVE_TAIL_MAX_BATCH, default=100"`
 	DBAddress                 string          `env:"DB_ADDRESS, default=localhost:9000"`
 	DBUser                    string          `env:"DB_USER, required"`
 	DBPassword                string          `env:"DB_PASSWORD, required"`

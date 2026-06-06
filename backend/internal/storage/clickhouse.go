@@ -415,3 +415,29 @@ func (s *ClickHouseStore) CountInsertedWithin(ctx context.Context, minutes uint6
 
 	return count, nil
 }
+
+func (s *ClickHouseStore) GetDistinctServices(ctx context.Context) ([]string, error) {
+	queryString := "SELECT DISTINCT ServiceName FROM " + s.dbAndTable
+
+	rows, err := s.conn.Query(ctx, queryString)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query for distinct services: %v", err)
+	}
+	defer rows.Close()
+
+	var services []string
+
+	for rows.Next() {
+		var service string
+		if err := rows.Scan(&service); err != nil {
+			return nil, fmt.Errorf("failed to scan service name: %v", err)
+		}
+		services = append(services, service)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over service rows: %v", err)
+	}
+
+	return services, nil
+}

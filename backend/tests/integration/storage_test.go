@@ -5,8 +5,6 @@ package integration
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,8 +12,6 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
-	"github.com/testcontainers/testcontainers-go"
-	chmodule "github.com/testcontainers/testcontainers-go/modules/clickhouse" // alias to avoid naming conflict
 )
 
 var dbAddr string
@@ -23,6 +19,7 @@ var user string
 var password string
 var dbname string
 var dbtablename string
+var natsUrl string
 
 var _ storage.LogStore = (*storage.ClickHouseStore)(nil) // make sure satisfies interface methods before any tests
 
@@ -68,49 +65,6 @@ var testRecord3 core.FlatLogRecord = core.FlatLogRecord{
 	ResAttrValues:  []string{},
 }
 
-func TestMain(m *testing.M) {
-	ctx := context.Background()
-
-	user = "clickhouse"
-	password = "password"
-	dbname = "logarithm"
-	dbtablename = "logs"
-
-	clickHouseContainer, err := chmodule.Run(ctx,
-		"clickhouse/clickhouse-server:26.3-alpine",
-		chmodule.WithUsername(user),
-		chmodule.WithPassword(password),
-		chmodule.WithDatabase(dbname),
-		chmodule.WithInitScripts(filepath.Join("testdata", "init-db.sql")),
-	)
-	defer func() {
-		if clickHouseContainer != nil {
-			if err := testcontainers.TerminateContainer(clickHouseContainer); err != nil {
-				fmt.Printf("failed to terminate container: %s", err)
-			}
-		}
-	}()
-	if err != nil {
-
-		fmt.Printf("failed to start container: %s", err)
-		return
-	}
-
-	host, err := clickHouseContainer.Host(ctx)
-	if err != nil {
-		fmt.Printf("failed to get host: %v", err)
-	}
-	port, err := clickHouseContainer.MappedPort(ctx, "9000/tcp")
-	if err != nil {
-		fmt.Printf("failed to get port: %v", err)
-	}
-
-	dbAddr = fmt.Sprintf("%s:%s", host, port.Port())
-	exitVal := m.Run()
-
-	os.Exit(exitVal)
-}
-
 func getRawDBConn() (driver.Conn, error) {
 	ctx := context.Background()
 	conn, err := clickhouse.Open(&clickhouse.Options{
@@ -142,10 +96,10 @@ func setupTestDB(t *testing.T, ctx context.Context, store storage.LogStore) {
 	t.Helper()
 
 	conn, err := getRawDBConn()
-
 	if err != nil {
 		t.Fatalf("failed to get raw db conn in setup: %v", err)
 	}
+	defer conn.Close()
 
 	err = conn.Exec(ctx, "TRUNCATE TABLE logarithm.logs")
 	if err != nil {
@@ -199,17 +153,22 @@ func TestBatchInsert(t *testing.T) {
 		t.Fatalf("failed to establish db connection: %v", err)
 	}
 
+	conn, err := getRawDBConn()
+	if err != nil {
+		t.Fatalf("failed to get raw db connection: %v", err)
+	}
+	defer conn.Close()
+
+	err = conn.Exec(ctx, "TRUNCATE TABLE logarithm.logs")
+	if err != nil {
+		t.Fatalf("failed to truncate table: %v", err)
+	}
+
 	testRecords := []core.FlatLogRecord{testRecord1}
 	err = logStore.BatchInsert(ctx, testRecords)
 
 	if err != nil {
 		t.Fatalf("batch insert failed: %v", err)
-	}
-
-	conn, err := getRawDBConn()
-
-	if err != nil {
-		t.Fatalf("failed to get raw db connection: %v", err)
 	}
 
 	var count uint64
@@ -233,10 +192,10 @@ func TestBatchInsertMultipleLogs(t *testing.T) {
 	}
 
 	conn, err := getRawDBConn()
-
 	if err != nil {
 		t.Fatalf("failed to get raw db connection: %v", err)
 	}
+	defer conn.Close()
 
 	err = conn.Exec(ctx, "TRUNCATE TABLE logarithm.logs")
 	if err != nil {
@@ -364,6 +323,8 @@ func TestCountInsertedWithin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get raw db conn: %v", err)
 	}
+	defer conn.Close()
+
 	conn.Exec(ctx, "TRUNCATE TABLE logarithm.logs")
 
 	count, err := logStore.CountInsertedWithin(ctx, 1)

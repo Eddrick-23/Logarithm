@@ -20,7 +20,9 @@ Logarithm is a high-performance, log ingestion and self-hosted observability pip
 │   └── tests/              # Integration tests
 ├── frontend/               # User interface and client-side code
 │   └── src/
+│       └── api/            # API calls to the backend server
 │       └── components/     # Reusable UI components shared across pages
+│       └── hooks/          # TanStack Query hooks
 │       └── pages/          # Top-level page components mapped to routes
 │       └── routes/         # Route definitions and navigation configuration
 │       └── tests/          # Unit and integration tests
@@ -62,6 +64,7 @@ This will spin up:
 
 - **React** - accessible at http://localhost:5173
 - **Go Dashboard API** - accessible at http://localhost:8091
+- **Live Tail Logs Websocket** - accessible at ws://localhost:8091/ws/logs/tail
 - **ClickHouse DB** - accessible at http://localhost:8123
 - **Ingester API** - accessible at http://localhost:8090
 - **NATS** - accessible at http://localhost:8222
@@ -117,6 +120,23 @@ cd backend
 go test ./... -tags=integration
 ```
 
+To run frontend tests
+
+```bash
+npm test
+```
+
+To run frontend tests with Vitest UI
+
+```bash
+npm run test:ui
+```
+
+To run frontend tests with watch mode
+
+```bash
+npm run test:watch
+```
 ### Load generator and benchmarks
 Benchmarking logarithm uses a seeded randomised load generator using go and the vegeta library
 #### Usage
