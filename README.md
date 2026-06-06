@@ -135,3 +135,11 @@ bin/main --config config.json --duration 10 --warmup 5
 ```
 To view flags use `bin/main --help` or `go run main.go --help`
 Results after the test will be in the results folder labelled results.bin. To convert to other formats, you can use the [vegeta cli](https://github.com/tsenart/vegeta) to generate reports.
+
+#### Benchmark with profiling
+Instead of running the load generator by itself, a profile.sh script has been set up that will start the load generator and profiling with pprof alog with tracking nats queue depth. Run with
+```
+cd load_generator
+bash profile.sh 30 10 5 config.json <optional IP: default localhost>
+```
+specify IP only if hosting logarithm and running load generator on different machines.
