@@ -119,3 +119,21 @@ To run them, use
 cd backend
 go test ./... -tags=integration
 ```
+
+To run frontend tests
+
+```bash
+npm test
+```
+
+To run frontend tests with Vitest UI
+
+```bash
+npm run test:ui
+```
+
+To run frontend tests with watch mode
+
+```bash
+npm run test:watch
+```
