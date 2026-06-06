@@ -1,0 +1,104 @@
+services:
+  react:
+    build:
+      context: ./frontend
+    ports:
+      - "5173:80" # prod stage port mapping
+    env_file:
+      - ./frontend/.env
+    depends_on:
+      - dashboard-api
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.3
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - ./deploy/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: strongpassword
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s # increased to allow more time for init.sql migrations
+    cpuset:
+      "1,2,3,4"
+  nats:
+    image: nats:2.14-alpine
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["-c", "/etc/deploy/nats.conf"]
+    volumes:
+      - ./deploy/nats/nats.conf:/etc/deploy/nats.conf:ro
+      - nats_storage:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    cpuset:
+      "5"
+
+  ingester:
+    build:
+      context: ./backend
+    ports:
+      - "8090:8090"
+      - "6060:6060"
+    command: ./ingester
+    env_file:
+      - ./backend/.env
+    environment:
+      - ENABLE_PPROF=true
+      - PPROF_HOST=0.0.0.0
+    depends_on:
+      nats:
+        condition: service_healthy
+    cpuset:
+      "6,7"
+  worker:
+    build:
+      context: ./backend
+    ports:
+      - "6061:6061" 
+    command: ./worker
+    env_file:
+      - ./backend/.env
+    environment:
+      - ENABLE_PPROF=true
+      - PPROF_HOST=0.0.0.0
+    depends_on:
+      nats:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    cpuset:
+      "8,9,10"
+  dashboard-api:
+    build:
+      context: ./backend
+    ports:
+      - "8091:8091"
+    command: ./dashboard
+    env_file:
+      - ./backend/.env
+    depends_on: # TODO: add NATS later when implementing live tail websocket conn
+      clickhouse:
+        condition: service_healthy
+volumes:
+  clickhouse_data:
+  clickhouse_logs:
+  nats_storage:

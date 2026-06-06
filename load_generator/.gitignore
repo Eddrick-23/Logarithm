@@ -37,3 +37,4 @@ results/*
 
 #others
 *.pprof
+profiles/*
