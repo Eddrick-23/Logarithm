@@ -7,7 +7,6 @@ import LiveTailLogs from "../components/LiveTailLogs";
 
 const connectingMessage = "Connecting to live tail server...";
 const pauseMessage = "Tail paused — new logs buffering";
-const connectionMessage = "";
 const errorMessage = "Connection lost. Failed to connect to the live tail server.";
 
 vi.mock("../hooks/useDistinctServices", () => ({
