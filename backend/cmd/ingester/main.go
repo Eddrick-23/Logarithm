@@ -7,8 +7,10 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -28,12 +30,28 @@ func NewServer(logger *slog.Logger, config *config.Config, producer transport.Pr
 	return handler
 }
 
+func startPprof(logger *slog.Logger, config *config.Config) {
+	if !config.EnablePprof {
+		return
+	}
+	runtime.SetMutexProfileFraction(100)
+	runtime.SetBlockProfileRate(100000)
+	addr := net.JoinHostPort(config.PprofHost, "6060")
+	go func() {
+		logger.Info("pprof listening on", "addr", addr)
+		if err := http.ListenAndServe(addr, nil); err != nil {
+			logger.Error("pprof server stopped", "err", err)
+		}
+	}()
+}
+
 func run(ctx context.Context, w io.Writer, args []string) error {
 	logger := slog.New(
 		slog.NewTextHandler(w, nil),
 	)
 	natsLogger := logger.With("component", "nats")
 	httpLogger := logger.With("component", "ingester")
+	pprofLogger := logger.With("component", "pprof")
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -42,6 +60,9 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+
+	startPprof(pprofLogger, config)
+
 	natsBroker, err := transport.NewNatsBroker(ctx, natsLogger, config.NatsURL)
 
 	if err != nil {
@@ -55,8 +76,12 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	srv := NewServer(httpLogger, config, natsBroker)
 
 	httpServer := &http.Server{
-		Addr:    net.JoinHostPort(config.IngesterHost, config.IngesterPort),
-		Handler: srv,
+		Addr:              net.JoinHostPort(config.IngesterHost, config.IngesterPort),
+		Handler:           srv,
+		ReadHeaderTimeout: config.IngesterReadHeaderTimeout,
+		ReadTimeout:       config.IngesterReadTimeout,
+		WriteTimeout:      config.IngesterWriteTimeout,
+		IdleTimeout:       config.IngesterIdleTimeout,
 	}
 
 	go func() {
