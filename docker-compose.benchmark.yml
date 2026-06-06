@@ -32,6 +32,8 @@ services:
       timeout: 5s
       retries: 10
       start_period: 60s # increased to allow more time for init.sql migrations
+    cpuset:
+      "1,2,3,4"
   nats:
     image: nats:2.14-alpine
     ports:
@@ -47,6 +49,8 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
+    cpuset:
+      "5"
 
   ingester:
     build:
@@ -63,6 +67,8 @@ services:
     depends_on:
       nats:
         condition: service_healthy
+    cpuset:
+      "6,7"
   worker:
     build:
       context: ./backend
@@ -79,6 +85,8 @@ services:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
+    cpuset:
+      "8,9,10"
   dashboard-api:
     build:
       context: ./backend
