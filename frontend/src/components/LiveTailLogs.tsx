@@ -11,6 +11,7 @@ import {
     InputLabel,
     InputAdornment,
     IconButton,
+    CircularProgress,
 } from "@mui/material";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { card, pulseSx, sectionLabel } from "../theme/tokens";
@@ -22,6 +23,8 @@ import ClearIcon from "@mui/icons-material/Clear";
 import type { FlatLogEntry, LogIngestRequest, LogType } from "../types/Log";
 import { useDistinctServices } from "../hooks/useDistinctServices";
 import TailLogRow, { columnWidths } from "./TailLogRow";
+
+type ConnectionStatus = "connecting" | "connected" | "error";
 
 const LOG_TYPES: LogType[] = ["debug", "info", "warning", "error"];
 const MAX_GLOBAL_LOGS = 300;
@@ -43,11 +46,16 @@ export default function LiveTailLogs() {
     const [service, setService] = useState<string>("all-services");
     const [searchInput, setSearchInput] = useState<string>("");
     const [debouncedSearch, setDebouncedSearch] = useState<string>("");
-    const [hasConnectionError, setHasConnectionError] = useState<boolean>(false);
+    const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
     const [isPaused, setIsPaused] = useState<boolean>(false);
     const isPausedRef = useRef<boolean>(isPaused);
     const bufferRef = useRef<LogIngestRequest[]>([]);
     const { data: serviceOptions, isLoading } = useDistinctServices();
+    const dotColour = {
+        connected: "success.main",
+        connecting: "warning.main",
+        error: "error.main",
+    }[connectionStatus];
 
     const processBatch = useCallback((batch: LogIngestRequest[]) => {
         const newEntries: FlatLogEntry[] = batch.flatMap(({ serviceName, records }) =>
@@ -69,7 +77,7 @@ export default function LiveTailLogs() {
 
         ws.onopen = () => {
             reconnectAttempts.current = 0; // reset backoff on successful connect
-            setHasConnectionError(false);
+            setConnectionStatus("connected");
         };
 
         ws.onmessage = (e) => {
@@ -85,6 +93,7 @@ export default function LiveTailLogs() {
 
         ws.onerror = (e) => {
             console.error("ws error", e);
+            setConnectionStatus("error");
         };
 
         ws.onclose = (e) => {
@@ -97,11 +106,11 @@ export default function LiveTailLogs() {
             const maxAttempts = 5;
             if (reconnectAttempts.current >= maxAttempts) {
                 console.error("max reconnect attempts reached");
-                setHasConnectionError(true);
+                setConnectionStatus("error");
                 return;
             }
 
-            setHasConnectionError(false);
+            setConnectionStatus("connecting");
             // Exponential backoff: 1s, 2s, 4s, 8s, 16s
             const delay = Math.min(1000 * 2 ** reconnectAttempts.current, 30_000);
             reconnectAttempts.current += 1;
@@ -119,7 +128,7 @@ export default function LiveTailLogs() {
             if (wsRef.current) {
                 wsRef.current.close(WEBSOCKET_NORMAL_CLOSURE, "navigating away");
             }
-            setHasConnectionError(false);
+            setConnectionStatus("error");
         };
 
         return () => cleanupConnection();
@@ -149,7 +158,7 @@ export default function LiveTailLogs() {
     };
 
     const handleReconnect = () => {
-        setHasConnectionError(false);
+        setConnectionStatus("connecting");
         reconnectAttempts.current = 0;
         connect();
     };
@@ -185,14 +194,14 @@ export default function LiveTailLogs() {
                 {/* Top Bar (Title and Pause button) */}
                 <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
                     <Stack direction="row" sx={{ alignItems: "center" }} spacing={1}>
-                        <Box sx={{ ...pulseSx, bgcolor: hasConnectionError ? "error.main" : "success.main" }} />
+                        <Box sx={{ ...pulseSx, bgcolor: dotColour }} />
                         <Typography sx={{ ...sectionLabel }}>Live Tail</Typography>
                     </Stack>
                     <Button
                         variant="outlined"
                         startIcon={isPaused ? <PlayArrowIcon fontSize="small" /> : <PauseIcon fontSize="small" />}
                         onClick={isPaused ? handleResume : handlePause}
-                        disabled={hasConnectionError}
+                        disabled={connectionStatus !== "connected"}
                         sx={{
                             color: "#9e9e9e",
                             borderColor: "rgba(255,255,255,0.15)",
@@ -264,7 +273,7 @@ export default function LiveTailLogs() {
                 </Stack>
 
                 {/* WebSocket Error Alert Bar */}
-                {hasConnectionError && (
+                {connectionStatus === "error" && (
                     <Box
                         sx={{
                             display: "flex",
@@ -301,8 +310,31 @@ export default function LiveTailLogs() {
                     </Box>
                 )}
 
+                {/* Connecting alert bar */}
+                {connectionStatus === "connecting" && (
+                    <Box
+                        sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1,
+                            width: "100%",
+                            px: 2,
+                            py: 1,
+                            border: "1px solid rgba(20, 184, 166, 0.4)",
+                            backgroundColor: "rgba(20, 184, 166, 0.08)",
+                            borderRadius: "6px",
+                            mb: 3,
+                        }}
+                    >
+                        <CircularProgress size={14} thickness={5} sx={{ color: "#2dd4bf" }} />{" "}
+                        <Typography variant="body2" sx={{ color: "#2dd4bf" }}>
+                            Connecting to live tail server...
+                        </Typography>
+                    </Box>
+                )}
+
                 {/* Pause alert bar */}
-                {isPaused && !hasConnectionError && (
+                {isPaused && connectionStatus !== "error" && (
                     <Box
                         sx={{
                             display: "flex",
