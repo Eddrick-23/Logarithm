@@ -85,6 +85,7 @@ export default function LiveTailLogs() {
 
             if (isPausedRef.current) {
                 bufferRef.current.push(...batch); // spread entire batch into buffer
+                bufferRef.current = bufferRef.current.slice(-MAX_GLOBAL_LOGS);
                 return;
             }
 
