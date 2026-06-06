@@ -226,6 +226,7 @@ export default function LiveTailLogs() {
                             label="Services"
                             onChange={handleServiceChange}
                             disabled={isLoading}
+                            aria-label="services"
                         >
                             <MenuItem value="all-services">{isLoading ? "Loading..." : "All services"}</MenuItem>{" "}
                             {serviceOptions?.services.map((serviceOption) => (
@@ -238,7 +239,13 @@ export default function LiveTailLogs() {
 
                     <FormControl variant="outlined" sx={{ minWidth: 130 }}>
                         <InputLabel>Severity level</InputLabel>
-                        <Select value={severity} size="small" label="Severity level" onChange={handleSeverityChange}>
+                        <Select
+                            value={severity}
+                            size="small"
+                            label="Severity level"
+                            onChange={handleSeverityChange}
+                            aria-label="severity level"
+                        >
                             <MenuItem value="all-severities">All severities</MenuItem>
                             {LOG_TYPES.map((type) => (
                                 <MenuItem key={type} value={type}>
