@@ -12,7 +12,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/clickhouse v0.42.0
 )
 
-require github.com/testcontainers/testcontainers-go/modules/nats v0.42.0 // indirect
+require github.com/testcontainers/testcontainers-go/modules/nats v0.42.0
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
