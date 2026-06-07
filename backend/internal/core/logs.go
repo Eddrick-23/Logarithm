@@ -10,18 +10,22 @@ import (
 FlatLogRecord is optimized for storage in ClickHouse
 */
 type FlatLogRecord struct {
-	Timestamp      time.Time `ch:"Timestamp"`
-	InsertedAt     time.Time `ch:"InsertedAt"` // not mapped when unflattening, for now no need to expose to frontend
-	TraceId        string    `ch:"TraceId"`
-	SpanId         string    `ch:"SpanId"`
-	SeverityText   string    `ch:"SeverityText"`
-	SeverityNumber uint8     `ch:"SeverityNumber"`
-	ServiceName    string    `ch:"ServiceName"`
-	Body           string    `ch:"Body"`
-	LogAttrKeys    []string  `ch:"LogAttrKeys"`
-	LogAttrValues  []string  `ch:"LogAttrValues"`
-	ResAttrKeys    []string  `ch:"ResAttrKeys"`
-	ResAttrValues  []string  `ch:"ResAttrValues"`
+	Timestamp         time.Time `ch:"Timestamp"`
+	ObservedTimestamp time.Time `ch:"ObservedTimestamp"` // NEW
+	InsertedAt        time.Time `ch:"InsertedAt"`        // not mapped when unflattening, for now no need to expose to frontend
+	TraceId           string    `ch:"TraceId"`
+	SpanId            string    `ch:"SpanId"`
+	SeverityText      string    `ch:"SeverityText"`
+	SeverityNumber    uint8     `ch:"SeverityNumber"`
+	ServiceName       string    `ch:"ServiceName"`
+	Body              string    `ch:"Body"`
+	BodyType          string    `ch:"BodyType"`     // new: e.g. "string"|"json"|"int"|"bool"
+	ScopeName         string    `ch:"ScopeName"`    // NEW: e.g. "go.opentelemetry.io/contrib"
+	ScopeVersion      string    `ch:"ScopeVersion"` // NEW: e.g. "v0.46.0"
+	LogAttrKeys       []string  `ch:"LogAttrKeys"`
+	LogAttrValues     []string  `ch:"LogAttrValues"`
+	ResAttrKeys       []string  `ch:"ResAttrKeys"`
+	ResAttrValues     []string  `ch:"ResAttrValues"`
 }
 
 /*
@@ -30,12 +34,16 @@ from ClickHouse to display on the frontend.
 */
 type LogRecord struct {
 	Timestamp          time.Time          `json:"timestamp"`
+	ObservedTimestamp  time.Time          `json:"observedTimestamp"` // NEW
 	TraceId            string             `json:"traceId"`
 	SpanId             string             `json:"spanId"`
 	SeverityText       string             `json:"severityText"`
 	SeverityNumber     uint8              `json:"severityNumber"`
 	ServiceName        string             `json:"serviceName"`
 	Body               string             `json:"body"`
+	BodyType           string             `json:"bodyType"`     // NEW
+	ScopeName          string             `json:"scopeName"`    // NEW
+	ScopeVersion       string             `json:"scopeVersion"` // NEW
 	LogAttributes      []schemas.KeyValue `json:"logAttributes"`
 	ResourceAttributes []schemas.KeyValue `json:"resourceAttributes"`
 }
@@ -92,12 +100,16 @@ func unflattenLogRecord(flat FlatLogRecord) LogRecord {
 
 	return LogRecord{
 		Timestamp:          flat.Timestamp,
+		ObservedTimestamp:  flat.ObservedTimestamp,
 		TraceId:            flat.TraceId,
 		SpanId:             flat.SpanId,
 		SeverityText:       flat.SeverityText,
 		SeverityNumber:     flat.SeverityNumber,
 		ServiceName:        flat.ServiceName,
 		Body:               flat.Body,
+		BodyType:           flat.BodyType,
+		ScopeName:          flat.ScopeName,
+		ScopeVersion:       flat.ScopeVersion,
 		LogAttributes:      logAttributes,
 		ResourceAttributes: resourceAttributes,
 	}
