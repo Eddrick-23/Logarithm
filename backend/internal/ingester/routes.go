@@ -109,6 +109,9 @@ func handleOTLPLogs(logger *slog.Logger, producer transport.Producer, natsSubjec
 			return
 		}
 
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(http.StatusAccepted)
+		if _, err := w.Write([]byte("Log ingested successfully")); err != nil {
+			logger.Error("failed to write response", "err", err)
+		}
 	}
 }
