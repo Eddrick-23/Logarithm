@@ -6,36 +6,60 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/Eddrick-23/Logarithm/api/schemas"
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
+
+	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
-func ConsumeCallback(logger *slog.Logger, store storage.LogStore) func([][]byte) error {
+func ConsumeCallback(logger *slog.Logger, store storage.LogStore, producer transport.Producer) func([][]byte) error {
 	return func(payloads [][]byte) error {
 		if len(payloads) == 0 {
 			return nil
 		}
 
-		// estimate around 500 logs per ingested Request to prealloc memory
-		var records []core.FlatLogRecord = make([]core.FlatLogRecord, 0, len(payloads)*500)
+		numRecords := 0
+		flatLogsByServiceName := map[string][]core.FlatLogRecord{}
 		for _, payload := range payloads {
-			var jsonPayload schemas.LogIngestRequest
-			if err := json.Unmarshal(payload, &jsonPayload); err != nil {
+			var req collectorlogspb.ExportLogsServiceRequest
+			if err := protojson.Unmarshal(payload, &req); err != nil {
 				slog.Error("dropped malformed log payload", "err", err, "payload_preview", string(payload))
 				continue
 			}
-			records = flattenLogs(jsonPayload, records)
+
+			for _, resource := range req.ResourceLogs {
+				numRecords += flattenLogs(resource, flatLogsByServiceName) //appends to the required slice in the map
+			}
 		}
 
-		if len(records) == 0 { // no valid payloads to insert
+		if len(flatLogsByServiceName) == 0 { // no valid payloads to insert
 			return nil
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		if err := store.BatchInsert(ctx, records); err != nil {
+
+		batch := make([]core.FlatLogRecord, 0, numRecords) // prealloc
+		for name, slice := range flatLogsByServiceName {
+			go func(svcName string, logs []core.FlatLogRecord) {
+				pubCtx, pubCancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer pubCancel()
+				data, err := json.Marshal(slice)
+				if err != nil {
+					logger.Error("json marshal failed before publish to live tail stream", "err", err)
+					return
+				}
+				if err := producer.PublishLogs(pubCtx, transport.LiveTailSubjectTemplate+name, data); err != nil {
+					logger.Error("failed to publish flattened logs to live tail stream", "err", err)
+					return
+				}
+			}(name, slice)
+			batch = append(batch, slice...)
+		}
+
+		if err := store.BatchInsert(ctx, batch); err != nil {
 			return err
 		}
 

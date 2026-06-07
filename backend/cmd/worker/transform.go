@@ -1,46 +1,80 @@
 package main
 
 import (
-	"github.com/Eddrick-23/Logarithm/api/schemas"
+	"encoding/hex"
+	"time"
+
 	"github.com/Eddrick-23/Logarithm/internal/core"
+	v1 "go.opentelemetry.io/proto/otlp/logs/v1"
 )
 
-func extractAttributes(attributes []schemas.KeyValue) ([]string, []string) {
-	numAttributes := len(attributes)
+func flattenLogs(resourceLogs *v1.ResourceLogs, flatLogsByServiceName map[string][]core.FlatLogRecord) int {
+	serviceName := "unknown"
+	resAttrKeys := []string{}
+	resAttrValues := []string{}
+	nowNano := uint64(time.Now().UnixNano())
 
-	keys := make([]string, 0, numAttributes)
-	values := make([]string, 0, numAttributes)
+	count := 0
 
-	for _, pair := range attributes {
-		keys = append(keys, pair.Key)
-		values = append(values, pair.Value)
-	}
+	for _, attr := range resourceLogs.Resource.GetAttributes() {
+		valStr := attr.Value.GetStringValue()
 
-	return keys, values
-}
-
-func flattenLogs(ingestedReq schemas.LogIngestRequest, buffer []core.FlatLogRecord) []core.FlatLogRecord {
-	resKeys, resValues := extractAttributes(ingestedReq.ResourceAttributes)
-
-	for _, logDTO := range ingestedReq.Records {
-		logKeys, logValues := extractAttributes(logDTO.LogAttributes)
-
-		flatLog := core.FlatLogRecord{
-			Timestamp:      logDTO.Timestamp,
-			TraceId:        logDTO.TraceId,
-			SpanId:         logDTO.SpanId,
-			SeverityText:   logDTO.SeverityText,
-			SeverityNumber: logDTO.SeverityNumber,
-			ServiceName:    ingestedReq.ServiceName,
-			Body:           logDTO.Body,
-			LogAttrKeys:    logKeys,
-			LogAttrValues:  logValues,
-			ResAttrKeys:    resKeys,
-			ResAttrValues:  resValues,
+		if attr.Key == "service.name" && valStr != "" {
+			serviceName = valStr
 		}
 
-		buffer = append(buffer, flatLog)
+		resAttrKeys = append(resAttrKeys, attr.Key)
+		resAttrValues = append(resAttrValues, valStr)
 	}
 
-	return buffer
+	for _, scopeLogs := range resourceLogs.ScopeLogs {
+		scopeName := scopeLogs.Scope.GetName()
+		scopeVersion := scopeLogs.Scope.GetVersion()
+
+		for _, logRecord := range scopeLogs.LogRecords {
+			logAttrKeys := []string{}
+			logAttrValues := []string{}
+
+			for _, attr := range logRecord.GetAttributes() {
+				logAttrKeys = append(logAttrKeys, attr.Key)
+				logAttrValues = append(logAttrValues, attr.Value.GetStringValue())
+			}
+
+			// handle missing timestamps
+			observedTime := logRecord.GetObservedTimeUnixNano()
+			if observedTime == 0 {
+				observedTime = nowNano
+			}
+
+			eventTime := logRecord.GetTimeUnixNano()
+			if eventTime == 0 {
+				eventTime = nowNano
+			}
+
+			flatRecord := core.FlatLogRecord{
+				Timestamp:         time.Unix(0, int64(eventTime)),
+				ObservedTimestamp: time.Unix(0, int64(observedTime)),
+				TraceId:           hex.EncodeToString(logRecord.GetTraceId()),
+				SpanId:            hex.EncodeToString(logRecord.GetSpanId()),
+				SeverityText:      logRecord.SeverityText,
+				SeverityNumber:    uint8(logRecord.SeverityNumber),
+				Body:              logRecord.Body.GetStringValue(),
+				BodyType:          "string", // or find a way to extract the original body type?
+
+				ServiceName:  serviceName,
+				ScopeName:    scopeName,
+				ScopeVersion: scopeVersion,
+
+				ResAttrKeys:   resAttrKeys,
+				ResAttrValues: resAttrValues,
+				LogAttrKeys:   logAttrKeys,
+				LogAttrValues: logAttrValues,
+			}
+
+			flatLogsByServiceName[serviceName] = append(flatLogsByServiceName[serviceName], flatRecord)
+			count++
+		}
+	}
+
+	return count
 }
