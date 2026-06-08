@@ -216,7 +216,7 @@ func TestDashboardHandleLiveTail(t *testing.T) {
 	time.Sleep(100 * time.Millisecond) // wait for server to establish Jetstream consumer
 
 	testPayload := []byte(`[{"message": "hello from testcases!"}]`)
-	err = broker.PublishLogs(ctx, transport.LiveTailSubjectTemplate+"test.app", testPayload)
+	err = broker.PublishLogs(ctx, transport.LiveTailSubjectPrefix+"test.app", testPayload)
 	if err != nil {
 		t.Fatalf("Failed to publish to NATS: %v", err)
 	}
