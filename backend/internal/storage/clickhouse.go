@@ -21,6 +21,8 @@ type ClickHouseStore struct {
 	dbAndTable string
 }
 
+var _ LogStore = (*ClickHouseStore)(nil)
+
 var testRecord1 core.FlatLogRecord = core.FlatLogRecord{
 	Timestamp:         time.Now().Add(-1 * time.Hour),
 	ObservedTimestamp: time.Now().Add(-1 * time.Hour),

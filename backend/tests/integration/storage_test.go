@@ -21,8 +21,6 @@ var dbname string
 var dbtablename string
 var natsUrl string
 
-var _ storage.LogStore = (*storage.ClickHouseStore)(nil) // make sure satisfies interface methods before any tests
-
 var testRecord1 core.FlatLogRecord = core.FlatLogRecord{
 	Timestamp:         time.Date(2024, 5, 20, 10, 0, 0, 0, time.UTC),
 	ObservedTimestamp: time.Date(2024, 5, 20, 10, 0, 0, 0, time.UTC),
