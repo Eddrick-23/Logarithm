@@ -96,7 +96,6 @@ export default function LiveTailLogs() {
 
         ws.onerror = (e) => {
             console.error("ws error", e);
-            setConnectionStatus("error");
         };
 
         ws.onclose = (e) => {
