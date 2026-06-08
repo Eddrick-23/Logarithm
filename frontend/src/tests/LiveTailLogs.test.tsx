@@ -56,7 +56,7 @@ const emitLogs = async (overrides: Partial<FlatLogRecord> = {}) => {
 
 /** Renders the component and waits for the WebSocket connection to be established */
 const renderAndConnect = async () => {
-    await act(async () => render(<LiveTailLogs />));
+    render(<LiveTailLogs />);
     await waitFor(() => expect(sendToClient).not.toBeNull());
 };
 
@@ -132,6 +132,7 @@ describe("LiveTailLogs — connection status", () => {
     });
 
     it("retrying after error resets to connecting state", async () => {
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
         await renderAndConnect();
 
         server.use(
@@ -155,6 +156,10 @@ describe("LiveTailLogs — connection status", () => {
             await userEvent.click(screen.getByRole("button", { name: /retry/i }));
             expect(screen.getByText(connectingMessage)).toBeInTheDocument();
         });
+
+        // due to some jsdom errors, this line is only meant
+        // to suppress the act warning, not real errors
+        expect(consoleError).not.toHaveBeenCalledWith(expect.stringContaining("failed"));
     });
 });
 
@@ -187,11 +192,10 @@ describe("LiveTailLogs — receiving logs", () => {
 
 describe("LiveTailLogs — pause / resume", () => {
     it("shows pause alert bar when paused", async () => {
+        const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
         await renderAndConnect();
 
-        await act(async () => {
-            await userEvent.click(screen.getByRole("button", { name: /pause/i }));
-        });
+        await user.click(screen.getByRole("button", { name: /pause/i }));
 
         expect(screen.getByText(pauseMessage)).toBeInTheDocument();
     });
