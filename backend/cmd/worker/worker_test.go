@@ -2,136 +2,235 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
-	"github.com/Eddrick-23/Logarithm/api/schemas"
 	"github.com/Eddrick-23/Logarithm/internal/core"
+	"github.com/Eddrick-23/Logarithm/internal/transport"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
-func TestExtractAttributes(t *testing.T) {
-	tests := []struct {
-		name           string
-		attributes     []schemas.KeyValue
-		expectedKeys   []string
-		expectedValues []string
-	}{
-		{"slice with full KeyValue pairs",
-			[]schemas.KeyValue{{Key: "key1", Value: "val1"}, {Key: "key2", Value: "val2"}, {Key: "key3", Value: "val3"}},
-			[]string{"key1", "key2", "key3"},
-			[]string{"val1", "val2", "val3"},
-		},
-		{"KeyValue pair empty value",
-			[]schemas.KeyValue{{Key: "key1", Value: ""}},
-			[]string{"key1"},
-			[]string{""},
-		},
-		{"empty KeyValue slice", []schemas.KeyValue{}, []string{}, []string{}},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			keys, values := extractAttributes(tc.attributes)
-
-			assert.Equal(t, tc.expectedKeys, keys)
-			assert.Equal(t, tc.expectedValues, values)
-		})
-	}
-}
-
-func newBaseRequest() schemas.LogIngestRequest {
-	mockTime := time.Date(2026, time.May, 30, 12, 0, 0, 0, time.UTC)
-	return schemas.LogIngestRequest{
-		ServiceName: "default-service",
-		Records: []schemas.LogRecordDTO{
-			{
-				Timestamp:      mockTime,
-				TraceId:        "default-trace",
-				SpanId:         "default-span",
-				SeverityText:   "INFO",
-				SeverityNumber: 9,
-				Body:           "default body",
-			},
-		},
-	}
-}
-
-func buildTestRequest(template schemas.LogIngestRequest, resAttr []schemas.KeyValue, logAttr []schemas.KeyValue) schemas.LogIngestRequest {
-	template.ResourceAttributes = resAttr
-
-	for i := range template.Records { // reference by index so we modify the actual underlying slice
-		template.Records[i].LogAttributes = logAttr
-	}
-
-	return template
-}
 func TestFlattenLogs(t *testing.T) {
 	tests := []struct {
-		name                     string
-		customResourceAttributes []schemas.KeyValue
-		customLogAttributes      []schemas.KeyValue
-		expectedResKeys          []string
-		expectedResValues        []string
-		expectedLogKeys          []string
-		expectedLogValues        []string
+		name           string
+		inputJSON      string
+		expectedLength int
+		check          func(t *testing.T, actualLogs []core.FlatLogRecord)
 	}{
 		{
-			"map attributes correctly",
-			[]schemas.KeyValue{{Key: "res-key1", Value: "res-val1"}},
-			[]schemas.KeyValue{{Key: "log-key1", Value: "log-val1"}},
-			[]string{"res-key1"},
-			[]string{"res-val1"},
-			[]string{"log-key1"},
-			[]string{"log-val1"},
+			name: "Single Log",
+			inputJSON: `{
+				"resourceLogs": [{
+					"resource": {
+						"attributes": [{"key": "service.name", "value": {"stringValue": "auth-service"}}]
+					},
+					"scopeLogs": [{
+						"logRecords": [{
+							"timeUnixNano": "1717732530000000000",
+							"severityText": "INFO",
+							"body": {"stringValue": "user logged in"}
+						}]
+					}]
+				}]
+			}`,
+			expectedLength: 1,
+			check: func(t *testing.T, actualLogs []core.FlatLogRecord) {
+				require.Len(t, actualLogs, 1)
+				assert.Equal(t, time.Unix(0, 1717732530000000000), actualLogs[0].Timestamp)
+				assert.Equal(t, "auth-service", actualLogs[0].ServiceName)
+				assert.Equal(t, "INFO", actualLogs[0].SeverityText)
+				assert.Equal(t, "user logged in", actualLogs[0].Body)
+				assert.Equal(t, "string", actualLogs[0].BodyType)
+			},
 		},
 		{
-			"map multiple attributes correctly",
-			[]schemas.KeyValue{{Key: "res-key1", Value: "res-val1"}, {Key: "res-key2", Value: "res-val2"}},
-			[]schemas.KeyValue{{Key: "log-key1", Value: "log-val1"}, {Key: "log-key2", Value: "log-val2"}},
-			[]string{"res-key1", "res-key2"},
-			[]string{"res-val1", "res-val2"},
-			[]string{"log-key1", "log-key2"},
-			[]string{"log-val1", "log-val2"},
+			name: "Single Log with Log and Resource Attributes",
+			inputJSON: `{
+				"resourceLogs": [{
+					"resource": {
+						"attributes": [{"key": "service.name", "value": {"stringValue": "auth-service"}}]
+					},
+					"scopeLogs": [{
+						"logRecords": [{
+							"timeUnixNano": "1717732530000000000",
+							"severityText": "INFO",
+							"body": {"stringValue": "user logged in"},
+							"attributes": [
+								{
+								"key": "test.environment",
+								"value": { "stringValue": "local" }
+								}
+							]
+						}]
+					}]
+				}]
+			}`,
+			expectedLength: 1,
+			check: func(t *testing.T, actualLogs []core.FlatLogRecord) {
+				require.Len(t, actualLogs, 1)
+				assert.Equal(t, []string{"service.name"}, actualLogs[0].ResAttrKeys)
+				assert.Equal(t, []string{"auth-service"}, actualLogs[0].ResAttrValues)
+				assert.Equal(t, []string{"test.environment"}, actualLogs[0].LogAttrKeys)
+				assert.Equal(t, []string{"local"}, actualLogs[0].LogAttrValues)
+			},
 		},
 		{
-			"empty attributes",
-			[]schemas.KeyValue{},
-			[]schemas.KeyValue{},
-			[]string{},
-			[]string{},
-			[]string{},
-			[]string{},
+			name: "Single Log Multiple Services",
+			inputJSON: `{
+				"resourceLogs": [{
+					"resource": {
+						"attributes": [{"key": "service.name", "value": {"stringValue": "auth-service"}}]
+					},
+					"scopeLogs": [{
+						"logRecords": [{
+							"timeUnixNano": "1717732530000000000",
+							"severityText": "INFO",
+							"body": {"stringValue": "user logged in"}
+						}]
+					}]
+				},
+				{
+					"resource": {
+						"attributes": [{"key": "service.name", "value": {"stringValue": "payment-service"}}]
+					},
+					"scopeLogs": [{
+						"logRecords": [{
+							"timeUnixNano": "1717732530000000000",
+							"severityText": "INFO",
+							"body": {"stringValue": "user logged in"}
+						}]
+					}]
+				}
+				]
+			}`,
+			expectedLength: 2,
+			check: func(t *testing.T, actualLogs []core.FlatLogRecord) {
+				assert.Len(t, actualLogs, 2)
+				serviceNames := []string{}
+				for _, record := range actualLogs {
+					serviceNames = append(serviceNames, record.ServiceName)
+				}
+
+				assert.Contains(t, serviceNames, "auth-service")
+				assert.Contains(t, serviceNames, "payment-service")
+			},
+		},
+		{
+			name: "Multiple Logs Single Service",
+			inputJSON: `{
+				"resourceLogs": [{
+					"resource": {
+						"attributes": [{"key": "service.name", "value": {"stringValue": "auth-service"}}]
+					},
+					"scopeLogs": [{
+						"logRecords": [
+						{
+							"timeUnixNano": "1717732530000000000",
+							"severityText": "INFO",
+							"body": {"stringValue": "user logged in"}
+						},
+						{
+							"timeUnixNano": "1717732530000000000",
+							"severityText": "ERROR",
+							"body": {"stringValue": "login timed out"}
+						}
+						]
+					}]
+				}]
+			}`,
+			expectedLength: 2,
+			check: func(t *testing.T, actualLogs []core.FlatLogRecord) {
+				assert.Len(t, actualLogs, 2)
+				serviceNames := make(map[string]struct{})
+				for _, record := range actualLogs {
+					serviceNames[record.ServiceName] = struct{}{}
+				}
+
+				assert.Len(t, serviceNames, 1)
+			},
+		},
+		{
+			name: "Missing Service Name",
+			inputJSON: `{
+				"resourceLogs": [{
+					"resource": {}, 
+					"scopeLogs": [{
+						"logRecords": [{
+							"severityText": "ERROR",
+							"body": {"stringValue": "crash"}
+						}]
+					}]
+				}]
+			}`,
+			expectedLength: 1,
+			check: func(t *testing.T, actualLogs []core.FlatLogRecord) {
+				require.Len(t, actualLogs, 1)
+				assert.Equal(t, "unknown", actualLogs[0].ServiceName)
+				assert.Equal(t, "ERROR", actualLogs[0].SeverityText)
+			},
+		},
+		{
+			name: "Missing Timestamps",
+			inputJSON: `{
+				"resourceLogs": [{
+					"resource": {
+						"attributes": [{"key": "service.name", "value": {"stringValue": "auth-service"}}]
+					},
+					"scopeLogs": [{
+						"logRecords": [{
+							"severityText": "ERROR",
+							"body": {"stringValue": "crash"}
+						}]
+					}]
+				}]
+			}`,
+			expectedLength: 1,
+			check: func(t *testing.T, actualLogs []core.FlatLogRecord) {
+				require.Len(t, actualLogs, 1)
+				assert.WithinDuration(t, time.Now(), actualLogs[0].Timestamp, 2*time.Second)
+				assert.WithinDuration(t, time.Now(), actualLogs[0].ObservedTimestamp, 2*time.Second)
+			},
+		},
+		{
+			name:           "Empty Payload",
+			inputJSON:      `{"resourceLogs": []}`,
+			expectedLength: 0,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			completeTemplate := buildTestRequest(newBaseRequest(), tc.customResourceAttributes, tc.customLogAttributes)
-			buffer := make([]core.FlatLogRecord, 0)
-			buffer = flattenLogs(completeTemplate, buffer)
-			expected := []core.FlatLogRecord{
-				{Timestamp: completeTemplate.Records[0].Timestamp,
-					TraceId:        completeTemplate.Records[0].TraceId,
-					SpanId:         completeTemplate.Records[0].SpanId,
-					SeverityText:   completeTemplate.Records[0].SeverityText,
-					SeverityNumber: completeTemplate.Records[0].SeverityNumber,
-					ServiceName:    completeTemplate.ServiceName,
-					Body:           completeTemplate.Records[0].Body,
-					LogAttrKeys:    tc.expectedLogKeys,
-					LogAttrValues:  tc.expectedLogValues,
-					ResAttrKeys:    tc.expectedResKeys,
-					ResAttrValues:  tc.expectedResValues,
-				}}
+			var req collectorlogspb.ExportLogsServiceRequest
+			err := protojson.Unmarshal([]byte(tc.inputJSON), &req)
+			require.NoError(t, err, "invalid test JSON provided")
 
-			assert.Equal(t, expected, buffer)
+			flatLogsByServiceName := make(map[string][]core.FlatLogRecord)
+			totalExtracted := 0
+
+			for _, resource := range req.ResourceLogs {
+				totalExtracted += flattenLogs(resource, flatLogsByServiceName)
+			}
+
+			var actualLogs []core.FlatLogRecord
+			for _, logs := range flatLogsByServiceName {
+				actualLogs = append(actualLogs, logs...)
+			}
+
+			assert.Equal(t, tc.expectedLength, totalExtracted, "extracted count mismatch")
+			assert.Equal(t, tc.expectedLength, len(actualLogs), "slice length mismatch")
+
+			if tc.expectedLength > 0 {
+				tc.check(t, actualLogs)
+			}
 		})
 	}
 }
-
 func TestDelayCalculator(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -191,48 +290,112 @@ func (m *MockLogStore) BatchInsert(ctx context.Context, records []core.FlatLogRe
 func (m *MockLogStore) SearchLogs(ctx context.Context, filter core.LogQueryFilter) ([]core.FlatLogRecord, error) {
 	return nil, nil // not needed for this test
 }
-func TestConsumeCallback(t *testing.T) {
-	validReq := newBaseRequest()
-	validJSON, err := json.Marshal(validReq)
-	if err != nil {
-		t.Fatalf("failed to marshal valid test request: %v", err)
+
+type MockProducer struct {
+	PublishedRecords map[string][][]byte
+	PublishErr       error
+	PublishCount     int
+	mu               sync.Mutex
+	PublishCh        chan struct{}
+}
+
+func (m *MockProducer) PublishLogs(ctx context.Context, subject string, payload []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.PublishedRecords == nil {
+		m.PublishedRecords = map[string][][]byte{}
 	}
 
-	expectedRecord := flattenLogs(validReq, []core.FlatLogRecord{})[0]
+	m.PublishedRecords[subject] = append(m.PublishedRecords[subject], payload)
+
+	select {
+	case m.PublishCh <- struct{}{}: // signal test thread a publish occured
+	default:
+	}
+
+	return m.PublishErr
+}
+
+func newBaseRequest(t *testing.T) *collectorlogspb.ExportLogsServiceRequest {
+	inputJSON := `{
+				"resourceLogs": [{
+					"resource": {
+						"attributes": [{"key": "service.name", "value": {"stringValue": "auth-service"}}]
+					},
+					"scopeLogs": [{
+						"logRecords": [{
+							"timeUnixNano": "1717732530000000000",
+							"severityText": "INFO",
+							"body": {"stringValue": "user logged in"}
+						}]
+					}]
+				}]
+			}`
+
+	var req collectorlogspb.ExportLogsServiceRequest
+	err := protojson.Unmarshal([]byte(inputJSON), &req)
+	require.NoError(t, err, "invalid inputJSON provided")
+	return &req
+}
+
+func TestConsumeCallback(t *testing.T) {
+	req := newBaseRequest(t)
+
+	reqBytes, err := protojson.Marshal(req)
+	require.NoError(t, err, "failed to marshal request")
+
+	flatLogsByServiceName := map[string][]core.FlatLogRecord{}
+	for _, resource := range req.ResourceLogs {
+		flattenLogs(resource, flatLogsByServiceName)
+	}
+	expectedRecord := flatLogsByServiceName["auth-service"][0]
 
 	tests := []struct {
 		name                string
 		payloads            [][]byte
 		mockDBError         error
+		mockProducerError   error
 		expectedErr         bool
 		expectedInsertCount int
+		expectedRecordCount int
+		expectedPublishes   int
 	}{
 		{
 			"empty payloads slice",
 			[][]byte{},
 			nil,
+			nil,
 			false,
+			0,
+			0,
 			0,
 		},
 		{
 			"successful batch insert",
 			[][]byte{
-				validJSON,
-				validJSON,
+				reqBytes,
+				reqBytes,
 			},
 			nil,
+			nil,
 			false,
+			1,
+			2,
 			1,
 		},
 		{
 			"skip malformed json but insert valid ones",
 			[][]byte{
-				validJSON,
+				reqBytes,
 				[]byte(`{malformed payload]`),
-				validJSON,
+				reqBytes,
 			},
 			nil,
+			nil,
 			false,
+			1,
+			2,
 			1,
 		},
 		{
@@ -243,16 +406,34 @@ func TestConsumeCallback(t *testing.T) {
 				[]byte(`{malformed payload]`),
 			},
 			nil,
+			nil,
 			false,
+			0,
+			0,
 			0,
 		},
 		{
-			"database insert failure returns error",
+			"database insert failure returns error, live tail still publishes",
 			[][]byte{
-				validJSON,
+				reqBytes,
 			},
 			fmt.Errorf("test insert error"),
+			nil,
 			true,
+			1,
+			1,
+			1,
+		},
+		{
+			"database insert sucess, live tail publish failure",
+			[][]byte{
+				reqBytes,
+			},
+			nil,
+			fmt.Errorf("test publish error"),
+			false,
+			1,
+			1,
 			1,
 		},
 	}
@@ -262,7 +443,14 @@ func TestConsumeCallback(t *testing.T) {
 			mockStore := &MockLogStore{
 				InsertErr: tc.mockDBError,
 			}
-			callback := ConsumeCallback(slog.Default(), mockStore)
+
+			mockProducer := &MockProducer{
+				PublishedRecords: map[string][][]byte{},
+				PublishCh:        make(chan struct{}, 10),
+				PublishErr:       tc.mockProducerError,
+			}
+
+			callback := ConsumeCallback(slog.Default(), mockStore, mockProducer)
 			err := callback(tc.payloads)
 
 			if tc.expectedErr {
@@ -271,23 +459,38 @@ func TestConsumeCallback(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
+			// wait for background go routines to finish publishing
+			// check that we receive exact number of publishes
+			for i := 0; i < tc.expectedPublishes; i++ {
+				select {
+				case <-mockProducer.PublishCh:
+					// received publish
+				case <-time.After(1 * time.Second):
+					t.Fatalf("timeout waiting for background nats publish")
+				}
+			}
+
 			assert.Equal(t, tc.expectedInsertCount, mockStore.InsertCount)
+			assert.Len(t, mockStore.InsertedRecords, tc.expectedRecordCount)
 
 			if tc.expectedInsertCount > 0 && !tc.expectedErr {
-				expectedCount := 0
-				for _, p := range tc.payloads {
-					var data schemas.LogIngestRequest
-					if err := json.Unmarshal(p, &data); err != nil {
-						continue
-					}
-					expectedCount++
-				}
-
-				assert.Len(t, mockStore.InsertedRecords, expectedCount)
 
 				for _, record := range mockStore.InsertedRecords {
-					assert.Equal(t, expectedRecord, record)
+					assert.Equal(t, expectedRecord.ServiceName, record.ServiceName)
+					assert.Equal(t, expectedRecord.Body, record.Body)
+					assert.Equal(t, expectedRecord.SeverityText, record.SeverityText)
 				}
+			}
+
+			if tc.expectedPublishes > 0 {
+				mockProducer.mu.Lock()
+
+				subject := transport.LiveTailSubjectTemplate + "auth-service"
+				assert.Contains(t, mockProducer.PublishedRecords, subject)
+
+				assert.NotEmpty(t, mockProducer.PublishedRecords[subject])
+
+				mockProducer.mu.Unlock()
 			}
 
 		})
