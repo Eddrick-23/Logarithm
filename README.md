@@ -123,43 +123,57 @@ go test ./... -tags=integration
 To run frontend tests
 
 ```bash
+cd frontend
 npm test
 ```
 
 To run frontend tests with Vitest UI
 
 ```bash
+cd frontend
 npm run test:ui
 ```
 
 To run frontend tests with watch mode
 
 ```bash
+cd frontend
 npm run test:watch
 ```
+
 ### Load generator and benchmarks
+
 Benchmarking logarithm uses a seeded randomised load generator using go and the vegeta library
+
 #### Usage
+
 The randomised generator references the log ingest schema from backend/api/schemas/logs.go
 To cross import from the backend directory, we will use the go work feature. </br>
 Run from project root
+
 ```
 go work init ./backend ./load_generator
 ```
+
 Then to run load generator (make sure logarithm service is running)
+
 ```
 cd load_generator
 
 go build -o bin/main
 bin/main --config config.json --duration 10 --warmup 5
 ```
+
 To view flags use `bin/main --help` or `go run main.go --help`
 Results after the test will be in the results folder labelled results.bin. To convert to other formats, you can use the [vegeta cli](https://github.com/tsenart/vegeta) to generate reports.
 
 #### Benchmark with profiling
+
 Instead of running the load generator by itself, a profile.sh script has been set up that will start the load generator and profiling with pprof alog with tracking nats queue depth. Run with
+
 ```
 cd load_generator
 bash profile.sh 30 10 5 config.json <optional IP: default localhost>
 ```
+
 specify IP only if hosting logarithm and running load generator on different machines.

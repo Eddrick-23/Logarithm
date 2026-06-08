@@ -34,7 +34,15 @@ func TestMain(m *testing.M) {
 	}
 
 	natsHost, err := natsContainer.Host(ctx)
+	if err != nil {
+		log.Fatalf("failed to get nats host: %s", err)
+	}
+
 	natsPort, err := natsContainer.MappedPort(ctx, "4222/tcp")
+	if err != nil {
+		log.Fatalf("failed to get nats port: %s", err)
+	}
+
 	natsUrl = fmt.Sprintf("nats://%s:%s", natsHost, natsPort.Port())
 
 	nc, err := nats.Connect(natsUrl, nats.DrainTimeout(5*time.Second))
@@ -48,8 +56,8 @@ func TestMain(m *testing.M) {
 	}
 
 	_, err = js.CreateStream(ctx, jetstream.StreamConfig{
-		Name:     transport.LogStreamName,
-		Subjects: []string{"logs.test.>"},
+		Name:     transport.LiveTailStreamName,
+		Subjects: []string{transport.LiveTailSubject},
 	})
 	if err != nil {
 		log.Fatalf("failed to create JetStream stream: %s", err)

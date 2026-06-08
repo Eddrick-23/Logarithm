@@ -10,10 +10,13 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-const (
-	LogStreamName = "LOGS"
-	DLQStreamName = "LOGS_DLQ"
-	DLQSubject    = "dlq.logs"
+const ( // infra constants
+	LogStreamName         = "LOGS"
+	DLQStreamName         = "LOGS_DLQ"
+	DLQSubject            = "dlq.logs"
+	LiveTailStreamName    = "TAIL"
+	LiveTailSubject       = "tail.>"
+	LiveTailSubjectPrefix = "tail."
 )
 
 var _ Producer = (*NatsBroker)(nil)
@@ -78,29 +81,59 @@ func (nb *NatsBroker) Close() {
 }
 
 func (nb *NatsBroker) EnsureLogStream(ctx context.Context, streamName string, subject string, maxAge time.Duration) (jetstream.Stream, error) {
-	return nb.ensureStream(ctx, streamName, "unified log stream for all client services", subject, maxAge)
+	nb.logger.Info("Ensuring stream exists", "subject", subject)
+	streamConfig := jetstream.StreamConfig{
+		Name:        streamName,
+		Description: "unified stream containing raw log data",
+		Subjects:    []string{subject},
+		Storage:     jetstream.FileStorage,
+		Discard:     jetstream.DiscardOld,
+		MaxAge:      maxAge,
+	}
+
+	return nb.ensureStream(ctx, &streamConfig)
 }
 
 func (nb *NatsBroker) EnsureDLQStream(ctx context.Context, streamName string, subject string, maxAge time.Duration) (jetstream.Stream, error) {
-	return nb.ensureStream(ctx, streamName, "dead letter queue for failed log deliveries", subject, maxAge)
+	nb.logger.Info("Ensuring stream exists", "subject", subject)
+	streamConfig := jetstream.StreamConfig{
+		Name:        streamName,
+		Description: "dead letter queue for failed log deliveries",
+		Subjects:    []string{subject},
+		Storage:     jetstream.FileStorage,
+		Discard:     jetstream.DiscardOld,
+		MaxAge:      maxAge,
+	}
+
+	return nb.ensureStream(ctx, &streamConfig)
 }
 
-func (nb *NatsBroker) ensureStream(ctx context.Context, streamName string, description string,
-	subject string, NatsStreamMaxAge time.Duration) (jetstream.Stream, error) {
+func (nb *NatsBroker) EnsureLiveTailStream(ctx context.Context, streamName string, subject string) (jetstream.Stream, error) {
+	// no max age
+	// small storage limit for ram
+	// memory storage only
+	// acts as a small circular buffer
+	// TODO make maxBytes configurable
 	nb.logger.Info("Ensuring stream exists", "subject", subject)
-
-	stream, err := nb.js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+	streamConfig := jetstream.StreamConfig{
 		Name:        streamName,
-		Description: description,
+		Description: "live tail stream for flattened logs",
 		Subjects:    []string{subject},
-		Storage:     jetstream.FileStorage, // Persist to disk for durable queue
-		MaxAge:      NatsStreamMaxAge,
-	})
+		Storage:     jetstream.MemoryStorage,
+		Discard:     jetstream.DiscardOld,
+		MaxBytes:    50 * 1024 * 1024, // 50MB
+	}
+
+	return nb.ensureStream(ctx, &streamConfig)
+}
+
+func (nb *NatsBroker) ensureStream(ctx context.Context, config *jetstream.StreamConfig) (jetstream.Stream, error) {
+	stream, err := nb.js.CreateOrUpdateStream(ctx, *config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
 
-	nb.logger.Info("stream created", "name", streamName, "subject", subject)
+	nb.logger.Info("stream created", "name", config.Name, "subject", config.Subjects)
 	return stream, nil
 }
 
@@ -132,6 +165,12 @@ func (nb *NatsBroker) NewDurableConsumer(ctx context.Context, stream jetstream.S
 	return &NatsJSConsumer{cons, nb.logger, uint64(maxDeliver)}, nil
 }
 
+// TODO modify to support OTEL data unmarshalling
+// For now assumes all payloads are protojson
+// filter by service name + flatten //DONE
+// join flattened slice and pass to clickhouse //DONE
+// other flattened slice publish to tail.* stream for live tail
+// live tail contains raw []FlatLogRecord encoded bytes
 func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, logHandler ProcessLogFunc, dlqHandler DLQFunc, delayHandler DelayCalcFunc,
 	maxBatch int, maxWait time.Duration) error {
 

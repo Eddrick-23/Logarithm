@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,11 +14,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Eddrick-23/Logarithm/api/schemas"
 	"github.com/Eddrick-23/Logarithm/internal/config"
 	"github.com/Eddrick-23/Logarithm/internal/dashboard"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
+	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
+	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
+	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func NewServer(logger *slog.Logger, config *config.Config, logStore *storage.ClickHouseStore, broker *transport.NatsBroker) http.Handler {
@@ -29,6 +33,11 @@ func NewServer(logger *slog.Logger, config *config.Config, logStore *storage.Cli
 	// add middlewares if any
 
 	return handler
+}
+
+func mustDecodeHex(s string) []byte {
+	b, _ := hex.DecodeString(s)
+	return b
 }
 
 func run(ctx context.Context, w io.Writer, args []string) error {
@@ -62,147 +71,163 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		for {
 			select {
 			case <-ticker.C:
-				req := schemas.LogIngestRequest{
-					ServiceName: "auth-service",
-					ResourceAttributes: []schemas.KeyValue{
-						{Key: "environment", Value: "production"},
-						{Key: "host.name", Value: "auth-worker-01"},
-					},
-					Records: []schemas.LogRecordDTO{
+				req := collectorlogspb.ExportLogsServiceRequest{
+					ResourceLogs: []*logspb.ResourceLogs{
 						{
-							Timestamp:      time.Now(),
-							TraceId:        "5b8aa5a2d2c8646c14e138a83416a41f",
-							SpanId:         "f96ea2a71a065463",
-							SeverityText:   "INFO",
-							SeverityNumber: 9,
-							Body:           "User authenticated successfully.",
-							LogAttributes: []schemas.KeyValue{
-								{Key: "user_id", Value: "usr_987654321"},
-								{Key: "ip_address", Value: "192.168.1.104"},
+							Resource: &resourcepb.Resource{
+								Attributes: []*commonpb.KeyValue{
+									{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "auth-service"}}},
+									{Key: "environment", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "production"}}},
+									{Key: "host.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "auth-worker-01"}}},
+								},
 							},
-						},
-						{
-							Timestamp:      time.Now(),
-							TraceId:        "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
-							SpanId:         "a1b2c3d4e5f6a7b8",
-							SeverityText:   "ERROR",
-							SeverityNumber: 17,
-							Body:           "Failed to connect to database cache.",
-							LogAttributes: []schemas.KeyValue{
-								{Key: "cache_host", Value: "redis-cluster.local"},
-								{Key: "timeout_ms", Value: "5000"},
-							},
-						},
-						{
-							Timestamp:      time.Now(),
-							TraceId:        "0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d",
-							SpanId:         "1a2b3c4d5e6f7a8b",
-							SeverityText:   "DEBUG",
-							SeverityNumber: 5,
-							Body:           "Database connection pool statistics updated.",
-							LogAttributes: []schemas.KeyValue{
-								{Key: "active_connections", Value: "14"},
-								{Key: "idle_connections", Value: "6"},
-								{Key: "pool_name", Value: "primary-replica"},
-							},
-						},
-						{
-							Timestamp:      time.Now(),
-							TraceId:        "f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0",
-							SpanId:         "8b7a6f5e4d3c2b1a",
-							SeverityText:   "WARNING",
-							SeverityNumber: 13,
-							Body:           "API request latency exceeded threshold limit.",
-							LogAttributes: []schemas.KeyValue{
-								{Key: "endpoint", Value: "/api/v1/analytics"},
-								{Key: "duration_ms", Value: "1250"},
-								{Key: "threshold_ms", Value: "1000"},
+							ScopeLogs: []*logspb.ScopeLogs{
+								{
+									LogRecords: []*logspb.LogRecord{
+										{
+											TimeUnixNano:   uint64(time.Now().UnixNano()),
+											TraceId:        mustDecodeHex("5b8aa5a2d2c8646c14e138a83416a41f"),
+											SpanId:         mustDecodeHex("f96ea2a71a065463"),
+											SeverityText:   "INFO",
+											SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_INFO,
+											Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "User authenticated successfully."}},
+											Attributes: []*commonpb.KeyValue{
+												{Key: "user_id", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "usr_987654321"}}},
+												{Key: "ip_address", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "192.168.1.104"}}},
+											},
+										},
+										{
+											TimeUnixNano:   uint64(time.Now().UnixNano()),
+											TraceId:        mustDecodeHex("1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"),
+											SpanId:         mustDecodeHex("a1b2c3d4e5f6a7b8"),
+											SeverityText:   "ERROR",
+											SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_ERROR,
+											Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "Failed to connect to database cache."}},
+											Attributes: []*commonpb.KeyValue{
+												{Key: "cache_host", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "redis-cluster.local"}}},
+												{Key: "timeout_ms", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "5000"}}},
+											},
+										},
+										{
+											TimeUnixNano:   uint64(time.Now().UnixNano()),
+											TraceId:        mustDecodeHex("aabbccddeeff00112233445566778899"),
+											SpanId:         mustDecodeHex("b1c2d3e4f5a6b7c8"),
+											SeverityText:   "DEBUG",
+											SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_DEBUG,
+											Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "Cache lookup attempted for session token."}},
+											Attributes: []*commonpb.KeyValue{
+												{Key: "session_id", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "sess_112233445"}}},
+												{Key: "cache_key", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "session:sess_112233445"}}},
+											},
+										},
+										{
+											TimeUnixNano:   uint64(time.Now().UnixNano()),
+											TraceId:        mustDecodeHex("deadbeefcafebabe1234567890abcdef"),
+											SpanId:         mustDecodeHex("c3d4e5f6a7b8c9d0"),
+											SeverityText:   "WARNING",
+											SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_WARN,
+											Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "Auth token expiring soon, refresh recommended."}},
+											Attributes: []*commonpb.KeyValue{
+												{Key: "user_id", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "usr_111222333"}}},
+												{Key: "expires_in_seconds", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "120"}}},
+											},
+										},
+									},
+								},
 							},
 						},
 					},
 				}
 
 				// Marshal the struct into a JSON byte slice
-				payload, err := json.Marshal(req)
+				payload, err := protojson.Marshal(&req)
 				if err != nil {
 					natsLogger.Error("failed to marshal log payload:", "err", err)
 					continue
 				}
 
 				// Publish the marshaled JSON bytes
-				if err := broker.PublishLogs(ctx, "logs.service-a", payload); err != nil {
+				if err := broker.PublishLogs(ctx, "logs.auth-service", payload); err != nil {
 					natsLogger.Error("publish error:", "err", err)
 				}
 
-				req2 := schemas.LogIngestRequest{
-					ServiceName: "logging-service",
-					ResourceAttributes: []schemas.KeyValue{
-						{Key: "environment", Value: "production"},
-						{Key: "host.name", Value: "auth-worker-01"},
-					},
-					Records: []schemas.LogRecordDTO{
+				req2 := collectorlogspb.ExportLogsServiceRequest{
+					ResourceLogs: []*logspb.ResourceLogs{
 						{
-							Timestamp:      time.Now(),
-							TraceId:        "5b8aa5a2d2c8646c14e138a83416a41f",
-							SpanId:         "f96ea2a71a065463",
-							SeverityText:   "INFO",
-							SeverityNumber: 9,
-							Body:           "User authenticated successfully.",
-							LogAttributes: []schemas.KeyValue{
-								{Key: "user_id", Value: "usr_987654321"},
-								{Key: "ip_address", Value: "192.168.1.104"},
+							Resource: &resourcepb.Resource{
+								Attributes: []*commonpb.KeyValue{
+									{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "logging-service"}}},
+									{Key: "environment", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "production"}}},
+									{Key: "host.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "logging-worker-01"}}},
+								},
 							},
-						},
-						{
-							Timestamp:      time.Now(),
-							TraceId:        "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
-							SpanId:         "a1b2c3d4e5f6a7b8",
-							SeverityText:   "ERROR",
-							SeverityNumber: 17,
-							Body:           "Failed to connect to database cache.",
-							LogAttributes: []schemas.KeyValue{
-								{Key: "cache_host", Value: "redis-cluster.local"},
-								{Key: "timeout_ms", Value: "5000"},
-							},
-						},
-						{
-							Timestamp:      time.Now(),
-							TraceId:        "0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d",
-							SpanId:         "1a2b3c4d5e6f7a8b",
-							SeverityText:   "DEBUG",
-							SeverityNumber: 5,
-							Body:           "Database connection pool statistics updated.",
-							LogAttributes: []schemas.KeyValue{
-								{Key: "active_connections", Value: "14"},
-								{Key: "idle_connections", Value: "6"},
-								{Key: "pool_name", Value: "primary-replica"},
-							},
-						},
-						{
-							Timestamp:      time.Now(),
-							TraceId:        "f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0",
-							SpanId:         "8b7a6f5e4d3c2b1a",
-							SeverityText:   "WARNING",
-							SeverityNumber: 13,
-							Body:           "API request latency exceeded threshold limit.",
-							LogAttributes: []schemas.KeyValue{
-								{Key: "endpoint", Value: "/api/v1/analytics"},
-								{Key: "duration_ms", Value: "1250"},
-								{Key: "threshold_ms", Value: "1000"},
+							ScopeLogs: []*logspb.ScopeLogs{
+								{
+									LogRecords: []*logspb.LogRecord{
+										{
+											TimeUnixNano:   uint64(time.Now().UnixNano()),
+											TraceId:        mustDecodeHex("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"),
+											SpanId:         mustDecodeHex("d1e2f3a4b5c6d7e8"),
+											SeverityText:   "INFO",
+											SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_INFO,
+											Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "Log pipeline started successfully."}},
+											Attributes: []*commonpb.KeyValue{
+												{Key: "pipeline_id", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "pipe_001"}}},
+												{Key: "source", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "otel-collector"}}},
+											},
+										},
+										{
+											TimeUnixNano:   uint64(time.Now().UnixNano()),
+											TraceId:        mustDecodeHex("f1e2d3c4b5a6978869504030201f0e0d"),
+											SpanId:         mustDecodeHex("e2f3a4b5c6d7e8f9"),
+											SeverityText:   "DEBUG",
+											SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_DEBUG,
+											Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "Flushing log buffer to storage backend."}},
+											Attributes: []*commonpb.KeyValue{
+												{Key: "buffer_size", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "512"}}},
+												{Key: "backend", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "clickhouse"}}},
+											},
+										},
+										{
+											TimeUnixNano:   uint64(time.Now().UnixNano()),
+											TraceId:        mustDecodeHex("0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d"),
+											SpanId:         mustDecodeHex("f3a4b5c6d7e8f9a0"),
+											SeverityText:   "WARNING",
+											SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_WARN,
+											Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "Log ingestion rate approaching limit."}},
+											Attributes: []*commonpb.KeyValue{
+												{Key: "current_rate", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "4800"}}},
+												{Key: "limit", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "5000"}}},
+											},
+										},
+										{
+											TimeUnixNano:   uint64(time.Now().UnixNano()),
+											TraceId:        mustDecodeHex("1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f"),
+											SpanId:         mustDecodeHex("a4b5c6d7e8f9a0b1"),
+											SeverityText:   "ERROR",
+											SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_ERROR,
+											Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "Failed to write log batch to storage."}},
+											Attributes: []*commonpb.KeyValue{
+												{Key: "batch_id", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "batch_20260608_001"}}},
+												{Key: "error", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "connection timeout"}}},
+											},
+										},
+									},
+								},
 							},
 						},
 					},
 				}
 
 				// Marshal the struct into a JSON byte slice
-				payload, err = json.Marshal(req2)
+				payload, err = protojson.Marshal(&req2)
 				if err != nil {
 					natsLogger.Error("failed to marshal log payload:", "err", err)
 					continue
 				}
 
 				// Publish the marshaled JSON bytes
-				if err := broker.PublishLogs(ctx, "logs.service-a", payload); err != nil {
+				if err := broker.PublishLogs(ctx, "logs.logging-service", payload); err != nil {
 					natsLogger.Error("publish error:", "err", err)
 				}
 

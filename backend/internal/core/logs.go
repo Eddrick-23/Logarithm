@@ -2,26 +2,33 @@ package core
 
 import (
 	"time"
-
-	"github.com/Eddrick-23/Logarithm/api/schemas"
 )
+
+type KeyValue struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
 
 /*
 FlatLogRecord is optimized for storage in ClickHouse
 */
 type FlatLogRecord struct {
-	Timestamp      time.Time `ch:"Timestamp"`
-	InsertedAt     time.Time `ch:"InsertedAt"` // not mapped when unflattening, for now no need to expose to frontend
-	TraceId        string    `ch:"TraceId"`
-	SpanId         string    `ch:"SpanId"`
-	SeverityText   string    `ch:"SeverityText"`
-	SeverityNumber uint8     `ch:"SeverityNumber"`
-	ServiceName    string    `ch:"ServiceName"`
-	Body           string    `ch:"Body"`
-	LogAttrKeys    []string  `ch:"LogAttrKeys"`
-	LogAttrValues  []string  `ch:"LogAttrValues"`
-	ResAttrKeys    []string  `ch:"ResAttrKeys"`
-	ResAttrValues  []string  `ch:"ResAttrValues"`
+	Timestamp         time.Time `ch:"Timestamp" json:"timestamp"`
+	ObservedTimestamp time.Time `ch:"ObservedTimestamp" json:"observedTimestamp"`
+	InsertedAt        time.Time `ch:"InsertedAt" json:"insertedAt"` // not mapped when unflattening, for now no need to expose to frontend
+	TraceId           string    `ch:"TraceId" json:"traceId"`
+	SpanId            string    `ch:"SpanId" json:"spanId"`
+	SeverityText      string    `ch:"SeverityText" json:"severityText"`
+	SeverityNumber    uint8     `ch:"SeverityNumber" json:"severityNumber"`
+	ServiceName       string    `ch:"ServiceName" json:"serviceName"`
+	Body              string    `ch:"Body" json:"body"`
+	BodyType          string    `ch:"BodyType" json:"bodyType"` // can be "string"|"json"|"int"|"bool", but for now we convert to string
+	ScopeName         string    `ch:"ScopeName" json:"scopeNmae"`
+	ScopeVersion      string    `ch:"ScopeVersion" json:"scopeVersion"`
+	LogAttrKeys       []string  `ch:"LogAttrKeys" json:"logAttrKeys"`
+	LogAttrValues     []string  `ch:"LogAttrValues" json:"logAttrValues"`
+	ResAttrKeys       []string  `ch:"ResAttrKeys" json:"resAttrKeys"`
+	ResAttrValues     []string  `ch:"ResAttrValues" json:"resAttrValues"`
 }
 
 /*
@@ -29,15 +36,19 @@ LogRecord represents the complete structure when reading back
 from ClickHouse to display on the frontend.
 */
 type LogRecord struct {
-	Timestamp          time.Time          `json:"timestamp"`
-	TraceId            string             `json:"traceId"`
-	SpanId             string             `json:"spanId"`
-	SeverityText       string             `json:"severityText"`
-	SeverityNumber     uint8              `json:"severityNumber"`
-	ServiceName        string             `json:"serviceName"`
-	Body               string             `json:"body"`
-	LogAttributes      []schemas.KeyValue `json:"logAttributes"`
-	ResourceAttributes []schemas.KeyValue `json:"resourceAttributes"`
+	Timestamp          time.Time  `json:"timestamp"`
+	ObservedTimestamp  time.Time  `json:"observedTimestamp"`
+	TraceId            string     `json:"traceId"`
+	SpanId             string     `json:"spanId"`
+	SeverityText       string     `json:"severityText"`
+	SeverityNumber     uint8      `json:"severityNumber"`
+	ServiceName        string     `json:"serviceName"`
+	Body               string     `json:"body"`
+	BodyType           string     `json:"bodyType"`
+	ScopeName          string     `json:"scopeName"`
+	ScopeVersion       string     `json:"scopeVersion"`
+	LogAttributes      []KeyValue `json:"logAttributes"`
+	ResourceAttributes []KeyValue `json:"resourceAttributes"`
 }
 
 type OrderByField string
@@ -72,32 +83,36 @@ func ParseOrderByField(s string) OrderByField {
 }
 
 func unflattenLogRecord(flat FlatLogRecord) LogRecord {
-	logAttributes := make([]schemas.KeyValue, 0, len(flat.LogAttrKeys))
+	logAttributes := make([]KeyValue, 0, len(flat.LogAttrKeys))
 	for i, key := range flat.LogAttrKeys {
 		value := ""
 		if i < len(flat.LogAttrValues) {
 			value = flat.LogAttrValues[i]
 		}
-		logAttributes = append(logAttributes, schemas.KeyValue{Key: key, Value: value})
+		logAttributes = append(logAttributes, KeyValue{Key: key, Value: value})
 	}
 
-	resourceAttributes := make([]schemas.KeyValue, 0, len(flat.ResAttrKeys))
+	resourceAttributes := make([]KeyValue, 0, len(flat.ResAttrKeys))
 	for i, key := range flat.ResAttrKeys {
 		value := ""
 		if i < len(flat.ResAttrValues) {
 			value = flat.ResAttrValues[i]
 		}
-		resourceAttributes = append(resourceAttributes, schemas.KeyValue{Key: key, Value: value})
+		resourceAttributes = append(resourceAttributes, KeyValue{Key: key, Value: value})
 	}
 
 	return LogRecord{
 		Timestamp:          flat.Timestamp,
+		ObservedTimestamp:  flat.ObservedTimestamp,
 		TraceId:            flat.TraceId,
 		SpanId:             flat.SpanId,
 		SeverityText:       flat.SeverityText,
 		SeverityNumber:     flat.SeverityNumber,
 		ServiceName:        flat.ServiceName,
 		Body:               flat.Body,
+		BodyType:           flat.BodyType,
+		ScopeName:          flat.ScopeName,
+		ScopeVersion:       flat.ScopeVersion,
 		LogAttributes:      logAttributes,
 		ResourceAttributes: resourceAttributes,
 	}

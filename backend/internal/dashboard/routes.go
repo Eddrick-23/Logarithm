@@ -237,8 +237,7 @@ func handleLiveTail(logger *slog.Logger, broker *transport.NatsBroker, config *c
 		}()
 
 		// start tailing NATS
-		subjectToTail := config.NatsSubject
-		logCh, cleanup, err := broker.TailLiveLogs(ctx, transport.LogStreamName, subjectToTail, config.LiveTailMaxBatch)
+		liveTailCh, cleanup, err := broker.TailLiveLogs(ctx, transport.LiveTailStreamName, transport.LiveTailSubject, config.LiveTailMaxBatch)
 		if err != nil {
 			logger.Error("Failed to start NATS tail", "error", err)
 			ws.WriteMessage(websocket.CloseMessage, []byte("Internal Server Error"))
@@ -257,12 +256,17 @@ func handleLiveTail(logger *slog.Logger, broker *transport.NatsBroker, config *c
 			case <-ctx.Done():
 				// context cancelled (client disconnected or server shutting down)
 				return
-			case payload, ok := <-logCh:
+			case payload, ok := <-liveTailCh:
 				if !ok {
 					// channel closed
 					return
 				}
-				batch = append(batch, json.RawMessage(payload))
+				// unmarshal payload before appending to batch since live tail reads a json
+				var records []json.RawMessage
+				if err := json.Unmarshal(payload, &records); err != nil {
+					logger.Error("Failed to unmarshal records", "error", err)
+				}
+				batch = append(batch, records...)
 
 			case <-ticker.C:
 				if len(batch) == 0 {

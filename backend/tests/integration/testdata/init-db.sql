@@ -4,15 +4,20 @@ CREATE TABLE IF NOT EXISTS logarithm.logs (
     Timestamp DateTime64(9, 'UTC') CODEC(DoubleDelta, LZ4),
     InsertedAt DateTime DEFAULT now() CODEC(DoubleDelta, LZ4),
     
+    ScopeName  LowCardinality(String),
+    ScopeVersion LowCardinality(String),
+
     -- OTLP Tracing Data
     TraceId FixedString(32) CODEC(ZSTD(1)),
     SpanId FixedString(16) CODEC(ZSTD(1)),
     
     -- OTLP Log Record Data
+    ObservedTimestamp DateTime64(9, 'UTC') CODEC(DoubleDelta, LZ4),
     SeverityText LowCardinality(String),
     SeverityNumber UInt8,
     ServiceName LowCardinality(String),
     Body String CODEC(ZSTD(3)),
+    BodyType LowCardinality(String),
     
     -- Flattened flexible attributes
     LogAttrKeys Array(String),

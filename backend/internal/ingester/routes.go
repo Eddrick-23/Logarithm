@@ -22,7 +22,7 @@ func AddRoutes(
 ) {
 	mux.HandleFunc("GET /", handleRoot(logger))
 	mux.HandleFunc("GET /health", handleHealth(logger))
-	mux.Handle("POST /ingest", contentTypeMiddleware(gzipMiddleware(handleIngest(logger, producer, natsSubjectPrefix))))
+	mux.Handle("POST /v1/logs", newContentTypeMiddleware("application/json")(gzipMiddleware(handleOTLPLogs(logger, producer, natsSubjectPrefix))))
 }
 
 func gzipMiddleware(next http.Handler) http.Handler {
@@ -46,21 +46,23 @@ func gzipMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func contentTypeMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		contentType := r.Header.Get("Content-Type")
-		mediaType, _, err := mime.ParseMediaType(contentType)
-		if err != nil {
-			http.Error(w, "Malformed/Missing Content-Type", http.StatusBadRequest)
-			return
-		}
+func newContentTypeMiddleware(targetMediaType string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			contentType := r.Header.Get("Content-Type")
+			mediaType, _, err := mime.ParseMediaType(contentType)
+			if err != nil {
+				http.Error(w, "Malformed/Missing Content-Type", http.StatusBadRequest)
+				return
+			}
 
-		if mediaType != "application/json" {
-			http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+			if mediaType != targetMediaType {
+				http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func handleRoot(logger *slog.Logger) http.HandlerFunc {
@@ -91,42 +93,24 @@ func handleHealth(logger *slog.Logger) http.HandlerFunc {
 	}
 }
 
-func handleIngest(logger *slog.Logger, producer transport.Producer, natsSubjectTemplate string) http.HandlerFunc {
-	// TODO push extra data to time how long it took to transfer payload
-	// needed for latency numbers on the dashboard
-	type partialIngestBody struct {
-		ServiceName string `json:"serviceName"`
-	}
+func handleOTLPLogs(logger *slog.Logger, producer transport.Producer, natsSubjectTemplate string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		bytesPayload, err := io.ReadAll(r.Body)
-		if err != nil {
-			logger.Error("failed to parse request body", "err", err)
-			http.Error(w, "Failed to read body", http.StatusBadRequest)
-			return
-		}
-		var ingestBody partialIngestBody
-		if err = json.Unmarshal(bytesPayload, &ingestBody); err != nil {
-			logger.Error("invalid JSON body", "err", err)
-			http.Error(w, "Invalid JSON body", http.StatusBadRequest)
-			return
-		}
+		bodyBytes, _ := io.ReadAll(r.Body)
+		defer r.Body.Close()
 
-		if ingestBody.ServiceName == "" {
-			http.Error(w, "No serviceName in payload", http.StatusBadRequest)
-			return
-		}
+		// TODO add routing based on content-type in the future
+		// now we assume all is json payload
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-
-		if err = producer.PublishLogs(ctx, natsSubjectTemplate+ingestBody.ServiceName, bytesPayload); err != nil {
-			logger.Error("Error publishing to nats jetstream", "err", err)
-			http.Error(w, "Error transporting json", http.StatusInternalServerError)
+		if err := producer.PublishLogs(ctx, natsSubjectTemplate+"raw", bodyBytes); err != nil {
+			logger.Error("failed to publish to nats", "err", err)
+			http.Error(w, "Message broker unavailable", http.StatusServiceUnavailable)
 			return
 		}
 
 		w.WriteHeader(http.StatusAccepted)
-		if _, err = w.Write([]byte("Log ingested successfully")); err != nil {
+		if _, err := w.Write([]byte("Log ingested successfully")); err != nil {
 			logger.Error("failed to write response", "err", err)
 		}
 	}

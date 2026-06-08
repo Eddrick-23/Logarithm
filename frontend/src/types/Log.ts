@@ -16,22 +16,21 @@ export type LogRecord = {
     resourceAttributes: KeyValue[];
 };
 
-export type LogRecordDTO = {
+export type FlatLogRecord = {
     timestamp: string;
+    observedTimestamp: string;
+    insertedAt: string;
     traceId: string;
     spanId: string;
-    severityText: LogType;
+    severityText: string;
     severityNumber: number;
+    serviceName: string;
     body: string;
-    logAttributes: KeyValue[];
-};
-export type LogIngestRequest = {
-    serviceName: string;
-    resourceAttributes: KeyValue[];
-    records: LogRecordDTO[];
-};
-
-export type FlatLogEntry = {
-    serviceName: string;
-    log: LogRecordDTO;
+    bodyType: string;
+    scopeName: string;
+    scopeVersion: string;
+    logAttrKeys: string[];
+    logAttrValues: string[];
+    resAttrKeys: string[];
+    resAttrValues: string[];
 };
