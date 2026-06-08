@@ -485,7 +485,7 @@ func TestConsumeCallback(t *testing.T) {
 			if tc.expectedPublishes > 0 {
 				mockProducer.mu.Lock()
 
-				subject := transport.LiveTailSubjectTemplate + "auth-service"
+				subject := transport.LiveTailSubjectPrefix + "auth-service"
 				assert.Contains(t, mockProducer.PublishedRecords, subject)
 
 				assert.NotEmpty(t, mockProducer.PublishedRecords[subject])
