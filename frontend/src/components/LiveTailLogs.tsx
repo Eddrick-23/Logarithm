@@ -32,9 +32,15 @@ const MAX_DISPLAY_LOGS = 15;
 const WEBSOCKET_NORMAL_CLOSURE = 1000;
 const DEBOUNCE_TIMEOUT = 300;
 
-const parseSeverity = (severityText: string): LogType => {
-    const lower = severityText.toLowerCase();
-    return lower as LogType;
+const map: Record<string, LogType> = {
+    debug: "debug",
+    info: "info",
+    warning: "warning",
+    error: "error",
+};
+
+const parseSeverity = (severityText: string | undefined): LogType => {
+    return map[severityText?.toLowerCase() ?? ""] ?? "info";
 };
 
 export default function LiveTailLogs() {

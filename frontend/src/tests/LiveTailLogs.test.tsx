@@ -4,6 +4,7 @@ import { vi, describe, it, expect, beforeAll, beforeEach, afterEach, afterAll } 
 import { setupServer } from "msw/node";
 import { ws } from "msw";
 import LiveTailLogs from "../components/LiveTailLogs";
+import type { FlatLogRecord } from "../types/Log";
 
 const connectingMessage = "Connecting to live tail server...";
 const pauseMessage = "Tail paused — new logs buffering";
@@ -29,28 +30,28 @@ const server = setupServer(
     }),
 );
 
-type LogBatchOverrides = {
-    serviceName?: string;
-    body?: string;
-    severityText?: string;
-    timestamp?: string;
-};
+const makeRecord = (overrides: Partial<FlatLogRecord> = {}): FlatLogRecord => ({
+    serviceName: "auth-service",
+    body: "User logged in",
+    severityText: "INFO",
+    timestamp: new Date().toISOString(),
+    observedTimestamp: new Date().toISOString(),
+    insertedAt: "2024-01-01T00:00:00Z",
+    traceId: "5b8aa5a2d2c8646c14e138a83416a41f",
+    spanId: "f96ea2a71a065463",
+    severityNumber: 9,
+    bodyType: "string",
+    scopeName: "",
+    scopeVersion: "",
+    logAttrKeys: [],
+    logAttrValues: [],
+    resAttrKeys: [],
+    resAttrValues: [],
+    ...overrides,
+});
 
-const makeLogBatch = (overrides?: LogBatchOverrides) => [
-    {
-        serviceName: overrides?.serviceName ?? "auth-service",
-        records: [
-            {
-                body: overrides?.body ?? "User logged in",
-                severityText: overrides?.severityText ?? "INFO",
-                timestamp: overrides?.timestamp ?? new Date().toISOString(),
-            },
-        ],
-    },
-];
-
-const emitLogs = async (overrides?: LogBatchOverrides) => {
-    await act(async () => sendToClient?.(JSON.stringify(makeLogBatch(overrides))));
+const emitLogs = async (overrides: Partial<FlatLogRecord> = {}) => {
+    await act(async () => sendToClient?.(JSON.stringify([makeRecord(overrides)])));
 };
 
 /** Renders the component and waits for the WebSocket connection to be established */
@@ -79,6 +80,7 @@ describe("LiveTailLogs — connection status", () => {
     it("shows connecting bar on initial render before socket opens", async () => {
         render(<LiveTailLogs />);
         expect(screen.getByText(connectingMessage)).toBeInTheDocument();
+        await act(async () => {});
     });
 
     it("hides connecting bar once socket opens", async () => {
@@ -140,7 +142,10 @@ describe("LiveTailLogs — connection status", () => {
 
         await act(async () => serverCloseConnection?.(1006));
         for (let i = 0; i < 5; i++) {
-            await act(async () => vi.advanceTimersByTime(1000 * 2 ** i + 100));
+            await act(async () => {
+                vi.advanceTimersByTime(1000 * 2 ** i + 100);
+                await Promise.resolve();
+            });
         }
 
         await waitFor(() => expect(screen.getByText(errorMessage)).toBeInTheDocument());
@@ -168,13 +173,8 @@ describe("LiveTailLogs — receiving logs", () => {
         await act(async () =>
             sendToClient?.(
                 JSON.stringify([
-                    {
-                        serviceName: "auth-service",
-                        records: [
-                            { body: "Older log", severityText: "INFO", timestamp: "2024-01-01T10:00:00Z" },
-                            { body: "Newer log", severityText: "INFO", timestamp: "2024-01-01T11:00:00Z" },
-                        ],
-                    },
+                    makeRecord({ body: "Older log", timestamp: "2024-01-01T10:00:00Z" }),
+                    makeRecord({ body: "Newer log", timestamp: "2024-01-01T11:00:00Z" }),
                 ]),
             ),
         );
@@ -189,7 +189,9 @@ describe("LiveTailLogs — pause / resume", () => {
     it("shows pause alert bar when paused", async () => {
         await renderAndConnect();
 
-        await userEvent.click(screen.getByRole("button", { name: /pause/i }));
+        await act(async () => {
+            await userEvent.click(screen.getByRole("button", { name: /pause/i }));
+        });
 
         expect(screen.getByText(pauseMessage)).toBeInTheDocument();
     });
@@ -219,6 +221,7 @@ describe("LiveTailLogs — pause / resume", () => {
         server.resetHandlers();
         render(<LiveTailLogs />);
         expect(screen.getByRole("button", { name: /pause/i })).toBeDisabled();
+        await act(async () => {});
     });
 });
 
@@ -229,16 +232,8 @@ describe("LiveTailLogs — filters", () => {
         await act(async () =>
             sendToClient?.(
                 JSON.stringify([
-                    {
-                        serviceName: "auth-service",
-                        records: [{ body: "Auth info log", severityText: "INFO", timestamp: new Date().toISOString() }],
-                    },
-                    {
-                        serviceName: "payment-service",
-                        records: [
-                            { body: "Payment error log", severityText: "ERROR", timestamp: new Date().toISOString() },
-                        ],
-                    },
+                    makeRecord({ serviceName: "auth-service", body: "Auth info log", severityText: "INFO" }),
+                    makeRecord({ serviceName: "payment-service", body: "Payment error log", severityText: "ERROR" }),
                 ]),
             ),
         );
