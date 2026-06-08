@@ -10,13 +10,13 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-const (
-	LogStreamName           = "LOGS"
-	DLQStreamName           = "LOGS_DLQ"
-	DLQSubject              = "dlq.logs"
-	LiveTailStreamName      = "TAIL"
-	LiveTailSubject         = "tail.>"
-	LiveTailSubjectTemplate = "tail."
+const ( // infra constants
+	LogStreamName         = "LOGS"
+	DLQStreamName         = "LOGS_DLQ"
+	DLQSubject            = "dlq.logs"
+	LiveTailStreamName    = "TAIL"
+	LiveTailSubject       = "tail.>"
+	LiveTailSubjectPrefix = "tail."
 )
 
 var _ Producer = (*NatsBroker)(nil)

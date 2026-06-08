@@ -70,7 +70,7 @@ func publishLiveTail(logger *slog.Logger, producer transport.Producer, serviceNa
 		logger.Error("json marshal failed before publish to live tail stream", "err", err)
 		return
 	}
-	if err := producer.PublishLogs(ctx, transport.LiveTailSubjectTemplate+serviceName, data); err != nil {
+	if err := producer.PublishLogs(ctx, transport.LiveTailSubjectPrefix+serviceName, data); err != nil {
 		logger.Error("failed to publish flattened logs to live tail stream", "err", err)
 		return
 	}
