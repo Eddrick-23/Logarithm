@@ -20,7 +20,7 @@ import ErrorIcon from "@mui/icons-material/Error";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import SearchIcon from "@mui/icons-material/Search";
 import ClearIcon from "@mui/icons-material/Clear";
-import type { FlatLogEntry, LogIngestRequest, LogType } from "../types/Log";
+import type { FlatLogRecord, LogType } from "../types/Log";
 import { useDistinctServices } from "../hooks/useDistinctServices";
 import TailLogRow, { columnWidths } from "./TailLogRow";
 
@@ -41,7 +41,7 @@ export default function LiveTailLogs() {
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectAttempts = useRef(0);
     const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const [logs, setLogs] = useState<FlatLogEntry[]>([]);
+    const [logs, setLogs] = useState<FlatLogRecord[]>([]);
     const [severity, setSeverity] = useState<LogType | "all-severities">("all-severities");
     const [service, setService] = useState<string>("all-services");
     const [searchInput, setSearchInput] = useState<string>("");
@@ -49,7 +49,7 @@ export default function LiveTailLogs() {
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
     const [isPaused, setIsPaused] = useState<boolean>(false);
     const isPausedRef = useRef<boolean>(isPaused);
-    const bufferRef = useRef<LogIngestRequest[]>([]);
+    const bufferRef = useRef<FlatLogRecord[]>([]);
     const { data: serviceOptions, isLoading } = useDistinctServices();
     const dotColour = {
         connected: "success.main",
@@ -57,14 +57,10 @@ export default function LiveTailLogs() {
         error: "error.main",
     }[connectionStatus];
 
-    const processBatch = useCallback((batch: LogIngestRequest[]) => {
-        const newEntries: FlatLogEntry[] = batch.flatMap(({ serviceName, records }) =>
-            records.map((log) => ({ serviceName, log })),
-        );
-
+    const processBatch = useCallback((batch: FlatLogRecord[]) => {
         setLogs((prev) => {
-            const combined = [...prev, ...newEntries];
-            combined.sort((a, b) => new Date(b.log.timestamp).getTime() - new Date(a.log.timestamp).getTime());
+            const combined = [...prev, ...batch];
+            combined.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
             return combined.slice(0, MAX_GLOBAL_LOGS);
         });
     }, []);
@@ -81,7 +77,7 @@ export default function LiveTailLogs() {
         };
 
         ws.onmessage = (e) => {
-            const batch: LogIngestRequest[] = JSON.parse(e.data);
+            const batch: FlatLogRecord[] = JSON.parse(e.data);
 
             if (isPausedRef.current) {
                 bufferRef.current.push(...batch); // spread entire batch into buffer
@@ -176,8 +172,8 @@ export default function LiveTailLogs() {
         setSearchInput("");
     };
 
-    const filteredLogs = logs.filter(({ log, serviceName }) => {
-        if (service !== "all-services" && serviceName !== service) return false;
+    const filteredLogs = logs.filter((log) => {
+        if (service !== "all-services" && log.serviceName !== service) return false;
         if (severity !== "all-severities" && parseSeverity(log.severityText) !== severity) return false;
 
         if (debouncedSearch.trim()) {
@@ -416,15 +412,17 @@ export default function LiveTailLogs() {
 
                 {/* Logs List */}
                 <Box>
-                    {filteredLogs.slice(0, MAX_DISPLAY_LOGS).map(({ log, serviceName }, index) => (
-                        <TailLogRow
-                            key={`${serviceName}-${log.timestamp}-${index}`}
-                            time={new Date(log.timestamp).toLocaleString()}
-                            service={serviceName}
-                            severity={parseSeverity(log.severityText)}
-                            message={log.body}
-                        />
-                    ))}
+                    {filteredLogs
+                        .slice(0, MAX_DISPLAY_LOGS)
+                        .map(({ serviceName, timestamp, severityText, body }, index) => (
+                            <TailLogRow
+                                key={`${serviceName}-${timestamp}-${index}`}
+                                time={new Date(timestamp).toLocaleString()}
+                                service={serviceName}
+                                severity={parseSeverity(severityText)}
+                                message={body}
+                            />
+                        ))}
 
                     {filteredLogs.length === 0 && (
                         <Box sx={{ textAlign: "center", py: 3, color: "#6e7681" }}>

@@ -10,22 +10,22 @@ import (
 FlatLogRecord is optimized for storage in ClickHouse
 */
 type FlatLogRecord struct {
-	Timestamp         time.Time `ch:"Timestamp"`
-	ObservedTimestamp time.Time `ch:"ObservedTimestamp"` // NEW
-	InsertedAt        time.Time `ch:"InsertedAt"`        // not mapped when unflattening, for now no need to expose to frontend
-	TraceId           string    `ch:"TraceId"`
-	SpanId            string    `ch:"SpanId"`
-	SeverityText      string    `ch:"SeverityText"`
-	SeverityNumber    uint8     `ch:"SeverityNumber"`
-	ServiceName       string    `ch:"ServiceName"`
-	Body              string    `ch:"Body"`
-	BodyType          string    `ch:"BodyType"`     // new: e.g. "string"|"json"|"int"|"bool"
-	ScopeName         string    `ch:"ScopeName"`    // NEW: e.g. "go.opentelemetry.io/contrib"
-	ScopeVersion      string    `ch:"ScopeVersion"` // NEW: e.g. "v0.46.0"
-	LogAttrKeys       []string  `ch:"LogAttrKeys"`
-	LogAttrValues     []string  `ch:"LogAttrValues"`
-	ResAttrKeys       []string  `ch:"ResAttrKeys"`
-	ResAttrValues     []string  `ch:"ResAttrValues"`
+	Timestamp         time.Time `ch:"Timestamp" json:"timestamp"`
+	ObservedTimestamp time.Time `ch:"ObservedTimestamp" json:"observedTimestamp"` // NEW
+	InsertedAt        time.Time `ch:"InsertedAt" json:"insertedAt"`               // not mapped when unflattening, for now no need to expose to frontend
+	TraceId           string    `ch:"TraceId" json:"traceId"`
+	SpanId            string    `ch:"SpanId" json:"spanId"`
+	SeverityText      string    `ch:"SeverityText" json:"severityText"`
+	SeverityNumber    uint8     `ch:"SeverityNumber" json:"severityNumber"`
+	ServiceName       string    `ch:"ServiceName" json:"serviceName"`
+	Body              string    `ch:"Body" json:"body"`
+	BodyType          string    `ch:"BodyType" json:"bodyType"`         // new: e.g. "string"|"json"|"int"|"bool"
+	ScopeName         string    `ch:"ScopeName" json:"scopeNmae"`       // NEW: e.g. "go.opentelemetry.io/contrib"
+	ScopeVersion      string    `ch:"ScopeVersion" json:"scopeVersion"` // NEW: e.g. "v0.46.0"
+	LogAttrKeys       []string  `ch:"LogAttrKeys" json:"logAttrKeys"`
+	LogAttrValues     []string  `ch:"LogAttrValues" json:"logAttrValues"`
+	ResAttrKeys       []string  `ch:"ResAttrKeys" json:"resAttrKeys"`
+	ResAttrValues     []string  `ch:"ResAttrValues" json:"resAttrValues"`
 }
 
 /*
