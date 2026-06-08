@@ -15,24 +15,19 @@ import (
 )
 
 func ConsumeCallback(logger *slog.Logger, store storage.LogStore, producer transport.Producer) func([][]byte) error {
+	// ConsumeCallback returns the message handler used by the log consumer.
+	//
+	// Incoming OTLP logs are flattened, grouped by service, published to the
+	// live-tail stream on a file and forget basis, and bulk inserted into storage.
+	// Storage insertion failures are returned; live-tail publish failures are
+	// logged and ignored.
 	return func(payloads [][]byte) error {
 		if len(payloads) == 0 {
 			return nil
 		}
 
-		numRecords := 0
 		flatLogsByServiceName := map[string][]core.FlatLogRecord{}
-		for _, payload := range payloads {
-			var req collectorlogspb.ExportLogsServiceRequest
-			if err := protojson.Unmarshal(payload, &req); err != nil {
-				slog.Error("dropped malformed log payload", "err", err, "payload_preview", string(payload))
-				continue
-			}
-
-			for _, resource := range req.ResourceLogs {
-				numRecords += flattenLogs(resource, flatLogsByServiceName) //appends to the required slice in the map
-			}
-		}
+		numRecords := processPayloads(logger, payloads, flatLogsByServiceName)
 
 		if len(flatLogsByServiceName) == 0 { // no valid payloads to insert
 			return nil
@@ -43,27 +38,41 @@ func ConsumeCallback(logger *slog.Logger, store storage.LogStore, producer trans
 
 		batch := make([]core.FlatLogRecord, 0, numRecords) // prealloc
 		for name, slice := range flatLogsByServiceName {
-			go func(svcName string, logs []core.FlatLogRecord) {
-				pubCtx, pubCancel := context.WithTimeout(context.Background(), 2*time.Second)
-				defer pubCancel()
-				data, err := json.Marshal(slice)
-				if err != nil {
-					logger.Error("json marshal failed before publish to live tail stream", "err", err)
-					return
-				}
-				if err := producer.PublishLogs(pubCtx, transport.LiveTailSubjectTemplate+name, data); err != nil {
-					logger.Error("failed to publish flattened logs to live tail stream", "err", err)
-					return
-				}
-			}(name, slice)
+			go publishLiveTail(logger, producer, name, slice)
 			batch = append(batch, slice...)
 		}
 
-		if err := store.BatchInsert(ctx, batch); err != nil {
-			return err
+		return store.BatchInsert(ctx, batch)
+	}
+}
+
+func processPayloads(logger *slog.Logger, payloads [][]byte, flatLogsByServiceName map[string][]core.FlatLogRecord) int {
+	numRecords := 0
+	for _, payload := range payloads {
+		var req collectorlogspb.ExportLogsServiceRequest
+		if err := protojson.Unmarshal(payload, &req); err != nil {
+			logger.Error("dropped malformed log payload", "err", err, "payload_preview", string(payload))
+			continue
 		}
 
-		return nil
+		for _, resource := range req.ResourceLogs {
+			numRecords += flattenLogs(resource, flatLogsByServiceName) //appends to the required slice in the map
+		}
+	}
+	return numRecords
+}
+
+func publishLiveTail(logger *slog.Logger, producer transport.Producer, serviceName string, logs []core.FlatLogRecord) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	data, err := json.Marshal(logs)
+	if err != nil {
+		logger.Error("json marshal failed before publish to live tail stream", "err", err)
+		return
+	}
+	if err := producer.PublishLogs(ctx, transport.LiveTailSubjectTemplate+serviceName, data); err != nil {
+		logger.Error("failed to publish flattened logs to live tail stream", "err", err)
+		return
 	}
 }
 
