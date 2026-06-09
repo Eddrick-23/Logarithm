@@ -86,6 +86,18 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 									LogRecords: []*logspb.LogRecord{
 										{
 											TimeUnixNano:   uint64(time.Now().UnixNano()),
+											TraceId:        mustDecodeHex("f0e1d2c3b4a5968778695a4b3c2d1e0f"),
+											SpanId:         mustDecodeHex("d4e5f6a7b8c9d0e1"),
+											SeverityText:   "TRACE",
+											SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_TRACE,
+											Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "Entering authentication middleware."}},
+											Attributes: []*commonpb.KeyValue{
+												{Key: "middleware", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "auth_middleware"}}},
+												{Key: "request_id", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "req_aabbccdd"}}},
+											},
+										},
+										{
+											TimeUnixNano:   uint64(time.Now().UnixNano()),
 											TraceId:        mustDecodeHex("5b8aa5a2d2c8646c14e138a83416a41f"),
 											SpanId:         mustDecodeHex("f96ea2a71a065463"),
 											SeverityText:   "INFO",
@@ -130,6 +142,18 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 											Attributes: []*commonpb.KeyValue{
 												{Key: "user_id", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "usr_111222333"}}},
 												{Key: "expires_in_seconds", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "120"}}},
+											},
+										},
+										{
+											TimeUnixNano:   uint64(time.Now().UnixNano()),
+											TraceId:        mustDecodeHex("1f2e3d4c5b6a7988796a5b4c3d2e1f0a"),
+											SpanId:         mustDecodeHex("e5f6a7b8c9d0e1f2"),
+											SeverityText:   "FATAL",
+											SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_FATAL,
+											Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "Unrecoverable error: auth service shutting down."}},
+											Attributes: []*commonpb.KeyValue{
+												{Key: "reason", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "failed to bind to port 8443"}}},
+												{Key: "exit_code", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "1"}}},
 											},
 										},
 									},
