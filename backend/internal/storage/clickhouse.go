@@ -347,7 +347,7 @@ func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLo
 	// must explicitly state all cols since we have an extra insertAt column
 	// that clickhouse will fill in itself
 	insertStatement := "INSERT INTO " + s.dbAndTable +
-		` (Timestamp, ScopeName, ScopeVersion, TraceId, SpanId, SeverityText, SeverityNumber,
+		` (Timestamp, ScopeName, ScopeVersion, TraceId, SpanId, ObservedTimestamp, SeverityText, SeverityNumber,
          ServiceName, Body, BodyType, LogAttrKeys, LogAttrValues, ResAttrKeys, ResAttrValues)`
 	batch, err := s.conn.PrepareBatch(ctx, insertStatement)
 
@@ -363,6 +363,7 @@ func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLo
 			record.ScopeVersion,
 			record.TraceId,
 			record.SpanId,
+			record.ObservedTimestamp,
 			record.SeverityText,
 			record.SeverityNumber,
 			record.ServiceName,
