@@ -12,8 +12,8 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
-	"google.golang.org/protobuf/encoding/protojson"
+
+	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
 
 func TestFlattenLogs(t *testing.T) {
@@ -206,15 +206,17 @@ func TestFlattenLogs(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			var req collectorlogspb.ExportLogsServiceRequest
-			err := protojson.Unmarshal([]byte(tc.inputJSON), &req)
+			req := plogotlp.NewExportRequest()
+			err := req.UnmarshalJSON([]byte(tc.inputJSON))
 			require.NoError(t, err, "invalid test JSON provided")
 
 			flatLogsByServiceName := make(map[string][]core.FlatLogRecord)
 			totalExtracted := 0
 
-			for _, resource := range req.ResourceLogs {
-				totalExtracted += flattenLogs(resource, flatLogsByServiceName)
+			logs := req.Logs()
+
+			for i := 0; i < logs.ResourceLogs().Len(); i++ {
+				totalExtracted += flattenLogs(logs.ResourceLogs().At(i), flatLogsByServiceName)
 			}
 
 			var actualLogs []core.FlatLogRecord
@@ -317,7 +319,7 @@ func (m *MockProducer) PublishLogs(ctx context.Context, subject string, payload 
 	return m.PublishErr
 }
 
-func newBaseRequest(t *testing.T) *collectorlogspb.ExportLogsServiceRequest {
+func newBaseRequest(t *testing.T) plogotlp.ExportRequest {
 	inputJSON := `{
 				"resourceLogs": [{
 					"resource": {
@@ -333,21 +335,22 @@ func newBaseRequest(t *testing.T) *collectorlogspb.ExportLogsServiceRequest {
 				}]
 			}`
 
-	var req collectorlogspb.ExportLogsServiceRequest
-	err := protojson.Unmarshal([]byte(inputJSON), &req)
+	req := plogotlp.NewExportRequest()
+	err := req.UnmarshalJSON([]byte(inputJSON))
 	require.NoError(t, err, "invalid inputJSON provided")
-	return &req
+	return req
 }
 
 func TestConsumeCallback(t *testing.T) {
 	req := newBaseRequest(t)
 
-	reqBytes, err := protojson.Marshal(req)
+	reqBytes, err := req.MarshalJSON()
 	require.NoError(t, err, "failed to marshal request")
 
 	flatLogsByServiceName := map[string][]core.FlatLogRecord{}
-	for _, resource := range req.ResourceLogs {
-		flattenLogs(resource, flatLogsByServiceName)
+	logs := req.Logs()
+	for i := 0; i < logs.ResourceLogs().Len(); i++ {
+		flattenLogs(logs.ResourceLogs().At(i), flatLogsByServiceName)
 	}
 	expectedRecord := flatLogsByServiceName["auth-service"][0]
 

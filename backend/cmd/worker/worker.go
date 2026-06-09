@@ -10,8 +10,7 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 
-	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
-	"google.golang.org/protobuf/encoding/protojson"
+	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
 
 func ConsumeCallback(logger *slog.Logger, store storage.LogStore, producer transport.Producer) func([][]byte) error {
@@ -49,14 +48,15 @@ func ConsumeCallback(logger *slog.Logger, store storage.LogStore, producer trans
 func processPayloads(logger *slog.Logger, payloads [][]byte, flatLogsByServiceName map[string][]core.FlatLogRecord) int {
 	numRecords := 0
 	for _, payload := range payloads {
-		var req collectorlogspb.ExportLogsServiceRequest
-		if err := protojson.Unmarshal(payload, &req); err != nil {
+		req := plogotlp.NewExportRequest()
+		if err := req.UnmarshalJSON(payload); err != nil {
 			logger.Error("dropped malformed log payload", "err", err, "payload_preview", string(payload))
 			continue
 		}
 
-		for _, resource := range req.ResourceLogs {
-			numRecords += flattenLogs(resource, flatLogsByServiceName) //appends to the required slice in the map
+		logs := req.Logs()
+		for i := 0; i < logs.ResourceLogs().Len(); i++ {
+			numRecords += flattenLogs(logs.ResourceLogs().At(i), flatLogsByServiceName)
 		}
 	}
 	return numRecords

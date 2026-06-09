@@ -1,14 +1,14 @@
 package main
 
 import (
-	"encoding/hex"
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/core"
-	v1 "go.opentelemetry.io/proto/otlp/logs/v1"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/plog"
 )
 
-func flattenLogs(resourceLogs *v1.ResourceLogs, flatLogsByServiceName map[string][]core.FlatLogRecord) int {
+func flattenLogs(resourceLogs plog.ResourceLogs, flatLogsByServiceName map[string][]core.FlatLogRecord) int {
 	serviceName := "unknown"
 	resAttrKeys := []string{}
 	resAttrValues := []string{}
@@ -16,37 +16,39 @@ func flattenLogs(resourceLogs *v1.ResourceLogs, flatLogsByServiceName map[string
 
 	count := 0
 
-	for _, attr := range resourceLogs.Resource.GetAttributes() {
-		valStr := attr.Value.GetStringValue()
-
-		if attr.Key == "service.name" && valStr != "" {
+	resourceLogs.Resource().Attributes().Range(func(k string, v pcommon.Value) bool {
+		valStr := v.AsString()
+		if k == "service.name" && valStr != "" {
 			serviceName = valStr
 		}
 
-		resAttrKeys = append(resAttrKeys, attr.Key)
+		resAttrKeys = append(resAttrKeys, k)
 		resAttrValues = append(resAttrValues, valStr)
-	}
+		return true
+	})
 
-	for _, scopeLogs := range resourceLogs.ScopeLogs {
-		scopeName := scopeLogs.Scope.GetName()
-		scopeVersion := scopeLogs.Scope.GetVersion()
+	for i := 0; i < resourceLogs.ScopeLogs().Len(); i++ {
+		scopeLogs := resourceLogs.ScopeLogs().At(i)
+		scopeName := scopeLogs.Scope().Name()
+		scopeVersion := scopeLogs.Scope().Version()
 
-		for _, logRecord := range scopeLogs.LogRecords {
+		for j := 0; j < scopeLogs.LogRecords().Len(); j++ {
+			logRecord := scopeLogs.LogRecords().At(j)
 			logAttrKeys := []string{}
 			logAttrValues := []string{}
 
-			for _, attr := range logRecord.GetAttributes() {
-				logAttrKeys = append(logAttrKeys, attr.Key)
-				logAttrValues = append(logAttrValues, attr.Value.GetStringValue())
-			}
+			logRecord.Attributes().Range(func(k string, v pcommon.Value) bool {
+				logAttrKeys = append(logAttrKeys, k)
+				logAttrValues = append(logAttrValues, v.AsString())
+				return true
+			})
 
-			// handle missing timestamps
-			observedTime := logRecord.GetObservedTimeUnixNano()
+			observedTime := uint64(logRecord.ObservedTimestamp()) // want nano time
 			if observedTime == 0 {
 				observedTime = nowNano
 			}
 
-			eventTime := logRecord.GetTimeUnixNano()
+			eventTime := uint64(logRecord.Timestamp()) // want nanot time
 			if eventTime == 0 {
 				eventTime = nowNano
 			}
@@ -54,11 +56,11 @@ func flattenLogs(resourceLogs *v1.ResourceLogs, flatLogsByServiceName map[string
 			flatRecord := core.FlatLogRecord{
 				Timestamp:         time.Unix(0, int64(eventTime)),
 				ObservedTimestamp: time.Unix(0, int64(observedTime)),
-				TraceId:           hex.EncodeToString(logRecord.GetTraceId()),
-				SpanId:            hex.EncodeToString(logRecord.GetSpanId()),
-				SeverityText:      logRecord.SeverityText,
-				SeverityNumber:    uint8(logRecord.SeverityNumber),
-				Body:              logRecord.Body.GetStringValue(),
+				TraceId:           logRecord.TraceID().String(),
+				SpanId:            logRecord.SpanID().String(),
+				SeverityText:      logRecord.SeverityText(),
+				SeverityNumber:    uint8(logRecord.SeverityNumber()),
+				Body:              logRecord.Body().AsString(),
 				BodyType:          "string", // or find a way to extract the original body type?
 
 				ServiceName:  serviceName,
