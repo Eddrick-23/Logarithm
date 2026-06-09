@@ -26,21 +26,26 @@ import TailLogRow, { columnWidths } from "./TailLogRow";
 
 type ConnectionStatus = "connecting" | "connected" | "error";
 
-const LOG_TYPES: LogType[] = ["debug", "info", "warning", "error"];
+const LOG_TYPES: LogType[] = ["trace", "debug", "info", "warn", "error", "fatal"];
 const MAX_GLOBAL_LOGS = 300;
 const MAX_DISPLAY_LOGS = 15;
 const WEBSOCKET_NORMAL_CLOSURE = 1000;
 const DEBOUNCE_TIMEOUT = 300;
 
-const map: Record<string, LogType> = {
+const SEVERITY_NORMALISE_MAP: Record<string, LogType> = {
+    trace: "trace",
     debug: "debug",
     info: "info",
-    warning: "warning",
+    warning: "warn", // logs coming in have severity text of WARNING
     error: "error",
+    fatal: "fatal",
 };
 
-const parseSeverity = (severityText: string | undefined): LogType => {
-    return map[severityText?.toLowerCase() ?? ""] ?? "info";
+const parseSeverity = (severityText: string): LogType => {
+    // strip numbered variants: "DEBUG2" -> "debug", "WARN3" -> "warn"
+    const base = severityText.replace(/d+$/, "").toLowerCase();
+    // fallback to info if we get an unsupported severity name
+    return SEVERITY_NORMALISE_MAP[base] ?? "info";
 };
 
 export default function LiveTailLogs() {

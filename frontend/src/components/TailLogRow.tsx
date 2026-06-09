@@ -18,10 +18,12 @@ export const columnWidths = {
 
 // Styling maps for the severity badges
 const severityStyles: Record<LogType, { bg: string; text: string }> = {
+    trace: { bg: "rgba(189, 189, 189, 0.15)", text: "#bdbdbd" }, // Grey
     debug: { bg: "rgba(100, 181, 246, 0.15)", text: "#64b5f6" }, // Blue
     info: { bg: "rgba(102, 187, 106, 0.15)", text: "#66bb6a" }, // Green
-    warning: { bg: "rgba(255, 167, 38, 0.15)", text: "#ffa726" }, // Orange
+    warn: { bg: "rgba(255, 167, 38, 0.15)", text: "#ffa726" }, // Orange
     error: { bg: "rgba(239, 83, 80, 0.15)", text: "#ef5350" }, // Red
+    fatal: { bg: "rgba(171, 71, 188, 0.15)", text: "#ab47bc" }, // Purple
 };
 
 export default function TailLogRow({ time, service, severity, message }: TailLogProps) {
