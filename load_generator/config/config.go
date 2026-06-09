@@ -7,9 +7,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Eddrick-23/Logarithm/api/schemas"
 	"github.com/Eddrick-23/Logarithm/load_generator/files"
 )
+
+type KeyValue struct {
+	Key   string
+	Value string
+}
 
 type BodyTokenFormat struct {
 	Min        int      `json:"min"`
@@ -18,35 +22,35 @@ type BodyTokenFormat struct {
 }
 
 type RawConfig struct {
-	Seed                 int                `json:"seed"`
-	PoolSize             int                `json:"poolSize"`
-	HealthUrl            string             `json:"healthUrl"`
-	TargetUrl            string             `json:"targetUrl"`
-	Method               string             `json:"method"`
-	Gzip                 bool               `json:"gzip"`
-	Rps                  int                `json:"rps"`
-	BatchSize            int                `json:"batchSize"`
-	SeverityDistribution []float64          `json:"severityDistribution"`
-	ServiceNames         []string           `json:"serviceNames"`
-	BodyTokens           BodyTokenFormat    `json:"bodyTokens"`
-	LogAttributes        []schemas.KeyValue `json:"logAttributes"`
-	ResourceAttributes   []schemas.KeyValue `json:"resourceAttributes"`
+	Seed                 int             `json:"seed"`
+	PoolSize             int             `json:"poolSize"`
+	HealthUrl            string          `json:"healthUrl"`
+	TargetUrl            string          `json:"targetUrl"`
+	Method               string          `json:"method"`
+	Gzip                 bool            `json:"gzip"`
+	Rps                  int             `json:"rps"`
+	BatchSize            int             `json:"batchSize"`
+	SeverityDistribution []float64       `json:"severityDistribution"`
+	ServiceNames         []string        `json:"serviceNames"`
+	BodyTokens           BodyTokenFormat `json:"bodyTokens"`
+	LogAttributes        []KeyValue      `json:"logAttributes"`
+	ResourceAttributes   []KeyValue      `json:"resourceAttributes"`
 }
 
 type CleanConfig struct {
-	Seed                 int                `json:"seed"`
-	PoolSize             int                `json:"poolSize"`
-	HealthUrl            string             `json:"healthUrl"`
-	TargetUrl            string             `json:"targetUrl"`
-	Method               string             `json:"method"`
-	Gzip                 bool               `json:"gzip"`
-	Rps                  int                `json:"rps"`
-	BatchSize            int                `json:"batchSize"`
-	SeverityDistribution []float64          `json:"severityDistribution"`
-	ServiceNames         []string           `json:"serviceNames"`
-	BodyTokens           BodyTokenFormat    `json:"bodyTokens"`
-	LogAttributes        []schemas.KeyValue `json:"logAttributes"`
-	ResourceAttributes   []schemas.KeyValue `json:"resourceAttributes"`
+	Seed                 int             `json:"seed"`
+	PoolSize             int             `json:"poolSize"`
+	HealthUrl            string          `json:"healthUrl"`
+	TargetUrl            string          `json:"targetUrl"`
+	Method               string          `json:"method"`
+	Gzip                 bool            `json:"gzip"`
+	Rps                  int             `json:"rps"`
+	BatchSize            int             `json:"batchSize"`
+	SeverityDistribution []float64       `json:"severityDistribution"`
+	ServiceNames         []string        `json:"serviceNames"`
+	BodyTokens           BodyTokenFormat `json:"bodyTokens"`
+	LogAttributes        []KeyValue      `json:"logAttributes"`
+	ResourceAttributes   []KeyValue      `json:"resourceAttributes"`
 }
 
 func floatEquals(f1 float64, f2 float64) bool {

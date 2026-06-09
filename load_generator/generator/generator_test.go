@@ -4,7 +4,6 @@ import (
 	"math/rand/v2"
 	"testing"
 
-	"github.com/Eddrick-23/Logarithm/api/schemas"
 	"github.com/Eddrick-23/Logarithm/load_generator/config"
 )
 
@@ -41,11 +40,11 @@ func BenchmarkGenerateRequest(b *testing.B) {
 				"large",
 			},
 		},
-		ResourceAttributes: []schemas.KeyValue{
+		ResourceAttributes: []config.KeyValue{
 			{Key: "host.name", Value: "prod-payment-02"},
 			{Key: "environment", Value: "production"},
 		},
-		LogAttributes: []schemas.KeyValue{
+		LogAttributes: []config.KeyValue{
 			{Key: "http.method", Value: "POST"},
 		},
 	}
