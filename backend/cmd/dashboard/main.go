@@ -18,11 +18,10 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/dashboard"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
-	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
-	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
-	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
-	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
-	"google.golang.org/protobuf/encoding/protojson"
+
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
 
 func NewServer(logger *slog.Logger, config *config.Config, logStore *storage.ClickHouseStore, broker *transport.NatsBroker) http.Handler {
@@ -35,9 +34,16 @@ func NewServer(logger *slog.Logger, config *config.Config, logStore *storage.Cli
 	return handler
 }
 
-func mustDecodeHex(s string) []byte {
-	b, _ := hex.DecodeString(s)
-	return b
+func mustTraceID(hexStr string) pcommon.TraceID {
+	var id [16]byte
+	hex.Decode(id[:], []byte(hexStr))
+	return pcommon.TraceID(id)
+}
+
+func mustSpanID(hexStr string) pcommon.SpanID {
+	var id [8]byte
+	hex.Decode(id[:], []byte(hexStr))
+	return pcommon.SpanID(id)
 }
 
 func run(ctx context.Context, w io.Writer, args []string) error {
@@ -71,163 +77,130 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		for {
 			select {
 			case <-ticker.C:
-				req := collectorlogspb.ExportLogsServiceRequest{
-					ResourceLogs: []*logspb.ResourceLogs{
-						{
-							Resource: &resourcepb.Resource{
-								Attributes: []*commonpb.KeyValue{
-									{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "auth-service"}}},
-									{Key: "environment", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "production"}}},
-									{Key: "host.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "auth-worker-01"}}},
-								},
-							},
-							ScopeLogs: []*logspb.ScopeLogs{
-								{
-									LogRecords: []*logspb.LogRecord{
-										{
-											TimeUnixNano:   uint64(time.Now().UnixNano()),
-											TraceId:        mustDecodeHex("5b8aa5a2d2c8646c14e138a83416a41f"),
-											SpanId:         mustDecodeHex("f96ea2a71a065463"),
-											SeverityText:   "INFO",
-											SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_INFO,
-											Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "User authenticated successfully."}},
-											Attributes: []*commonpb.KeyValue{
-												{Key: "user_id", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "usr_987654321"}}},
-												{Key: "ip_address", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "192.168.1.104"}}},
-											},
-										},
-										{
-											TimeUnixNano:   uint64(time.Now().UnixNano()),
-											TraceId:        mustDecodeHex("1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"),
-											SpanId:         mustDecodeHex("a1b2c3d4e5f6a7b8"),
-											SeverityText:   "ERROR",
-											SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_ERROR,
-											Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "Failed to connect to database cache."}},
-											Attributes: []*commonpb.KeyValue{
-												{Key: "cache_host", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "redis-cluster.local"}}},
-												{Key: "timeout_ms", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "5000"}}},
-											},
-										},
-										{
-											TimeUnixNano:   uint64(time.Now().UnixNano()),
-											TraceId:        mustDecodeHex("aabbccddeeff00112233445566778899"),
-											SpanId:         mustDecodeHex("b1c2d3e4f5a6b7c8"),
-											SeverityText:   "DEBUG",
-											SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_DEBUG,
-											Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "Cache lookup attempted for session token."}},
-											Attributes: []*commonpb.KeyValue{
-												{Key: "session_id", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "sess_112233445"}}},
-												{Key: "cache_key", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "session:sess_112233445"}}},
-											},
-										},
-										{
-											TimeUnixNano:   uint64(time.Now().UnixNano()),
-											TraceId:        mustDecodeHex("deadbeefcafebabe1234567890abcdef"),
-											SpanId:         mustDecodeHex("c3d4e5f6a7b8c9d0"),
-											SeverityText:   "WARNING",
-											SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_WARN,
-											Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "Auth token expiring soon, refresh recommended."}},
-											Attributes: []*commonpb.KeyValue{
-												{Key: "user_id", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "usr_111222333"}}},
-												{Key: "expires_in_seconds", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "120"}}},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				}
+				now := pcommon.Timestamp(time.Now().UnixNano())
 
-				// Marshal the struct into a JSON byte slice
-				payload, err := protojson.Marshal(&req)
+				authLogs := plog.NewLogs()
+				authRL := authLogs.ResourceLogs().AppendEmpty()
+				authRL.Resource().Attributes().PutStr("service.name", "auth-service")
+				authRL.Resource().Attributes().PutStr("environment", "production")
+				authRL.Resource().Attributes().PutStr("host.name", "auth-worker-01")
+				authSL := authRL.ScopeLogs().AppendEmpty()
+
+				// Auth Log 1
+				lr1 := authSL.LogRecords().AppendEmpty()
+				lr1.SetTimestamp(now)
+				lr1.SetTraceID(mustTraceID("5b8aa5a2d2c8646c14e138a83416a41f"))
+				lr1.SetSpanID(mustSpanID("f96ea2a71a065463"))
+				lr1.SetSeverityText("INFO")
+				lr1.SetSeverityNumber(plog.SeverityNumberInfo)
+				lr1.Body().SetStr("User authenticated successfully.")
+				lr1.Attributes().PutStr("user_id", "usr_987654321")
+				lr1.Attributes().PutStr("ip_address", "192.168.1.104")
+
+				// Auth Log 2
+				lr2 := authSL.LogRecords().AppendEmpty()
+				lr2.SetTimestamp(now)
+				lr2.SetTraceID(mustTraceID("1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"))
+				lr2.SetSpanID(mustSpanID("a1b2c3d4e5f6a7b8"))
+				lr2.SetSeverityText("ERROR")
+				lr2.SetSeverityNumber(plog.SeverityNumberError)
+				lr2.Body().SetStr("Failed to connect to database cache.")
+				lr2.Attributes().PutStr("cache_host", "redis-cluster.local")
+				lr2.Attributes().PutStr("timeout_ms", "5000")
+
+				// Auth Log 3
+				lr3 := authSL.LogRecords().AppendEmpty()
+				lr3.SetTimestamp(now)
+				lr3.SetTraceID(mustTraceID("aabbccddeeff00112233445566778899"))
+				lr3.SetSpanID(mustSpanID("b1c2d3e4f5a6b7c8"))
+				lr3.SetSeverityText("DEBUG")
+				lr3.SetSeverityNumber(plog.SeverityNumberDebug)
+				lr3.Body().SetStr("Cache lookup attempted for session token.")
+				lr3.Attributes().PutStr("session_id", "sess_112233445")
+				lr3.Attributes().PutStr("cache_key", "sess_112233445")
+
+				// Auth Log 4
+				lr4 := authSL.LogRecords().AppendEmpty()
+				lr4.SetTimestamp(now)
+				lr4.SetTraceID(mustTraceID("deadbeefcafebabe1234567890abcdef"))
+				lr4.SetSpanID(mustSpanID("c3d4e5f6a7b8c9d0"))
+				lr4.SetSeverityText("WARNING")
+				lr4.SetSeverityNumber(plog.SeverityNumberWarn)
+				lr4.Body().SetStr("Auth token expiring soon, refresh recommmended")
+				lr4.Attributes().PutStr("user_id", "usr_112233445")
+				lr4.Attributes().PutStr("expires_in_seconds", "120")
+
+				authReq := plogotlp.NewExportRequestFromLogs(authLogs)
+				authPayload, err := authReq.MarshalJSON()
 				if err != nil {
-					natsLogger.Error("failed to marshal log payload:", "err", err)
+					natsLogger.Error("failed to marshal auth log payload:", "err", err)
 					continue
 				}
 
-				// Publish the marshaled JSON bytes
-				if err := broker.PublishLogs(ctx, "logs.auth-service", payload); err != nil {
+				if err := broker.PublishLogs(ctx, "logs.auth-service", authPayload); err != nil {
 					natsLogger.Error("publish error:", "err", err)
 				}
 
-				req2 := collectorlogspb.ExportLogsServiceRequest{
-					ResourceLogs: []*logspb.ResourceLogs{
-						{
-							Resource: &resourcepb.Resource{
-								Attributes: []*commonpb.KeyValue{
-									{Key: "service.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "logging-service"}}},
-									{Key: "environment", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "production"}}},
-									{Key: "host.name", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "logging-worker-01"}}},
-								},
-							},
-							ScopeLogs: []*logspb.ScopeLogs{
-								{
-									LogRecords: []*logspb.LogRecord{
-										{
-											TimeUnixNano:   uint64(time.Now().UnixNano()),
-											TraceId:        mustDecodeHex("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"),
-											SpanId:         mustDecodeHex("d1e2f3a4b5c6d7e8"),
-											SeverityText:   "INFO",
-											SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_INFO,
-											Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "Log pipeline started successfully."}},
-											Attributes: []*commonpb.KeyValue{
-												{Key: "pipeline_id", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "pipe_001"}}},
-												{Key: "source", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "otel-collector"}}},
-											},
-										},
-										{
-											TimeUnixNano:   uint64(time.Now().UnixNano()),
-											TraceId:        mustDecodeHex("f1e2d3c4b5a6978869504030201f0e0d"),
-											SpanId:         mustDecodeHex("e2f3a4b5c6d7e8f9"),
-											SeverityText:   "DEBUG",
-											SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_DEBUG,
-											Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "Flushing log buffer to storage backend."}},
-											Attributes: []*commonpb.KeyValue{
-												{Key: "buffer_size", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "512"}}},
-												{Key: "backend", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "clickhouse"}}},
-											},
-										},
-										{
-											TimeUnixNano:   uint64(time.Now().UnixNano()),
-											TraceId:        mustDecodeHex("0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d"),
-											SpanId:         mustDecodeHex("f3a4b5c6d7e8f9a0"),
-											SeverityText:   "WARNING",
-											SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_WARN,
-											Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "Log ingestion rate approaching limit."}},
-											Attributes: []*commonpb.KeyValue{
-												{Key: "current_rate", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "4800"}}},
-												{Key: "limit", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "5000"}}},
-											},
-										},
-										{
-											TimeUnixNano:   uint64(time.Now().UnixNano()),
-											TraceId:        mustDecodeHex("1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f"),
-											SpanId:         mustDecodeHex("a4b5c6d7e8f9a0b1"),
-											SeverityText:   "ERROR",
-											SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_ERROR,
-											Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "Failed to write log batch to storage."}},
-											Attributes: []*commonpb.KeyValue{
-												{Key: "batch_id", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "batch_20260608_001"}}},
-												{Key: "error", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "connection timeout"}}},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				}
+				// --- 2. BUILD LOGGING SERVICE LOGS ---
+				logLogs := plog.NewLogs()
+				logRL := logLogs.ResourceLogs().AppendEmpty()
+				logRL.Resource().Attributes().PutStr("service.name", "logging-service")
+				logRL.Resource().Attributes().PutStr("environment", "production")
+				logRL.Resource().Attributes().PutStr("host.name", "logging-worker-01")
+				logSL := logRL.ScopeLogs().AppendEmpty()
 
-				// Marshal the struct into a JSON byte slice
-				payload, err = protojson.Marshal(&req2)
+				// Logging Log 1
+				lr5 := logSL.LogRecords().AppendEmpty()
+				lr5.SetTimestamp(now)
+				lr5.SetTraceID(mustTraceID("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"))
+				lr5.SetSpanID(mustSpanID("d1e2f3a4b5c6d7e8"))
+				lr5.SetSeverityText("INFO")
+				lr5.SetSeverityNumber(plog.SeverityNumberInfo)
+				lr5.Body().SetStr("Log pipeline started successfully.")
+				lr5.Attributes().PutStr("pipeline_id", "pipe_001")
+				lr5.Attributes().PutStr("source", "otel-collector")
+
+				// Logging Log 2
+				lr6 := logSL.LogRecords().AppendEmpty()
+				lr6.SetTimestamp(now)
+				lr6.SetTraceID(mustTraceID("f1e2d3c4b5a6978869504030201f0e0d"))
+				lr6.SetSpanID(mustSpanID("e2f3a4b5c6d7e8f9"))
+				lr6.SetSeverityText("DEBUG")
+				lr6.SetSeverityNumber(plog.SeverityNumberDebug)
+				lr6.Body().SetStr("Flushing log buffer to storage backend.")
+				lr6.Attributes().PutStr("buffer_size", "512")
+				lr6.Attributes().PutStr("backend", "clickhouse")
+
+				// Logging Log 3
+				lr7 := logSL.LogRecords().AppendEmpty()
+				lr7.SetTimestamp(now)
+				lr7.SetTraceID(mustTraceID("0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d"))
+				lr7.SetSpanID(mustSpanID("f3a4b5c6d7e8f9a0"))
+				lr7.SetSeverityText("WARNING")
+				lr7.SetSeverityNumber(plog.SeverityNumberWarn)
+				lr7.Body().SetStr("Log ingestion rate approaching limit")
+				lr7.Attributes().PutStr("current_rate", "4800")
+				lr7.Attributes().PutStr("limit", "5000")
+
+				// Logging Log 4
+				lr8 := logSL.LogRecords().AppendEmpty()
+				lr8.SetTimestamp(now)
+				lr8.SetTraceID(mustTraceID("1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f"))
+				lr8.SetSpanID(mustSpanID("a4b5c6d7e8f9a0b1"))
+				lr8.SetSeverityText("ERROR")
+				lr8.SetSeverityNumber(plog.SeverityNumberError)
+				lr8.Body().SetStr("Failed to write log batch to storage.")
+				lr8.Attributes().PutStr("batch_id", "batch_20260608_001")
+				lr8.Attributes().PutStr("error", "connection timeout")
+
+				logReq := plogotlp.NewExportRequestFromLogs(logLogs)
+				logPayload, err := logReq.MarshalJSON()
 				if err != nil {
-					natsLogger.Error("failed to marshal log payload:", "err", err)
+					natsLogger.Error("failed to marshal logging log payload:", "err", err)
 					continue
 				}
 
-				// Publish the marshaled JSON bytes
-				if err := broker.PublishLogs(ctx, "logs.logging-service", payload); err != nil {
+				if err := broker.PublishLogs(ctx, "logs.logging-service", logPayload); err != nil {
 					natsLogger.Error("publish error:", "err", err)
 				}
 
