@@ -29,4 +29,30 @@ CREATE TABLE IF NOT EXISTS logarithm.logs (
 ) 
 ENGINE = MergeTree()
 PARTITION BY toYYYYMMDD(Timestamp)
-ORDER BY (ServiceName, Timestamp, SeverityNumber)
+ORDER BY (ServiceName, Timestamp, SeverityNumber);
+
+CREATE TABLE IF NOT EXISTS logarithm.log_metrics_per_second (
+    Timestamp DateTime('UTC'),
+    ServiceName LowCardinality(String),
+    LogsCount UInt32, -- stores total number of logs received in 1 second
+    ErrorsCount UInt32 -- stores total number of errors received in 1 second
+)
+ENGINE = SummingMergeTree()
+PARTITION BY toStartOfHour(Timestamp)
+ORDER BY (ServiceName, Timestamp)
+
+-- Auto-delete old log metrics to save disk space
+TTL Timestamp + INTERVAL 1 HOUR;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS logarithm.log_metrics_per_second_mv 
+TO logarithm.log_metrics_per_second -- stores data into log_metrics_per_second
+AS
+SELECT
+    -- get columns required for log_metrics_per_second
+    -- all logs with the same start second will be grouped together
+    toStartOfSecond(Timestamp) AS Timestamp,
+    ServiceName,
+    count() AS LogsCount,
+    countIf(SeverityNumber >= 17) AS ErrorsCount -- ErrorsCount includes ERROR (17-20) and FATAL (21-24)
+FROM logarithm.logs
+GROUP BY Timestamp, ServiceName;
