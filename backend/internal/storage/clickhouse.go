@@ -19,6 +19,7 @@ type LogStore interface {
 type ClickHouseStore struct {
 	conn       driver.Conn
 	dbAndTable string
+	logger     *slog.Logger
 }
 
 var _ LogStore = (*ClickHouseStore)(nil)
@@ -286,8 +287,8 @@ var testData []core.FlatLogRecord = []core.FlatLogRecord{
 }
 
 // addr should be full host:port e.g. localhost:9000 or clickhouse:9000
-func NewClickHouseStore(ctx context.Context, addr string, dbName string, tableName string, username string, password string) (*ClickHouseStore, error) {
-	slog.Info("Connecting to database...")
+func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, dbName string, tableName string, username string, password string) (*ClickHouseStore, error) {
+	logger.Info("Connecting to database...")
 	conn, err := clickhouse.Open(&clickhouse.Options{
 		Addr: []string{addr},
 		Auth: clickhouse.Auth{
@@ -310,8 +311,11 @@ func NewClickHouseStore(ctx context.Context, addr string, dbName string, tableNa
 		}
 		return nil, err
 	}
-	slog.Info("connection to database established")
-	return &ClickHouseStore{conn: conn, dbAndTable: dbName + "." + tableName}, nil
+	logger.Info("connection to database established")
+	return &ClickHouseStore{
+		conn:       conn,
+		dbAndTable: dbName + "." + tableName,
+		logger:     logger}, nil
 }
 
 func (s *ClickHouseStore) InitDB(ctx context.Context) error {
@@ -339,7 +343,7 @@ func (s *ClickHouseStore) InitDB(ctx context.Context) error {
 }
 
 func (s *ClickHouseStore) Close() error {
-	slog.Info("Closing clickhouse connection")
+	s.logger.Info("Closing clickhouse connection")
 	return s.conn.Close()
 }
 
@@ -352,7 +356,7 @@ func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLo
 	batch, err := s.conn.PrepareBatch(ctx, insertStatement)
 
 	if err != nil {
-		slog.Error("Failed to prepare batch: %v", "err", err)
+		s.logger.Error("Failed to prepare batch: %v", "err", err)
 		return err
 	}
 
