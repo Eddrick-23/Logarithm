@@ -1,4 +1,4 @@
-export type LogType = "debug" | "info" | "warning" | "error";
+export type LogType = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
 
 export type KeyValue = {
     key: string;
