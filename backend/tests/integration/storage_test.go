@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
+	"github.com/stretchr/testify/assert"
 )
 
 var dbAddr string
@@ -20,6 +22,24 @@ var password string
 var dbname string
 var dbtablename string
 var natsUrl string
+
+var testRecordEveryField core.FlatLogRecord = core.FlatLogRecord{
+	Timestamp:         time.Date(2024, 5, 20, 10, 0, 0, 0, time.UTC),
+	ObservedTimestamp: time.Date(2024, 5, 20, 10, 0, 0, 0, time.UTC),
+	TraceId:           "4bf92f3577b34da6a3ce929d0e0e4736",
+	SpanId:            "00f067aa0ba902b7",
+	SeverityText:      "ERROR",
+	SeverityNumber:    17,
+	ServiceName:       "test-service",
+	Body:              "Failed to process transaction due to timeout",
+	BodyType:          "string",
+	ScopeName:         "test",
+	ScopeVersion:      "1.0.0",
+	LogAttrKeys:       []string{"http.method", "http.status_code", "retry_count"},
+	LogAttrValues:     []string{"POST", "504", "3"},
+	ResAttrKeys:       []string{"service.name"},
+	ResAttrValues:     []string{"test-service"},
+}
 
 var testRecord1 core.FlatLogRecord = core.FlatLogRecord{
 	Timestamp:         time.Date(2024, 5, 20, 10, 0, 0, 0, time.UTC),
@@ -125,7 +145,7 @@ func setupTestDB(t *testing.T, ctx context.Context, store storage.LogStore) {
 }
 
 func TestNewClickHouseStore(t *testing.T) {
-	_, err := storage.NewClickHouseStore(context.Background(), dbAddr, dbname, dbtablename, user, password)
+	_, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, dbtablename, user, password)
 
 	if err != nil {
 		t.Errorf("failed to establish db connection: %v", err)
@@ -133,7 +153,7 @@ func TestNewClickHouseStore(t *testing.T) {
 }
 
 func TestNewClickHouseStoreWrongDBName(t *testing.T) {
-	_, err := storage.NewClickHouseStore(context.Background(), dbAddr, "wrongname", dbtablename, user, password)
+	_, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, "wrongname", dbtablename, user, password)
 
 	if err == nil {
 		t.Error("Connection still established with wrong database name")
@@ -141,14 +161,14 @@ func TestNewClickHouseStoreWrongDBName(t *testing.T) {
 }
 
 func TestNewClickHouseStoreWrongUser(t *testing.T) {
-	_, err := storage.NewClickHouseStore(context.Background(), dbAddr, dbname, dbtablename, "wronguser", password)
+	_, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, dbtablename, "wronguser", password)
 
 	if err == nil {
 		t.Error("Connection still established with wrong username")
 	}
 }
 func TestNewClickHouseStoreWrongPassword(t *testing.T) {
-	_, err := storage.NewClickHouseStore(context.Background(), dbAddr, dbname, dbtablename, user, "wrongpassword")
+	_, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, dbtablename, user, "wrongpassword")
 
 	if err == nil {
 		t.Error("Connection still established with wrong password")
@@ -156,7 +176,7 @@ func TestNewClickHouseStoreWrongPassword(t *testing.T) {
 }
 
 func TestBatchInsert(t *testing.T) {
-	logStore, err := storage.NewClickHouseStore(context.Background(), dbAddr, dbname, dbtablename, user, password)
+	logStore, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, dbtablename, user, password)
 	ctx := context.Background()
 
 	if err != nil {
@@ -174,7 +194,7 @@ func TestBatchInsert(t *testing.T) {
 		t.Fatalf("failed to truncate table: %v", err)
 	}
 
-	testRecords := []core.FlatLogRecord{testRecord1}
+	testRecords := []core.FlatLogRecord{testRecordEveryField}
 	err = logStore.BatchInsert(ctx, testRecords)
 
 	if err != nil {
@@ -191,10 +211,19 @@ func TestBatchInsert(t *testing.T) {
 	if count != 1 {
 		t.Errorf("Expected 1 log got :%v", count)
 	}
+
+	var records []core.FlatLogRecord
+	err = conn.Select(context.Background(), &records, "SELECT * FROM logarithm.logs")
+	assert.NoError(t, err, "error reading from clickhouse")
+
+	// ignore insertedAtField since that is managed by clickhouse
+	records[0].InsertedAt = time.Time{}
+	testRecordEveryField.InsertedAt = time.Time{}
+	assert.Equal(t, testRecordEveryField, records[0])
 }
 
 func TestBatchInsertMultipleLogs(t *testing.T) {
-	logStore, err := storage.NewClickHouseStore(context.Background(), dbAddr, dbname, dbtablename, user, password)
+	logStore, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, dbtablename, user, password)
 
 	ctx := context.Background()
 	if err != nil {
@@ -231,7 +260,7 @@ func TestBatchInsertMultipleLogs(t *testing.T) {
 }
 
 func TestSearchLogs(t *testing.T) {
-	logStore, err := storage.NewClickHouseStore(context.Background(), dbAddr, dbname, dbtablename, user, password)
+	logStore, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, dbtablename, user, password)
 
 	if err != nil {
 		t.Fatalf("failed to establish db connection: %v", err)
@@ -324,7 +353,7 @@ func TestSearchLogs(t *testing.T) {
 
 func TestCountInsertedWithin(t *testing.T) {
 	ctx := context.Background()
-	logStore, err := storage.NewClickHouseStore(context.Background(), dbAddr, dbname, dbtablename, user, password)
+	logStore, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, dbtablename, user, password)
 	if err != nil {
 		t.Fatalf("failed to establish db connection: %v", err)
 	}

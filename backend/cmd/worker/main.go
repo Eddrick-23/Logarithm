@@ -55,7 +55,7 @@ func run(ctx context.Context, w io.Writer) error {
 	workerLogger := logger.With("component", "worker")
 	natsLogger := logger.With("component", "nats")
 	pprofLogger := logger.With("component", "pprof")
-	// TODO refactor db to support logger via dependency injection
+	dblogger := logger.With("component", "db")
 
 	startPprof(pprofLogger, config)
 
@@ -63,6 +63,7 @@ func run(ctx context.Context, w io.Writer) error {
 	defer cancel()
 
 	store, err := storage.NewClickHouseStore(ctx,
+		dblogger,
 		config.DBAddress,
 		config.DBName,
 		config.DBTableName,
