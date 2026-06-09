@@ -2,7 +2,7 @@
   "seed": 42,
   "poolSize": 500000,
   "healthUrl": "http://localhost:8090/health",
-  "targetUrl": "http://localhost:8090/ingest",
+  "targetUrl": "http://localhost:8090/v1/logs",
   "method": "POST",
   "gzip": false,
   "rps": 1000,

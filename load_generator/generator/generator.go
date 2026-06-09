@@ -2,16 +2,25 @@ package generator
 
 import (
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"math/rand/v2"
 	"strings"
 	"time"
 
-	"github.com/Eddrick-23/Logarithm/api/schemas"
 	"github.com/Eddrick-23/Logarithm/load_generator/config"
 	"github.com/mroth/weightedrand/v3"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/plog"
 )
+
+type LogRecordTemplate struct {
+	TraceId        string
+	SpanId         string
+	SeverityText   string
+	SeverityNumber uint8
+	Body           string
+	LogAttributes  []config.KeyValue
+}
 
 func randInteger(customRand *rand.Rand, min int, max int) int {
 	return customRand.IntN(max-min+1) + min
@@ -51,7 +60,7 @@ func randomisedBody(customRand *rand.Rand, dictionary []string, min int, max int
 	return result.String()
 }
 
-func GenerateLogRecordPool(customRand *rand.Rand, cfg *config.CleanConfig) ([]schemas.LogRecordDTO, error) {
+func GenerateLogRecordPool(customRand *rand.Rand, cfg *config.CleanConfig) ([]LogRecordTemplate, error) {
 	chooser, err := weightedrand.NewChooser(
 		weightedrand.NewChoice("DEBUG", int(cfg.SeverityDistribution[0]*100)),
 		weightedrand.NewChoice("INFO", int(cfg.SeverityDistribution[1]*100)),
@@ -64,13 +73,13 @@ func GenerateLogRecordPool(customRand *rand.Rand, cfg *config.CleanConfig) ([]sc
 		return nil, fmt.Errorf("failed to create weighted chooser: %w", err)
 	}
 
-	pool := make([]schemas.LogRecordDTO, cfg.PoolSize)
+	pool := make([]LogRecordTemplate, cfg.PoolSize)
 
 	for i := 0; i < cfg.PoolSize; i++ {
 		severityText := chooser.PickWith(customRand)
 		severityNumber := severityTextRandNumber(customRand, severityText)
 
-		pool[i] = schemas.LogRecordDTO{
+		pool[i] = LogRecordTemplate{
 			SeverityText:   severityText,
 			SeverityNumber: uint8(severityNumber),
 			Body: randomisedBody(customRand,
@@ -83,42 +92,57 @@ func GenerateLogRecordPool(customRand *rand.Rand, cfg *config.CleanConfig) ([]sc
 	return pool, nil
 }
 
-func GenerateSpanID(customRand *rand.Rand) string {
+func GenerateSpanID(customRand *rand.Rand) pcommon.SpanID {
 	var b [8]byte
 	binary.LittleEndian.PutUint64(b[:], customRand.Uint64())
-	id := hex.EncodeToString(b[:])
-
-	return id
+	return pcommon.SpanID(b)
 }
 
-func GenerateTraceID(customRand *rand.Rand) string {
+func GenerateTraceID(customRand *rand.Rand) pcommon.TraceID {
 	var b [16]byte
 	binary.LittleEndian.PutUint64(b[:8], customRand.Uint64())
 	binary.LittleEndian.PutUint64(b[8:], customRand.Uint64())
-	id := hex.EncodeToString(b[:])
 
-	return id
+	return pcommon.TraceID(b)
 }
 
-func GenerateRequest(customRand *rand.Rand, cfg *config.CleanConfig, logRecordPool []schemas.LogRecordDTO) schemas.LogIngestRequest {
-	records := make([]schemas.LogRecordDTO, cfg.BatchSize)
-	// timestamp for every record is heavy and nanosecond granularity anyway
-	timestamp := time.Now().UTC()
-	for i := 0; i < cfg.BatchSize; i++ {
-		idx := customRand.IntN(len(logRecordPool))
-		record := logRecordPool[idx]
-		record.TraceId = GenerateTraceID(customRand)
-		record.SpanId = GenerateSpanID(customRand)
-		record.Timestamp = timestamp
-		records[i] = record
-	}
+func GenerateRequest(customRand *rand.Rand, cfg *config.CleanConfig, logRecordPool []LogRecordTemplate) plog.Logs {
 
+	// timestamp for every record is heavy, init once per request
+	now := pcommon.Timestamp(time.Now().UnixNano())
+
+	// high level object to marshal before sending
+	logs := plog.NewLogs()
+	logRL := logs.ResourceLogs().AppendEmpty()
+
+	// assign random service name for this batch
 	idx := customRand.IntN(len(cfg.ServiceNames))
 	serviceName := cfg.ServiceNames[idx]
-	return schemas.LogIngestRequest{
-		ServiceName:        serviceName,
-		ResourceAttributes: cfg.ResourceAttributes,
-		Records:            records,
+	logRL.Resource().Attributes().PutStr("service.name", serviceName)
+
+	// create scope logs that hold every log entry
+	logSL := logRL.ScopeLogs().AppendEmpty()
+	logSL.Scope().SetName("test-scope")
+	logSL.Scope().SetVersion("1.0.0")
+	for i := 0; i < cfg.BatchSize; i++ {
+		logRecord := logSL.LogRecords().AppendEmpty()
+		idx := customRand.IntN(len(logRecordPool))
+		template := logRecordPool[idx]
+		logRecord.SetTimestamp(now)
+		logRecord.SetObservedTimestamp(now)
+
+		logRecord.SetTraceID(GenerateTraceID(customRand))
+		logRecord.SetSpanID(GenerateSpanID(customRand))
+
+		logRecord.SetSeverityText(template.SeverityText)
+		logRecord.SetSeverityNumber(plog.SeverityNumber(template.SeverityNumber))
+
+		logRecord.Body().SetStr(template.Body)
+
+		for _, attr := range template.LogAttributes {
+			logRecord.Attributes().PutStr(attr.Key, attr.Value)
+		}
 	}
 
+	return logs
 }

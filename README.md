@@ -146,17 +146,6 @@ npm run test:watch
 Benchmarking logarithm uses a seeded randomised load generator using go and the vegeta library
 
 #### Usage
-
-The randomised generator references the log ingest schema from backend/api/schemas/logs.go
-To cross import from the backend directory, we will use the go work feature. </br>
-Run from project root
-
-```
-go work init ./backend ./load_generator
-```
-
-Then to run load generator (make sure logarithm service is running)
-
 ```
 cd load_generator
 

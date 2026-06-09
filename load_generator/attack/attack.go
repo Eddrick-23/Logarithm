@@ -3,7 +3,6 @@ package attack
 import (
 	"bytes"
 	"compress/gzip"
-	"encoding/json"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -12,17 +11,17 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Eddrick-23/Logarithm/api/schemas"
 	"github.com/Eddrick-23/Logarithm/load_generator/config"
 	"github.com/Eddrick-23/Logarithm/load_generator/generator"
 	vegeta "github.com/tsenart/vegeta/v12/lib"
+	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
 
 type Attack struct {
 	randPool   sync.Pool
 	gzipPool   sync.Pool
 	bufferPool sync.Pool
-	pool       []schemas.LogRecordDTO
+	pool       []generator.LogRecordTemplate
 	cfg        *config.CleanConfig
 	attacker   *vegeta.Attacker
 	duration   time.Duration
@@ -80,7 +79,9 @@ func (a *Attack) Start() <-chan *vegeta.Result {
 		}
 		r := a.randPool.Get().(*rand.Rand)
 		defer a.randPool.Put(r)
-		payload, err := json.Marshal(generator.GenerateRequest(r, a.cfg, a.pool))
+
+		req := plogotlp.NewExportRequestFromLogs(generator.GenerateRequest(r, a.cfg, a.pool))
+		payload, err := req.MarshalJSON()
 
 		if err != nil {
 			return fmt.Errorf("error marshaling json: %w", err)
