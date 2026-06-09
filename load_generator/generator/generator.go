@@ -122,7 +122,8 @@ func GenerateRequest(customRand *rand.Rand, cfg *config.CleanConfig, logRecordPo
 
 	// create scope logs that hold every log entry
 	logSL := logRL.ScopeLogs().AppendEmpty()
-
+	logSL.Scope().SetName("test-scope")
+	logSL.Scope().SetVersion("1.0.0")
 	for i := 0; i < cfg.BatchSize; i++ {
 		logRecord := logSL.LogRecords().AppendEmpty()
 		idx := customRand.IntN(len(logRecordPool))
