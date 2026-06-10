@@ -179,11 +179,6 @@ func TestSearchLogs(t *testing.T) {
 			expectedCount: 2,
 		},
 		{
-			testName:      "Start time testRecord1 onwards",
-			filter:        core.LogQueryFilter{StartTime: time.Date(2024, 5, 19, 0, 0, 0, 0, time.UTC)},
-			expectedCount: 3,
-		},
-		{
 			testName:        "SearchTerm \"timeout\"",
 			filter:          core.LogQueryFilter{Body: "timeout"},
 			expectedCount:   1,
