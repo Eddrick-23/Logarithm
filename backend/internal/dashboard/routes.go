@@ -261,12 +261,8 @@ func handleLiveTail(logger *slog.Logger, broker *transport.NatsBroker, config *c
 					// channel closed
 					return
 				}
-				// unmarshal payload before appending to batch since live tail reads a json
-				var records []json.RawMessage
-				if err := json.Unmarshal(payload, &records); err != nil {
-					logger.Error("Failed to unmarshal records", "error", err)
-				}
-				batch = append(batch, records...)
+				// each payload is an individual record, append directly
+				batch = append(batch, json.RawMessage(payload))
 
 			case <-ticker.C:
 				if len(batch) == 0 {
