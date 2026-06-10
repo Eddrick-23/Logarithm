@@ -246,12 +246,13 @@ func (s *ClickHouseStore) GetFilteredLogsCount(ctx context.Context, filter core.
 }
 
 func (s *ClickHouseStore) GetDistinctServices(ctx context.Context) ([]string, error) {
-	tbl, err := s.table(TableLogs)
+	tbl, err := s.table(TableServiceRegistry)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get table: %v", err)
 	}
 
-	queryString := "SELECT DISTINCT ServiceName FROM " + tbl
+	// ReplacingMergeTree removes duplicates asynchronously so we need FINAL
+	queryString := "SELECT ServiceName FROM " + tbl + " FINAL"
 
 	rows, err := s.conn.Query(ctx, queryString)
 	if err != nil {

@@ -6,8 +6,9 @@ import (
 )
 
 const (
-	TableLogs    = "logs"
-	TableMetrics = "metrics"
+	TableLogs            = "logs"
+	TableMetrics         = "metrics"
+	TableServiceRegistry = "service_registry"
 )
 
 var validTableName = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
@@ -19,7 +20,7 @@ func isValidTableName(name string) bool {
 
 // map table to dbName.table
 func initTables(dbName string) (map[string]string, error) {
-	names := []string{TableLogs, TableMetrics}
+	names := []string{TableLogs, TableMetrics, TableServiceRegistry}
 	tables := make(map[string]string, len(names))
 	for _, t := range names {
 		if !isValidTableName(t) {
