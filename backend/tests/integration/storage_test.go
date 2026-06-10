@@ -168,7 +168,7 @@ func TestSearchLogs(t *testing.T) {
 		{
 			testName:      "Start time testRecord1 onwards",
 			filter:        core.LogQueryFilter{StartTime: time.Date(2024, 5, 19, 0, 0, 0, 0, time.UTC)},
-			expectedCount: 3,
+			expectedCount: len(seedData),
 		},
 		{
 			testName: "Start time testRecord1 onwards end time before testRecord3",
@@ -199,7 +199,7 @@ func TestSearchLogs(t *testing.T) {
 			testName:        "Limit 1 orderby timestamp descending",
 			filter:          core.LogQueryFilter{Limit: 1, OrderBy: core.OrderByTimestamp, Descending: true},
 			expectedCount:   1,
-			expectedTraceId: testRecord3.TraceId,
+			expectedTraceId: testRecord4.TraceId,
 		},
 	}
 
