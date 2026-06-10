@@ -28,6 +28,7 @@ type DelayCalcFunc func(maxDeliver uint64) time.Duration // callback to determin
 
 type Producer interface { // for ingestion endpoint to push payload
 	PublishLogs(context.Context, string, []byte) error
+	PublishLiveTail(string, []byte) error
 }
 
 type Consumer interface { // for worker to read logs from stream
@@ -149,6 +150,10 @@ func (nb *NatsBroker) PublishLogs(ctx context.Context, subject string, payload [
 		"duplicate", ack.Duplicate)
 
 	return nil
+}
+
+func (nb *NatsBroker) PublishLiveTail(subject string, data []byte) error {
+	return nb.conn.Publish(subject, data) // core NATS, no ack just fire and forget
 }
 
 func (nb *NatsBroker) NewDurableConsumer(ctx context.Context, stream jetstream.Stream, consumerName string, maxDeliver int, backoff []time.Duration) (*NatsJSConsumer, error) {

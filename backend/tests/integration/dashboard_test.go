@@ -17,6 +17,7 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 	"github.com/gorilla/websocket"
+	"github.com/stretchr/testify/assert"
 )
 
 func setupDashboardServer(t *testing.T, ctx context.Context) (*httptest.Server, *transport.NatsBroker) {
@@ -202,6 +203,10 @@ func TestDashboardHandleDistinctServices(t *testing.T) {
 }
 
 func TestDashboardHandleLiveTail(t *testing.T) {
+	type LogMessage struct {
+		Message string `json:"message"`
+	}
+
 	ctx := context.Background()
 	server, broker := setupDashboardServer(t, ctx)
 
@@ -215,8 +220,16 @@ func TestDashboardHandleLiveTail(t *testing.T) {
 	defer ws.Close()
 	time.Sleep(100 * time.Millisecond) // wait for server to establish Jetstream consumer
 
-	testPayload := []byte(`[{"message": "hello from testcases!"}]`)
-	err = broker.PublishLogs(ctx, transport.LiveTailSubjectPrefix+"test.app", testPayload)
+	testPayload := LogMessage{
+		Message: "hello from testcaes!",
+	}
+
+	testData, err := json.Marshal(testPayload)
+	if err != nil {
+		t.Fatalf("Failed to marshal test data: %v", err)
+	}
+
+	err = broker.PublishLiveTail(transport.LiveTailSubjectPrefix+"test.app", testData)
 	if err != nil {
 		t.Fatalf("Failed to publish to NATS: %v", err)
 	}
@@ -239,8 +252,9 @@ func TestDashboardHandleLiveTail(t *testing.T) {
 	}
 
 	// check that the payload we sent matches the one we received
-	receivedPayload := string(batch[0])
-	if receivedPayload != `{"message":"hello from testcases!"}` {
-		t.Errorf("Expected test payload, got: %s", receivedPayload)
+	var receivedPayload LogMessage
+	if err := json.Unmarshal(batch[0], &receivedPayload); err != nil {
+		t.Fatalf("Failed to unmarshal received payload: %v", err)
 	}
+	assert.Equal(t, testPayload, receivedPayload)
 }

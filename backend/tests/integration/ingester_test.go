@@ -25,6 +25,10 @@ func (m *MockProducer) PublishLogs(context.Context, string, []byte) error {
 	return m.Err
 }
 
+func (m *MockProducer) PublishLiveTail(subject string, data []byte) error {
+	return nil // not used
+}
+
 var testJsonPayload = struct {
 	Key   string
 	Value string

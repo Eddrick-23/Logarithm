@@ -63,16 +63,17 @@ func processPayloads(logger *slog.Logger, payloads [][]byte, flatLogsByServiceNa
 }
 
 func publishLiveTail(logger *slog.Logger, producer transport.Producer, serviceName string, logs []core.FlatLogRecord) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	data, err := json.Marshal(logs)
-	if err != nil {
-		logger.Error("json marshal failed before publish to live tail stream", "err", err)
-		return
-	}
-	if err := producer.PublishLogs(ctx, transport.LiveTailSubjectPrefix+serviceName, data); err != nil {
-		logger.Error("failed to publish flattened logs to live tail stream", "err", err)
-		return
+	subject := transport.LiveTailSubjectPrefix + serviceName
+
+	for _, record := range logs {
+		data, err := json.Marshal(record)
+		if err != nil {
+			logger.Error("json marshal failed for live tail record", "err", err)
+		}
+
+		if err := producer.PublishLiveTail(subject, data); err != nil {
+			logger.Error("failed to publish to live tail stream", "err", err)
+		}
 	}
 }
 
