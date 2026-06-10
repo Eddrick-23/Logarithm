@@ -17,21 +17,31 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	chmodule "github.com/testcontainers/testcontainers-go/modules/clickhouse" // alias to avoid naming conflict
 	natsmodule "github.com/testcontainers/testcontainers-go/modules/nats"     // alias to avoid naming conflict
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 
-	natsContainer, err := natsmodule.Run(ctx, "nats:2.14-alpine", testcontainers.WithCmd("-js"))
+	natsContainer, err := natsmodule.Run(
+		ctx,
+		"nats:2.14-alpine",
+		testcontainers.WithCmd("-js"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("Server is ready"),
+		),
+	)
+
+	if err != nil {
+		log.Fatalf("failed to start container: %s", err)
+	}
+
 	defer func() {
 		if err := testcontainers.TerminateContainer(natsContainer); err != nil {
 			log.Printf("failed to terminate container: %s", err)
 			return
 		}
 	}()
-	if err != nil {
-		log.Printf("failed to start container: %s", err)
-	}
 
 	natsHost, err := natsContainer.Host(ctx)
 	if err != nil {
@@ -47,12 +57,12 @@ func TestMain(m *testing.M) {
 
 	nc, err := nats.Connect(natsUrl, nats.DrainTimeout(5*time.Second))
 	if err != nil {
-		log.Printf("failed to connect to raw NATS client: %s", err)
+		log.Fatalf("failed to connect to raw NATS client: %s", err)
 	}
 
 	js, err := jetstream.New(nc)
 	if err != nil {
-		log.Printf("failed to create to jetstream interface: %s", err)
+		log.Fatalf("failed to create to jetstream interface: %s", err)
 	}
 
 	_, err = js.CreateStream(ctx, jetstream.StreamConfig{
@@ -74,6 +84,7 @@ func TestMain(m *testing.M) {
 		chmodule.WithDatabase(dbname),
 		chmodule.WithInitScripts(filepath.Join("testdata", "init-db.sql")),
 	)
+
 	defer func() {
 		if clickHouseContainer != nil {
 			if err := testcontainers.TerminateContainer(clickHouseContainer); err != nil {
