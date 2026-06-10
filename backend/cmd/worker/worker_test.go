@@ -302,6 +302,10 @@ type MockProducer struct {
 }
 
 func (m *MockProducer) PublishLogs(ctx context.Context, subject string, payload []byte) error {
+	return nil // not used
+}
+
+func (m *MockProducer) PublishLiveTail(subject string, data []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -309,7 +313,7 @@ func (m *MockProducer) PublishLogs(ctx context.Context, subject string, payload 
 		m.PublishedRecords = map[string][][]byte{}
 	}
 
-	m.PublishedRecords[subject] = append(m.PublishedRecords[subject], payload)
+	m.PublishedRecords[subject] = append(m.PublishedRecords[subject], data)
 
 	select {
 	case m.PublishCh <- struct{}{}: // signal test thread a publish occured
