@@ -220,7 +220,6 @@ func TestDashboardHandleLiveTail(t *testing.T) {
 	defer ws.Close()
 	time.Sleep(100 * time.Millisecond) // wait for server to establish Jetstream consumer
 
-	// testPayload := `[{"message": "hello from testcases!"}]`
 	testPayload := LogMessage{
 		Message: "hello from testcaes!",
 	}
