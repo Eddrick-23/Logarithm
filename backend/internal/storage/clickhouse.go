@@ -275,3 +275,21 @@ func (s *ClickHouseStore) GetDistinctServices(ctx context.Context) ([]string, er
 
 	return services, nil
 }
+
+func (s *ClickHouseStore) GetLoggingMetrics(ctx context.Context) ([]core.LogMetrics, error) {
+	tbl, err := s.table(TableMetrics)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get table: %v", err)
+	}
+
+	whereClause := "WHERE Timestamp >= now() - toIntervalMinute(@mins)"
+	queryString := fmt.Sprintf("SELECT * FROM %v %v ", tbl, whereClause)
+
+	var result []core.LogMetrics
+	// for now, im taking the metrics in the past 60s, can be adjusted based on specifications
+	if err := s.conn.Select(ctx, &result, queryString, clickhouse.Named("mins", 1)); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
