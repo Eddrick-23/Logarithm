@@ -22,7 +22,7 @@ import (
 func setupDashboardServer(t *testing.T, ctx context.Context) (*httptest.Server, *transport.NatsBroker) {
 	t.Helper()
 
-	logStore, err := storage.NewClickHouseStore(ctx, slog.Default(), dbAddr, dbname, dbtablename, user, password)
+	logStore, err := storage.NewClickHouseStore(ctx, slog.Default(), dbAddr, dbname, user, password)
 	if err != nil {
 		t.Fatalf("failed to initialize ClickHouse store: %v", err)
 	}

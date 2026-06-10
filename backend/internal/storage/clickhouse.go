@@ -16,15 +16,15 @@ type LogStore interface {
 }
 
 type ClickHouseStore struct {
-	conn       driver.Conn
-	dbAndTable string
-	logger     *slog.Logger
+	conn   driver.Conn
+	tables map[string]string
+	logger *slog.Logger
 }
 
 var _ LogStore = (*ClickHouseStore)(nil)
 
 // addr should be full host:port e.g. localhost:9000 or clickhouse:9000
-func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, dbName string, tableName string, username string, password string) (*ClickHouseStore, error) {
+func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, dbName string, username string, password string) (*ClickHouseStore, error) {
 	logger.Info("Connecting to database...")
 	conn, err := clickhouse.Open(&clickhouse.Options{
 		Addr: []string{addr},
@@ -41,6 +41,11 @@ func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, d
 		return nil, fmt.Errorf("failed to configure clickhouse: %v", err)
 	}
 
+	tables, err := initTables(dbName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialise table mapping: %v", err)
+	}
+
 	// TODO: add backoff and retry logic in case of connection instability
 	if err := conn.Ping(ctx); err != nil {
 		if exception, ok := err.(*clickhouse.Exception); ok {
@@ -50,16 +55,30 @@ func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, d
 	}
 	logger.Info("connection to database established")
 	return &ClickHouseStore{
-		conn:       conn,
-		dbAndTable: dbName + "." + tableName,
-		logger:     logger}, nil
+		conn:   conn,
+		tables: tables,
+		logger: logger,
+	}, nil
+}
+
+func (s *ClickHouseStore) table(name string) (string, error) {
+	t, ok := s.tables[name]
+	if !ok {
+		return "", fmt.Errorf("unknown table: %s", name)
+	}
+	return t, nil
 }
 
 func (s *ClickHouseStore) InitDB(ctx context.Context) error {
-	fmt.Println(">>> InitDB called, table:", s.dbAndTable)
+	fmt.Println(">>> InitDB called, table:", s.tables[TableLogs])
+
+	tbl, err := s.table(TableLogs)
+	if err != nil {
+		return fmt.Errorf("failed to get table: %v", err)
+	}
 
 	var count uint64
-	if err := s.conn.QueryRow(ctx, "SELECT count() FROM "+s.dbAndTable).Scan(&count); err != nil {
+	if err := s.conn.QueryRow(ctx, "SELECT count() FROM "+tbl).Scan(&count); err != nil {
 		fmt.Println(">>> count query failed:", err)
 		return fmt.Errorf("failed to check existing data: %w", err)
 	}
@@ -69,7 +88,7 @@ func (s *ClickHouseStore) InitDB(ctx context.Context) error {
 		return nil
 	}
 
-	err := s.BatchInsert(ctx, testData)
+	err = s.BatchInsert(ctx, testData)
 	if err != nil {
 		fmt.Println(">>> BatchInsert failed:", err)
 		return fmt.Errorf("failed to init db: %w", err)
@@ -87,7 +106,12 @@ func (s *ClickHouseStore) Close() error {
 func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLogRecord) error {
 	// must explicitly state all cols since we have an extra insertAt column
 	// that clickhouse will fill in itself
-	insertStatement := "INSERT INTO " + s.dbAndTable +
+	tbl, err := s.table(TableLogs)
+	if err != nil {
+		return fmt.Errorf("failed to get table: %v", err)
+	}
+
+	insertStatement := "INSERT INTO " + tbl +
 		` (Timestamp, ScopeName, ScopeVersion, TraceId, SpanId, ObservedTimestamp, SeverityText, SeverityNumber,
          ServiceName, Body, BodyType, LogAttrKeys, LogAttrValues, ResAttrKeys, ResAttrValues)`
 	batch, err := s.conn.PrepareBatch(ctx, insertStatement)
@@ -167,8 +191,13 @@ func (s *ClickHouseStore) buildFilterQueryString(filter core.LogQueryFilter) (st
 }
 
 func (s *ClickHouseStore) SearchLogs(ctx context.Context, filter core.LogQueryFilter) ([]core.FlatLogRecord, error) {
+	tbl, err := s.table(TableLogs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get table: %v", err)
+	}
+
 	whereClause, args := s.buildFilterQueryString(filter)
-	queryString := fmt.Sprintf("Select * FROM %v %v", s.dbAndTable, whereClause)
+	queryString := fmt.Sprintf("Select * FROM %v %v", tbl, whereClause)
 
 	if filter.OrderBy != "" {
 		queryString += fmt.Sprintf(" ORDER BY %s", filter.OrderBy)
@@ -201,8 +230,13 @@ func (s *ClickHouseStore) SearchLogs(ctx context.Context, filter core.LogQueryFi
 }
 
 func (s *ClickHouseStore) GetFilteredLogsCount(ctx context.Context, filter core.LogQueryFilter) (int, error) {
+	tbl, err := s.table(TableLogs)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get table: %v", err)
+	}
+
 	whereClause, args := s.buildFilterQueryString(filter)
-	queryString := fmt.Sprintf("SELECT COUNT(*) FROM %v %v", s.dbAndTable, whereClause)
+	queryString := fmt.Sprintf("SELECT COUNT(*) FROM %v %v", tbl, whereClause)
 
 	var count uint64
 	if err := s.conn.QueryRow(ctx, queryString, args...).Scan(&count); err != nil {
@@ -211,20 +245,13 @@ func (s *ClickHouseStore) GetFilteredLogsCount(ctx context.Context, filter core.
 	return int(count), nil
 }
 
-func (s *ClickHouseStore) CountInsertedWithin(ctx context.Context, minutes uint64) (uint64, error) {
-	whereClause := "WHERE InsertedAt >= now() - toIntervalMinute(@mins)"
-	queryString := "SELECT count() FROM " + s.dbAndTable + " " + whereClause
-
-	var count uint64
-	if err := s.conn.QueryRow(ctx, queryString, clickhouse.Named("mins", minutes)).Scan(&count); err != nil {
-		return 0, fmt.Errorf("failed to fetch row count: %v", err)
+func (s *ClickHouseStore) GetDistinctServices(ctx context.Context) ([]string, error) {
+	tbl, err := s.table(TableLogs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get table: %v", err)
 	}
 
-	return count, nil
-}
-
-func (s *ClickHouseStore) GetDistinctServices(ctx context.Context) ([]string, error) {
-	queryString := "SELECT DISTINCT ServiceName FROM " + s.dbAndTable
+	queryString := "SELECT DISTINCT ServiceName FROM " + tbl
 
 	rows, err := s.conn.Query(ctx, queryString)
 	if err != nil {

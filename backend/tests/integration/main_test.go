@@ -66,7 +66,6 @@ func TestMain(m *testing.M) {
 	user = "clickhouse"
 	password = "password"
 	dbname = "logarithm"
-	dbtablename = "logs"
 
 	clickHouseContainer, err := chmodule.Run(ctx,
 		"clickhouse/clickhouse-server:26.3-alpine",
