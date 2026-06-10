@@ -24,7 +24,6 @@ type Config struct {
 	DBUser                    string          `env:"DB_USER, required"`
 	DBPassword                string          `env:"DB_PASSWORD, required"`
 	DBName                    string          `env:"DB_NAME, default=logarithm"`
-	DBTableName               string          `env:"DB_TABLE_NAME, default=logs"`
 	NatsURL                   string          `env:"NATS_URL, default=nats://127.0.0.1:4222"`
 	NatsSubject               string          `env:"NATS_SUBJECT, default=logs.>"`
 	NatsPublishSubjectPrefix  string          `env:"NATS_PUBLISH_PREFIX, default=logs."`

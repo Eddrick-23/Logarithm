@@ -16,7 +16,6 @@ var dbAddr string
 var user string
 var password string
 var dbname string
-var dbtablename string
 var natsUrl string
 
 var testRecordEveryField core.FlatLogRecord = core.FlatLogRecord{
@@ -90,6 +89,26 @@ var testRecord3 core.FlatLogRecord = core.FlatLogRecord{
 	ResAttrKeys:       []string{},
 	ResAttrValues:     []string{},
 }
+var now = time.Now().UTC()
+var testRecord4 core.FlatLogRecord = core.FlatLogRecord{
+	Timestamp:         now,
+	ObservedTimestamp: now,
+	TraceId:           "3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b",
+	SpanId:            "a1b2c3d4e5f6a7b8",
+	SeverityText:      "ERROR",
+	SeverityNumber:    17,
+	ServiceName:       "payment-service",
+	Body:              "Payment processing failed due to server outage.",
+	BodyType:          "string",
+	ScopeName:         "test",
+	ScopeVersion:      "1.0.0",
+	LogAttrKeys:       []string{"payment_id", "error_code", "retry_attempt"},
+	LogAttrValues:     []string{"pay_abc123", "TIMEOUT", "2"},
+	ResAttrKeys:       []string{"host.name"},
+	ResAttrValues:     []string{"payment-worker-01"},
+}
+
+var seedData = []core.FlatLogRecord{testRecord1, testRecord2, testRecord3, testRecord4}
 
 func setupTestDB(t *testing.T, ctx context.Context, store storage.LogStore) {
 	t.Helper()
@@ -104,8 +123,6 @@ func setupTestDB(t *testing.T, ctx context.Context, store storage.LogStore) {
 	if err != nil {
 		t.Fatalf("failed to truncate table: %v", err)
 	}
-
-	seedData := []core.FlatLogRecord{testRecord1, testRecord2, testRecord3}
 
 	err = store.BatchInsert(ctx, seedData)
 	if err != nil {

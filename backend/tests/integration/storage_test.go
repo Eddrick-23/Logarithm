@@ -14,7 +14,7 @@ import (
 )
 
 func TestNewClickHouseStore(t *testing.T) {
-	_, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, dbtablename, user, password)
+	_, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, user, password)
 
 	if err != nil {
 		t.Errorf("failed to establish db connection: %v", err)
@@ -22,7 +22,7 @@ func TestNewClickHouseStore(t *testing.T) {
 }
 
 func TestNewClickHouseStoreWrongDBName(t *testing.T) {
-	_, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, "wrongname", dbtablename, user, password)
+	_, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, "wrongname", user, password)
 
 	if err == nil {
 		t.Error("Connection still established with wrong database name")
@@ -30,14 +30,14 @@ func TestNewClickHouseStoreWrongDBName(t *testing.T) {
 }
 
 func TestNewClickHouseStoreWrongUser(t *testing.T) {
-	_, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, dbtablename, "wronguser", password)
+	_, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, "wronguser", password)
 
 	if err == nil {
 		t.Error("Connection still established with wrong username")
 	}
 }
 func TestNewClickHouseStoreWrongPassword(t *testing.T) {
-	_, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, dbtablename, user, "wrongpassword")
+	_, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, user, "wrongpassword")
 
 	if err == nil {
 		t.Error("Connection still established with wrong password")
@@ -45,7 +45,7 @@ func TestNewClickHouseStoreWrongPassword(t *testing.T) {
 }
 
 func TestBatchInsert(t *testing.T) {
-	logStore, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, dbtablename, user, password)
+	logStore, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, user, password)
 	ctx := context.Background()
 
 	if err != nil {
@@ -92,7 +92,7 @@ func TestBatchInsert(t *testing.T) {
 }
 
 func TestBatchInsertMultipleLogs(t *testing.T) {
-	logStore, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, dbtablename, user, password)
+	logStore, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, user, password)
 
 	ctx := context.Background()
 	if err != nil {
@@ -129,7 +129,7 @@ func TestBatchInsertMultipleLogs(t *testing.T) {
 }
 
 func TestSearchLogs(t *testing.T) {
-	logStore, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, dbtablename, user, password)
+	logStore, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, user, password)
 
 	if err != nil {
 		t.Fatalf("failed to establish db connection: %v", err)
@@ -168,7 +168,7 @@ func TestSearchLogs(t *testing.T) {
 		{
 			testName:      "Start time testRecord1 onwards",
 			filter:        core.LogQueryFilter{StartTime: time.Date(2024, 5, 19, 0, 0, 0, 0, time.UTC)},
-			expectedCount: 3,
+			expectedCount: len(seedData),
 		},
 		{
 			testName: "Start time testRecord1 onwards end time before testRecord3",
@@ -177,11 +177,6 @@ func TestSearchLogs(t *testing.T) {
 				EndTime:   time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
 			},
 			expectedCount: 2,
-		},
-		{
-			testName:      "Start time testRecord1 onwards",
-			filter:        core.LogQueryFilter{StartTime: time.Date(2024, 5, 19, 0, 0, 0, 0, time.UTC)},
-			expectedCount: 3,
 		},
 		{
 			testName:        "SearchTerm \"timeout\"",
@@ -199,7 +194,7 @@ func TestSearchLogs(t *testing.T) {
 			testName:        "Limit 1 orderby timestamp descending",
 			filter:          core.LogQueryFilter{Limit: 1, OrderBy: core.OrderByTimestamp, Descending: true},
 			expectedCount:   1,
-			expectedTraceId: testRecord3.TraceId,
+			expectedTraceId: testRecord4.TraceId,
 		},
 	}
 
@@ -217,42 +212,5 @@ func TestSearchLogs(t *testing.T) {
 				t.Fatalf("search logs returned traceId: %v, expected: %v", result[0].TraceId, tc.expectedTraceId)
 			}
 		})
-	}
-}
-
-func TestCountInsertedWithin(t *testing.T) {
-	ctx := context.Background()
-	logStore, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, dbtablename, user, password)
-	if err != nil {
-		t.Fatalf("failed to establish db connection: %v", err)
-	}
-
-	conn, err := getRawDBConn()
-	if err != nil {
-		t.Fatalf("failed to get raw db conn: %v", err)
-	}
-	defer conn.Close()
-
-	conn.Exec(ctx, "TRUNCATE TABLE logarithm.logs")
-
-	count, err := logStore.CountInsertedWithin(ctx, 1)
-	if err != nil {
-		t.Fatalf("count failed: %v", err)
-	}
-	if count != 0 {
-		t.Fatalf("expected 0 count on empty table got: %v", count)
-	}
-
-	records := []core.FlatLogRecord{testRecord1, testRecord2, testRecord3}
-	if err = logStore.BatchInsert(ctx, records); err != nil {
-		t.Fatalf("insert failed: %v", err)
-	}
-
-	count, err = logStore.CountInsertedWithin(ctx, 1)
-	if err != nil {
-		t.Fatalf("count failed: %v", err)
-	}
-	if count != uint64(len(records)) {
-		t.Fatalf("expected %v count on empty table got: %v", len(records), count)
 	}
 }

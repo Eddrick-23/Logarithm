@@ -23,7 +23,7 @@ import (
 func setupDashboardServer(t *testing.T, ctx context.Context) (*httptest.Server, *transport.NatsBroker) {
 	t.Helper()
 
-	logStore, err := storage.NewClickHouseStore(ctx, slog.Default(), dbAddr, dbname, dbtablename, user, password)
+	logStore, err := storage.NewClickHouseStore(ctx, slog.Default(), dbAddr, dbname, user, password)
 	if err != nil {
 		t.Fatalf("failed to initialize ClickHouse store: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestDashboardHandleSearch(t *testing.T) {
 			name:           "Pagination - Limit 2",
 			queryParams:    "?descending=false&limit=2&offset=0",
 			expectedStatus: http.StatusOK,
-			expectedTotal:  3,
+			expectedTotal:  len(seedData),
 			expectedCount:  2,
 			expectedFirst:  testRecord1.TraceId,
 		},
@@ -86,8 +86,8 @@ func TestDashboardHandleSearch(t *testing.T) {
 			name:           "Pagination - Offset 2",
 			queryParams:    "?descending=false&limit=2&offset=2",
 			expectedStatus: http.StatusOK,
-			expectedTotal:  3,
-			expectedCount:  1,
+			expectedTotal:  len(seedData),
+			expectedCount:  len(seedData) - 2,
 			expectedFirst:  testRecord3.TraceId,
 		},
 		{
@@ -102,9 +102,9 @@ func TestDashboardHandleSearch(t *testing.T) {
 			name:           "Sorting - Descending by Timestamp",
 			queryParams:    "?orderBy=timestamp&descending=true&limit=10&offset=0",
 			expectedStatus: http.StatusOK,
-			expectedTotal:  3,
-			expectedCount:  3,
-			expectedFirst:  testRecord3.TraceId,
+			expectedTotal:  len(seedData),
+			expectedCount:  len(seedData),
+			expectedFirst:  testRecord4.TraceId,
 		},
 		{
 			name:           "Bad Request - Invalid Limit",
@@ -193,12 +193,44 @@ func TestDashboardHandleDistinctServices(t *testing.T) {
 	}
 
 	services := result["services"]
-	if len(services) != 1 {
-		t.Fatalf("expected 1 distinct service, got %v", len(services))
+	if len(services) != 2 {
+		t.Fatalf("expected 2 distinct services, got %v", len(services))
 	}
 
-	if services[0] != "test-service" {
-		t.Errorf("expected 'test-service', got '%v'", services[0])
+	// order of services returned may vary, hence need to check both values
+	if services[0] != "payment-service" && services[1] != "payment-service" {
+		t.Errorf("expected 'payment-service' but it was not found")
+	}
+
+	if services[0] != "test-service" && services[1] != "test-service" {
+		t.Errorf("expected 'test-service' but it was not found")
+	}
+}
+
+func TestDashboardHandleMetrics(t *testing.T) {
+	ctx := context.Background()
+	server, _ := setupDashboardServer(t, ctx)
+
+	reqURL := server.URL + "/api/metrics"
+	resp, err := http.Get(reqURL)
+	if err != nil {
+		t.Fatalf("failed to make GET request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status OK, got %v", resp.StatusCode)
+	}
+
+	var result map[string][]core.LogMetrics
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode JSON: %v", err)
+	}
+
+	// should have 3 in total since 2 logs have the same timestamp
+	metrics := result["metrics"]
+	if len(metrics) != 3 {
+		t.Fatalf("expected 3 log metrics, got %v", len(metrics))
 	}
 }
 

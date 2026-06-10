@@ -210,7 +210,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		}
 	}()
 
-	logStore, err := storage.NewClickHouseStore(ctx, databaseLogger, config.DBAddress, config.DBName, config.DBTableName, config.DBUser, config.DBPassword)
+	logStore, err := storage.NewClickHouseStore(ctx, databaseLogger, config.DBAddress, config.DBName, config.DBUser, config.DBPassword)
 	if err != nil {
 		databaseLogger.Error("failed to connect to db", "err", err)
 		panic(err)

@@ -66,7 +66,6 @@ func run(ctx context.Context, w io.Writer) error {
 		dblogger,
 		config.DBAddress,
 		config.DBName,
-		config.DBTableName,
 		config.DBUser,
 		config.DBPassword)
 
