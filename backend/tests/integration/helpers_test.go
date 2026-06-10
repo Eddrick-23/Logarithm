@@ -16,7 +16,6 @@ var dbAddr string
 var user string
 var password string
 var dbname string
-var dbtablename string
 var natsUrl string
 
 var testRecordEveryField core.FlatLogRecord = core.FlatLogRecord{
