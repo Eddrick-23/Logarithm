@@ -41,9 +41,11 @@ const SEVERITY_NORMALISE_MAP: Record<string, LogType> = {
     fatal: "fatal",
 };
 
-const parseSeverity = (severityText: string): LogType => {
+const parseSeverity = (severityText: string | null | undefined): LogType => {
+    // guard in case log has no severity text
+    if (!severityText) return "info"
     // strip numbered variants: "DEBUG2" -> "debug", "WARN3" -> "warn"
-    const base = severityText.replace(/d+$/, "").toLowerCase();
+    const base = severityText.replace(/\d+$/, "").toLowerCase();
     // fallback to info if we get an unsupported severity name
     return SEVERITY_NORMALISE_MAP[base] ?? "info";
 };
@@ -88,7 +90,17 @@ export default function LiveTailLogs() {
         };
 
         ws.onmessage = (e) => {
-            const batch: FlatLogRecord[] = JSON.parse(e.data);
+            if (!e.data) return; // ignore empty messages
+
+            let batch: FlatLogRecord[];
+            try {
+                batch = JSON.parse(e.data)
+            } catch {
+                console.error("failed to parse websocket message", e.data);
+                return;
+            }
+
+            if (!Array.isArray(batch) || batch.length == 0) return;
 
             if (isPausedRef.current) {
                 bufferRef.current.push(...batch); // spread entire batch into buffer
@@ -236,7 +248,7 @@ export default function LiveTailLogs() {
                             aria-label="services"
                         >
                             <MenuItem value="all-services">{isLoading ? "Loading..." : "All services"}</MenuItem>{" "}
-                            {serviceOptions?.services.map((serviceOption) => (
+                            {(serviceOptions?.services || []).map((serviceOption) => (
                                 <MenuItem key={serviceOption} value={serviceOption}>
                                     {serviceOption}
                                 </MenuItem>
