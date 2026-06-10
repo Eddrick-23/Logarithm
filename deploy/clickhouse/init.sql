@@ -59,3 +59,21 @@ SELECT
     countIf(SeverityNumber >= 17) AS ErrorsCount -- ErrorsCount includes ERROR (17-20) and FATAL (21-24)
 FROM logarithm.logs
 GROUP BY Timestamp, ServiceName;
+
+CREATE TABLE IF NOT EXISTS logarithm.service_registry (
+    ServiceName LowCardinality(String),
+    FirstSeen DateTime('UTC'),
+    LastSeen DateTime('UTC') -- records last seen to see when was the service last active
+)
+ENGINE = ReplacingMergeTree(LastSeen)
+ORDER BY ServiceName;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS service_registry_mv
+TO logarithm.service_registry
+AS
+SELECT
+    ServiceName,
+    min(Timestamp) AS FirstSeen,
+    max(Timestamp) AS LastSeen
+FROM logarithm.logs
+GROUP BY ServiceName;
