@@ -11,12 +11,14 @@ import (
 )
 
 const ( // infra constants
-	LogStreamName         = "LOGS"
-	DLQStreamName         = "LOGS_DLQ"
-	DLQSubject            = "dlq.logs"
-	LiveTailStreamName    = "TAIL"
-	LiveTailSubject       = "tail.>"
-	LiveTailSubjectPrefix = "tail."
+	LogStreamName          = "LOGS"
+	LogStreamSubject       = "logs.>"
+	LogStreamSubjectPrefix = "logs."
+	DLQStreamName          = "LOGS_DLQ"
+	DLQSubject             = "dlq.logs"
+	LiveTailStreamName     = "TAIL"
+	LiveTailSubject        = "tail.>"
+	LiveTailSubjectPrefix  = "tail."
 )
 
 var _ Producer = (*NatsBroker)(nil)
@@ -81,7 +83,7 @@ func (nb *NatsBroker) Close() {
 	}
 }
 
-func (nb *NatsBroker) EnsureLogStream(ctx context.Context, streamName string, subject string, maxAge time.Duration) (jetstream.Stream, error) {
+func (nb *NatsBroker) EnsureLogStream(ctx context.Context, streamName string, subject string, maxAge time.Duration, maxBytes int64) (jetstream.Stream, error) {
 	nb.logger.Info("Ensuring stream exists", "subject", subject)
 	streamConfig := jetstream.StreamConfig{
 		Name:        streamName,
@@ -90,12 +92,13 @@ func (nb *NatsBroker) EnsureLogStream(ctx context.Context, streamName string, su
 		Storage:     jetstream.FileStorage,
 		Discard:     jetstream.DiscardOld,
 		MaxAge:      maxAge,
+		MaxBytes:    maxBytes,
 	}
 
 	return nb.ensureStream(ctx, &streamConfig)
 }
 
-func (nb *NatsBroker) EnsureDLQStream(ctx context.Context, streamName string, subject string, maxAge time.Duration) (jetstream.Stream, error) {
+func (nb *NatsBroker) EnsureDLQStream(ctx context.Context, streamName string, subject string, maxAge time.Duration, maxBytes int64) (jetstream.Stream, error) {
 	nb.logger.Info("Ensuring stream exists", "subject", subject)
 	streamConfig := jetstream.StreamConfig{
 		Name:        streamName,
@@ -104,12 +107,13 @@ func (nb *NatsBroker) EnsureDLQStream(ctx context.Context, streamName string, su
 		Storage:     jetstream.FileStorage,
 		Discard:     jetstream.DiscardOld,
 		MaxAge:      maxAge,
+		MaxBytes:    maxBytes,
 	}
 
 	return nb.ensureStream(ctx, &streamConfig)
 }
 
-func (nb *NatsBroker) EnsureLiveTailStream(ctx context.Context, streamName string, subject string) (jetstream.Stream, error) {
+func (nb *NatsBroker) EnsureLiveTailStream(ctx context.Context, streamName string, subject string, maxBytes int64) (jetstream.Stream, error) {
 	// no max age
 	// small storage limit for ram
 	// memory storage only
@@ -122,7 +126,7 @@ func (nb *NatsBroker) EnsureLiveTailStream(ctx context.Context, streamName strin
 		Subjects:    []string{subject},
 		Storage:     jetstream.MemoryStorage,
 		Discard:     jetstream.DiscardOld,
-		MaxBytes:    50 * 1024 * 1024, // 50MB
+		MaxBytes:    maxBytes,
 	}
 
 	return nb.ensureStream(ctx, &streamConfig)
