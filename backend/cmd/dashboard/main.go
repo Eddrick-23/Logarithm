@@ -71,6 +71,10 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 
 	// Mocking live updates
 	go func() {
+		if !config.SeedSystem {
+			return
+		}
+
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 
@@ -217,8 +221,10 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	}
 
 	// seeding database with dummy data
-	if err := logStore.InitDB(ctx); err != nil {
-		databaseLogger.Error("initdb failed", "err", err)
+	if config.SeedSystem {
+		if err := logStore.InitDB(ctx); err != nil {
+			databaseLogger.Error("initdb failed", "err", err)
+		}
 	}
 
 	srv := NewServer(httpLogger, config, logStore, broker)
