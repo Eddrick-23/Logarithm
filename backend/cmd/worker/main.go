@@ -88,7 +88,7 @@ func run(ctx context.Context, w io.Writer) error {
 		workerLogger.Info("clickhouse connection closed")
 	}()
 
-	stream, err := natsBroker.EnsureLogStream(ctx, transport.LogStreamName, config.NatsSubject, config.NatsStreamMaxAge)
+	stream, err := natsBroker.EnsureLogStream(ctx, transport.LogStreamName, transport.LogStreamSubject, config.NatsStreamMaxAge, int64(config.NatsLogStreamMaxBytes))
 	if err != nil {
 		return fmt.Errorf("failed to ensure log stream: %w", err)
 	}
@@ -98,12 +98,12 @@ func run(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("failed to create durable consumer: %w", err)
 	}
 
-	_, err = natsBroker.EnsureDLQStream(ctx, transport.DLQStreamName, transport.DLQSubject, 5*config.NatsStreamMaxAge) // set longer max age for debugging
+	_, err = natsBroker.EnsureDLQStream(ctx, transport.DLQStreamName, transport.DLQSubject, config.NatsDLQMaxAge, int64(config.NatsDLQMaxBytes)) // set longer max age for debugging
 	if err != nil {
 		return fmt.Errorf("failed to ensure dlq stream: %w", err)
 	}
 
-	_, err = natsBroker.EnsureLiveTailStream(ctx, transport.LiveTailStreamName, transport.LiveTailSubject)
+	_, err = natsBroker.EnsureLiveTailStream(ctx, transport.LiveTailStreamName, transport.LiveTailSubject, int64(config.NatsLiveTailMaxBytes))
 	if err != nil {
 		return fmt.Errorf("failed to ensure live tail stream: %w", err)
 	}

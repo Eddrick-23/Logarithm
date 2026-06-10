@@ -5,9 +5,23 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/docker/go-units"
 	"github.com/joho/godotenv"
 	"github.com/sethvargo/go-envconfig"
 )
+
+type ByteSize int64
+
+func (b *ByteSize) EnvDecode(val string) error {
+	parsed, err := units.RAMInBytes(val)
+
+	if err != nil {
+		return err
+	}
+
+	*b = ByteSize(parsed)
+	return nil
+}
 
 type Config struct {
 	IngesterHost              string          `env:"INGESTER_HOST, default=localhost"`
@@ -25,11 +39,13 @@ type Config struct {
 	DBPassword                string          `env:"DB_PASSWORD, required"`
 	DBName                    string          `env:"DB_NAME, default=logarithm"`
 	NatsURL                   string          `env:"NATS_URL, default=nats://127.0.0.1:4222"`
-	NatsSubject               string          `env:"NATS_SUBJECT, default=logs.>"`
-	NatsPublishSubjectPrefix  string          `env:"NATS_PUBLISH_PREFIX, default=logs."`
 	NatsStreamMaxAge          time.Duration   `env:"NATS_STREAM_MAX_AGE, default=12h"`
+	NatsDLQMaxAge             time.Duration   `env:"NATS_DLQ_MAX_AGE, default=24h"`
 	NatsMaxDeliver            int             `env:"NATS_MAX_DELIVER, default=10"`
 	NatsBackoff               []time.Duration `env:"NATS_BACKOFF, default=5s,30s,60s,300s,3600s"`
+	NatsLogStreamMaxBytes     ByteSize        `env:"NATS_LOG_STREAM_MAX_BYTES, default=50GB"`
+	NatsDLQMaxBytes           ByteSize        `env:"NATS_DLQ_MAX_BYTES, default=10GB"`
+	NatsLiveTailMaxBytes      ByteSize        `env:"NATS_LIVE_TAIL_MAX_BYTES, default=50MB"`
 	WorkerLogLevel            string          `env:"WORKER_LOG_LEVEL, default=INFO"`
 	WorkerMaxBatch            int             `env:"WORKER_MAX_BATCH, default=10"`
 	WorkerMaxWait             time.Duration   `env:"WORKER_MAX_WAIT, default=2s"`

@@ -22,7 +22,7 @@ import (
 
 func NewServer(logger *slog.Logger, config *config.Config, producer transport.Producer) http.Handler {
 	mux := http.NewServeMux()
-	ingester.AddRoutes(mux, logger, producer, config.NatsPublishSubjectPrefix)
+	ingester.AddRoutes(mux, logger, producer, transport.LogStreamSubjectPrefix)
 
 	var handler http.Handler = mux
 	// add middlewares if any
@@ -69,7 +69,9 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		return fmt.Errorf("failed to crate nats broker: %w", err)
 	}
 
-	if _, err = natsBroker.EnsureLogStream(ctx, transport.LogStreamName, config.NatsSubject, config.NatsStreamMaxAge); err != nil {
+	if _, err = natsBroker.EnsureLogStream(ctx,
+		transport.LogStreamName, transport.LogStreamSubject,
+		config.NatsStreamMaxAge, int64(config.NatsLogStreamMaxBytes)); err != nil {
 		return fmt.Errorf("failed to ensure stream: %w", err)
 	}
 
