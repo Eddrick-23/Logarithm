@@ -277,20 +277,27 @@ func (s *ClickHouseStore) GetDistinctServices(ctx context.Context) ([]string, er
 	return services, nil
 }
 
-func (s *ClickHouseStore) GetLoggingMetrics(ctx context.Context) ([]core.LogMetrics, error) {
+func (s *ClickHouseStore) GetIngestionMetrics(ctx context.Context) (core.IngestionMetricsMap, error) {
 	tbl, err := s.table(TableMetrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get table: %v", err)
 	}
 
-	whereClause := "WHERE Timestamp >= now() - toIntervalMinute(@mins)"
-	queryString := fmt.Sprintf("SELECT * FROM %v %v ", tbl, whereClause)
+	whereClause := `WHERE Timestamp >= now() - toIntervalMinute(@mins)
+					GROUP BY ServiceName, Timestamp
+					ORDER BY ServiceName, Timestamp ASC
+					WITH FILL
+						FROM toDateTime(now() - toIntervalMinute(@mins))
+    					TO toDateTime(now())
+						STEP toIntervalSecond(1)`
+	// back fills timestamps with no values
+	queryString := fmt.Sprintf("SELECT Timestamp, ServiceName, sum(LogsCount) AS LogsCount FROM %v %v ", tbl, whereClause)
 
-	var result []core.LogMetrics
-	// for now, im taking the metrics in the past 60s, can be adjusted based on specifications
-	if err := s.conn.Select(ctx, &result, queryString, clickhouse.Named("mins", 1)); err != nil {
+	var rows []core.IngestionMetrics
+	// for now, im taking the metrics in the past 1 min, can be adjusted based on specifications
+	if err := s.conn.Select(ctx, &rows, queryString, clickhouse.Named("mins", 1)); err != nil {
 		return nil, err
 	}
 
-	return result, nil
+	return core.NewIngestionMetricsMap(rows), nil
 }

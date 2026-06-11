@@ -73,13 +73,6 @@ type LogQueryFilter struct {
 	Descending     bool
 }
 
-type LogMetrics struct {
-	Timestamp   time.Time `ch:"Timestamp" json:"timestamp"`
-	ServiceName string    `ch:"ServiceName" json:"serviceName"`
-	LogsCount   uint32    `ch:"LogsCount" json:"logsCount"`
-	ErrorsCount uint32    `ch:"ErrorsCount" json:"errorsCount"`
-}
-
 func ParseOrderByField(s string) OrderByField {
 	switch OrderByField(s) {
 	case OrderByTimestamp, OrderByServiceName:

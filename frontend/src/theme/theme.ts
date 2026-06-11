@@ -70,5 +70,34 @@ export const theme = createTheme({
         MuiTypography: {
             defaultProps: { variantMapping: { body1: "p", body2: "p" } },
         },
+
+        // Alert: override it with light mode colours
+        // TODO: override the colour scheme of the entire page so we dont need to do this
+        MuiAlert: {
+            styleOverrides: {
+                root: ({ ownerState }) => ({
+                    ...(ownerState.severity === "error" && {
+                        backgroundColor: "#fef2f2",
+                        color: "#5f2120",
+                        "& .MuiAlert-icon": { color: "#ef5350" },
+                    }),
+                    ...(ownerState.severity === "warning" && {
+                        backgroundColor: "#fff4e5",
+                        color: "#663c00",
+                        "& .MuiAlert-icon": { color: "#ff9800" },
+                    }),
+                    ...(ownerState.severity === "info" && {
+                        backgroundColor: "#e5f6fd",
+                        color: "#014361",
+                        "& .MuiAlert-icon": { color: "#0288d1" },
+                    }),
+                    ...(ownerState.severity === "success" && {
+                        backgroundColor: "#edf7ed",
+                        color: "#1e4620",
+                        "& .MuiAlert-icon": { color: "#4caf50" },
+                    }),
+                }),
+            },
+        },
     },
 });
