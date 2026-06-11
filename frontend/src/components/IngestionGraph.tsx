@@ -47,9 +47,13 @@ export default function IngestionGraph() {
             {isError && <ErrorBanner service="server" handleReconnect={refetch} />}
 
             {/* no logs received from api */}
-            {isEmpty && <Alert severity="info">No logs received in the last 60 seconds</Alert>}
+            {isEmpty && (
+                <Alert variant="outlined" severity="info">
+                    No logs received in the last 60 seconds
+                </Alert>
+            )}
 
-            {!isLoading && !isEmpty && (
+            {!isLoading && (
                 <LineChart
                     xAxis={[
                         {
