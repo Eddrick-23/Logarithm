@@ -56,9 +56,10 @@ export default function IngestionGraph() {
                             data: timestamps,
                             scaleType: "point",
                             valueFormatter: (v) => new Date(v).toLocaleTimeString(),
+                            label: "Time",
                         },
                     ]}
-                    yAxis={[{ min: 0 }]} // set min to 0 so that y starts from 0
+                    yAxis={[{ min: 0, label: "Logs / sec" }]} // set min to 0 so that y starts from 0
                     series={series}
                     height={CHART_HEIGHT}
                 />
