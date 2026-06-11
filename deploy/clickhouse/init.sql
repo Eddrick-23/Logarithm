@@ -58,7 +58,7 @@ SELECT
     count() AS LogsCount,
     countIf(SeverityNumber >= 17) AS ErrorsCount -- ErrorsCount includes ERROR (17-20) and FATAL (21-24)
 FROM logarithm.logs
-GROUP BY Timestamp, ServiceName;
+GROUP BY ServiceName, Timestamp;
 
 CREATE TABLE IF NOT EXISTS logarithm.service_registry (
     ServiceName LowCardinality(String),
