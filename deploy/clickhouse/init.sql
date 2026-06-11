@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS logarithm.service_registry (
 ENGINE = ReplacingMergeTree(LastSeen)
 ORDER BY ServiceName;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS service_registry_mv
+CREATE MATERIALIZED VIEW IF NOT EXISTS logarithm.service_registry_mv
 TO logarithm.service_registry
 AS
 SELECT
