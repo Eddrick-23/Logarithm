@@ -285,7 +285,12 @@ func (s *ClickHouseStore) GetIngestionMetrics(ctx context.Context) (core.Ingesti
 
 	whereClause := `WHERE Timestamp >= now() - toIntervalMinute(@mins)
 					GROUP BY ServiceName, Timestamp
-					ORDER BY ServiceName, Timestamp ASC`
+					ORDER BY ServiceName, Timestamp ASC
+					WITH FILL
+						FROM toStartOfSecond(now() - toIntervalMinute(@mins))
+						TO toStartOfSecond(now())
+						STEP toIntervalSecond(1)`
+	// back fills timestamps with no values
 	queryString := fmt.Sprintf("SELECT Timestamp, ServiceName, sum(LogsCount) AS LogsCount FROM %v %v ", tbl, whereClause)
 
 	var rows []core.IngestionMetrics
