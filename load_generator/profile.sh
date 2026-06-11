@@ -45,7 +45,7 @@ done
 # track nats queue depth
 echo "timestamp,pending_messages" > "$DIR/queue_depth.csv"
 while true; do
-    PENDING=$(curl -s "http://${TARGET_IP}:8222/jsz?consumers=true" | \
+    PENDING=$(curl -s "http://${TARGET_IP}:8222/jsz?stream=LOGS&consumers=true" | \
         jq -r '.account_details[].stream_detail[]? | select(.name=="LOGS") | .consumer_detail[]? | select(.name=="worker") | .num_pending // 0')
     
     echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ"),${PENDING:-0}" >> "$DIR/queue_depth.csv"
