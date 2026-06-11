@@ -218,8 +218,8 @@ func handleIngestionMetrics(logger *slog.Logger, logStore *storage.ClickHouseSto
 			return
 		}
 
-		response := map[string]any{
-			"metrics": ingestionMetrics,
+		response := core.IngestionMetricsResponse{
+			Metrics: ingestionMetrics,
 		}
 
 		w.Header().Set("Content-Type", "application/json")

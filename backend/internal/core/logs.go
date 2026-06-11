@@ -81,6 +81,10 @@ type IngestionMetrics struct {
 
 type IngestionMetricsMap map[string][]IngestionMetrics
 
+type IngestionMetricsResponse struct {
+	Metrics IngestionMetricsMap `json:"metrics"`
+}
+
 func ParseOrderByField(s string) OrderByField {
 	switch OrderByField(s) {
 	case OrderByTimestamp, OrderByServiceName:

@@ -3,8 +3,10 @@
 package integration
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -211,7 +213,7 @@ func TestDashboardHandleMetrics(t *testing.T) {
 	ctx := context.Background()
 	server, _ := setupDashboardServer(t, ctx)
 
-	reqURL := server.URL + "/api/metrics"
+	reqURL := server.URL + "/api/ingestion-metrics"
 	resp, err := http.Get(reqURL)
 	if err != nil {
 		t.Fatalf("failed to make GET request: %v", err)
@@ -222,15 +224,17 @@ func TestDashboardHandleMetrics(t *testing.T) {
 		t.Errorf("expected status OK, got %v", resp.StatusCode)
 	}
 
-	var result map[string][]core.IngestionMetrics
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	body, _ := io.ReadAll(resp.Body)
+
+	var result core.IngestionMetricsResponse
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&result); err != nil {
 		t.Fatalf("failed to decode JSON: %v", err)
 	}
 
-	// should have 3 in total since 2 logs have the same timestamp
-	metrics := result["metrics"]
-	if len(metrics) != 3 {
-		t.Fatalf("expected 3 log metrics, got %v", len(metrics))
+	metrics := result.Metrics["payment-service"]
+	// 60 records due to the backfill of null timings
+	if len(metrics) != 60 {
+		t.Fatalf("expected 60 log metrics, got %v", len(metrics))
 	}
 }
 
