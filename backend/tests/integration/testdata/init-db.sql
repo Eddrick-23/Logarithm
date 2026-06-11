@@ -34,8 +34,8 @@ ORDER BY (ServiceName, Timestamp, SeverityNumber);
 CREATE TABLE IF NOT EXISTS logarithm.metrics (
     Timestamp DateTime('UTC'),
     ServiceName LowCardinality(String),
-    LogsCount UInt32, -- stores total number of logs received in 1 second
-    ErrorsCount UInt32 -- stores total number of errors received in 1 second
+    LogsCount UInt64, -- stores total number of logs received in 1 second
+    ErrorsCount UInt64 -- stores total number of errors received in 1 second
 )
 ENGINE = SummingMergeTree()
 PARTITION BY toStartOfHour(Timestamp)

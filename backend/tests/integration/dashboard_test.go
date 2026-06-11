@@ -222,7 +222,7 @@ func TestDashboardHandleMetrics(t *testing.T) {
 		t.Errorf("expected status OK, got %v", resp.StatusCode)
 	}
 
-	var result map[string][]core.LogMetrics
+	var result map[string][]core.IngestionMetrics
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		t.Fatalf("failed to decode JSON: %v", err)
 	}

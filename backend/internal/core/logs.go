@@ -73,12 +73,13 @@ type LogQueryFilter struct {
 	Descending     bool
 }
 
-type LogMetrics struct {
+type IngestionMetrics struct {
 	Timestamp   time.Time `ch:"Timestamp" json:"timestamp"`
 	ServiceName string    `ch:"ServiceName" json:"serviceName"`
-	LogsCount   uint32    `ch:"LogsCount" json:"logsCount"`
-	ErrorsCount uint32    `ch:"ErrorsCount" json:"errorsCount"`
+	LogsCount   uint64    `ch:"LogsCount" json:"logsCount"`
 }
+
+type IngestionMetricsMap map[string][]IngestionMetrics
 
 func ParseOrderByField(s string) OrderByField {
 	switch OrderByField(s) {
@@ -131,4 +132,12 @@ func UnflattenLogRecords(flats []FlatLogRecord) []LogRecord {
 		dtos[i] = unflattenLogRecord(flat)
 	}
 	return dtos
+}
+
+func NewIngestionMetricsMap(rows []IngestionMetrics) IngestionMetricsMap {
+	result := make(IngestionMetricsMap)
+	for _, row := range rows {
+		result[row.ServiceName] = append(result[row.ServiceName], row)
+	}
+	return result
 }
