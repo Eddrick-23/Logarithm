@@ -37,6 +37,7 @@ const SEVERITY_NORMALISE_MAP: Record<string, LogType> = {
     debug: "debug",
     info: "info",
     warning: "warn", // logs coming in have severity text of WARNING
+    warn: "warn", // by default OTEL uses "warn" instead of "warning" but we support both
     error: "error",
     fatal: "fatal",
 };

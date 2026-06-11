@@ -2,6 +2,9 @@ package ingester
 
 import (
 	"compress/gzip"
+
+	"github.com/klauspost/compress/zstd"
+
 	"context"
 	"encoding/json"
 	"fmt"
@@ -22,25 +25,46 @@ func AddRoutes(
 ) {
 	mux.HandleFunc("GET /", handleRoot(logger))
 	mux.HandleFunc("GET /health", handleHealth(logger))
-	mux.Handle("POST /v1/logs", newContentTypeMiddleware("application/json")(gzipMiddleware(handleOTLPLogs(logger, producer, natsSubjectPrefix))))
+	mux.Handle("POST /v1/logs", newContentTypeMiddleware("application/json")(
+		decompressMiddleware(handleOTLPLogs(logger, producer, natsSubjectPrefix))))
 }
 
-func gzipMiddleware(next http.Handler) http.Handler {
+func decompressMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Content-Encoding") != "gzip" {
+		encoding := r.Header.Get("Content-Encoding")
+
+		if encoding == "" || encoding == "identity" {
 			next.ServeHTTP(w, r)
 			return
 		}
-		gz, err := gzip.NewReader(r.Body)
-		if err != nil {
-			http.Error(w, "Invalid gzip body", http.StatusBadRequest)
+
+		var uncompressedBody io.ReadCloser
+		var err error
+		switch encoding {
+		case "gzip":
+			uncompressedBody, err = gzip.NewReader(r.Body)
+		case "zstd":
+			var decoder *zstd.Decoder
+			decoder, err = zstd.NewReader(r.Body)
+			if err == nil {
+				uncompressedBody = decoder.IOReadCloser()
+			}
+		default:
+			http.Error(w, "Unsupported Content-Encoding format", http.StatusUnsupportedMediaType)
 			return
 		}
-		defer r.Body.Close()
-		defer gz.Close()
 
-		r.Body = io.NopCloser(gz)        // r.Body.Close() will be handled here only
-		r.Header.Del("Content-Encoding") // prevent double decodes
+		if err != nil {
+			http.Error(w, "Malformed compressed body", http.StatusBadRequest)
+			return
+		}
+
+		defer r.Body.Close()
+		defer uncompressedBody.Close()
+
+		r.Body = io.NopCloser(uncompressedBody)
+		r.ContentLength = -1
+		r.Header.Del("Content-Encoding")
 
 		next.ServeHTTP(w, r)
 	})
