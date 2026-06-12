@@ -39,7 +39,7 @@ func checkHealth(url string) error {
 }
 
 func run(ctx context.Context, configPath string, interval int, duration time.Duration,
-	warmupDuration time.Duration, restDuration time.Duration, showConfig bool) error {
+	warmupDuration time.Duration, restDuration time.Duration, outDir string, showConfig bool) error {
 	cfg, err := config.ParseConfig(configPath) // load config
 	if err != nil {
 		return err
@@ -82,7 +82,7 @@ func run(ctx context.Context, configPath string, interval int, duration time.Dur
 		fmt.Println("Warmup complete. Starting main test...")
 	}
 
-	resultsFile, err := files.CreateResultFile() // create output file
+	resultsFile, err := files.CreateResultFile(outDir) // create output file
 	if err != nil {
 		return fmt.Errorf("failed to create results file: %w", err)
 	}
@@ -149,6 +149,7 @@ func main() {
 	durationPtr := flag.Int("duration", 1, "test duration in seconds")
 	warmupPtr := flag.Int("warmup", 0, "warmup duration in seconds")
 	warmupRestPtr := flag.Int("rest", 5, "resting duration after warmup in seconds")
+	outdirPtr := flag.String("o", "results", "output direcotry of result.bin")
 	showConfigPtr := flag.Bool("showConfig", false, "display parsed config once at startup")
 
 	flag.Parse()
@@ -168,7 +169,7 @@ func main() {
 	testDuration := time.Duration(*durationPtr) * time.Second
 
 	ctx := context.Background()
-	if err := run(ctx, *pathToConfigPtr, *intervalPtr, testDuration, warmupDuration, restDuration, *showConfigPtr); err != nil {
+	if err := run(ctx, *pathToConfigPtr, *intervalPtr, testDuration, warmupDuration, restDuration, *outdirPtr, *showConfigPtr); err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}

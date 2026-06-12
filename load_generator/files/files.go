@@ -40,14 +40,13 @@ func NumFilesInFolder(path string) (int, error) {
 	return len(files), nil
 }
 
-func CreateResultFile() (*os.File, error) {
-	const resultsDir = "results"
+func CreateResultFile(outDir string) (*os.File, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		fmt.Printf("Error getting current directory: %v", err)
 		return nil, err
 	}
-	exists, err := FolderExists(filepath.Join(dir, resultsDir))
+	exists, err := FolderExists(filepath.Join(dir, outDir))
 	if err != nil {
 		fmt.Printf("Could not verify if results folder exists: %v", err)
 		return nil, err
@@ -55,13 +54,13 @@ func CreateResultFile() (*os.File, error) {
 
 	if !exists {
 		// 0755 give read/write/execute to owner
-		if err := os.Mkdir(filepath.Join(dir, resultsDir), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Join(dir, outDir), 0755); err != nil {
 			fmt.Printf("failed to create results directory: %v", err)
 			return nil, err
 		}
 	}
 
-	count, err := NumFilesInFolder(filepath.Join(dir, resultsDir))
+	count, err := NumFilesInFolder(filepath.Join(dir, outDir))
 	if err != nil {
 		return nil, fmt.Errorf("could not count result files: %w", err)
 	}
@@ -72,7 +71,7 @@ func CreateResultFile() (*os.File, error) {
 	}
 	filename += ".bin"
 
-	file, err := os.Create(filepath.Join(dir, "results", filename))
+	file, err := os.Create(filepath.Join(dir, outDir, filename))
 	if err != nil {
 		fmt.Printf("error creating results file: %v", err)
 		return nil, err
