@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Eddrick-23/Logarithm/load_generator/files"
 )
@@ -27,7 +28,7 @@ type RawConfig struct {
 	HealthUrl            string          `json:"healthUrl"`
 	TargetUrl            string          `json:"targetUrl"`
 	Method               string          `json:"method"`
-	Gzip                 bool            `json:"gzip"`
+	Encoding             string          `json:"encoding"`
 	Rps                  int             `json:"rps"`
 	BatchSize            int             `json:"batchSize"`
 	SeverityDistribution []float64       `json:"severityDistribution"`
@@ -43,7 +44,7 @@ type CleanConfig struct {
 	HealthUrl            string          `json:"healthUrl"`
 	TargetUrl            string          `json:"targetUrl"`
 	Method               string          `json:"method"`
-	Gzip                 bool            `json:"gzip"`
+	Encoding             string          `json:"encoding"`
 	Rps                  int             `json:"rps"`
 	BatchSize            int             `json:"batchSize"`
 	SeverityDistribution []float64       `json:"severityDistribution"`
@@ -58,19 +59,9 @@ func floatEquals(f1 float64, f2 float64) bool {
 	return math.Abs(f1-f2) < epsilon
 }
 
-func validateAndCleanConfig(rawCfg RawConfig) CleanConfig {
+func cleanPoolSize(rawCfg *RawConfig) int {
 	const poolSizeLimit = 1_000_000
 	const poolSizeDefault = 1000
-
-	dist := rawCfg.SeverityDistribution
-	sumProb := 0.0
-	for _, p := range rawCfg.SeverityDistribution {
-		sumProb += p
-	}
-	if len(rawCfg.SeverityDistribution) != 5 || !floatEquals(sumProb, 1.0) {
-		fmt.Println("invalid severity distribution, defaulting to [0.1, 0.6, 0.1, 0.1, 0.1] for [DEBUG, INFO, WARNING, ERROR, FATAL]")
-		dist = []float64{0.1, 0.6, 0.1, 0.1, 0.1}
-	}
 
 	poolSize := rawCfg.PoolSize
 	if rawCfg.PoolSize < 0 {
@@ -82,13 +73,51 @@ func validateAndCleanConfig(rawCfg RawConfig) CleanConfig {
 		poolSize = poolSizeLimit
 	}
 
+	return poolSize
+}
+
+func cleanSeverityDistribution(rawCfg *RawConfig) []float64 {
+	dist := rawCfg.SeverityDistribution
+	sumProb := 0.0
+	for _, p := range rawCfg.SeverityDistribution {
+		sumProb += p
+	}
+	if len(rawCfg.SeverityDistribution) != 5 || !floatEquals(sumProb, 1.0) {
+		fmt.Println("invalid severity distribution, defaulting to [0.1, 0.6, 0.1, 0.1, 0.1] for [DEBUG, INFO, WARNING, ERROR, FATAL]")
+		dist = []float64{0.1, 0.6, 0.1, 0.1, 0.1}
+	}
+	return dist
+}
+
+func cleanEncoding(rawCfg *RawConfig) string {
+	encoding := strings.ToLower(rawCfg.Encoding)
+
+	switch encoding {
+	case "":
+		return "none"
+	case "none":
+		return encoding
+	case "gzip":
+		return encoding
+	case "zstd":
+		return encoding
+	default:
+		fmt.Printf("encoding %v not supported, defaulting to no encoding.\n", encoding)
+		return "none"
+	}
+}
+
+func validateAndCleanConfig(rawCfg RawConfig) CleanConfig {
+	dist := cleanSeverityDistribution(&rawCfg)
+	poolSize := cleanPoolSize(&rawCfg)
+	encoding := cleanEncoding(&rawCfg)
 	return CleanConfig{
 		Seed:                 rawCfg.Seed,
 		PoolSize:             poolSize,
 		HealthUrl:            rawCfg.HealthUrl,
 		TargetUrl:            rawCfg.TargetUrl,
 		Method:               rawCfg.Method,
-		Gzip:                 rawCfg.Gzip,
+		Encoding:             encoding,
 		Rps:                  rawCfg.Rps,
 		BatchSize:            rawCfg.BatchSize,
 		SeverityDistribution: dist,

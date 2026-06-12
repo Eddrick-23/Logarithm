@@ -32,9 +32,9 @@ go.work.sum
 *.swp
 *.swo
 
-# Load test results
+# default load test results directory
 results/*
 
 #others
 *.pprof
-profiles/*
+benchmark_results/*

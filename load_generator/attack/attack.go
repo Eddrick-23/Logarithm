@@ -13,18 +13,20 @@ import (
 
 	"github.com/Eddrick-23/Logarithm/load_generator/config"
 	"github.com/Eddrick-23/Logarithm/load_generator/generator"
+	"github.com/klauspost/compress/zstd"
 	vegeta "github.com/tsenart/vegeta/v12/lib"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
 
 type Attack struct {
-	randPool   sync.Pool
-	gzipPool   sync.Pool
-	bufferPool sync.Pool
-	pool       []generator.LogRecordTemplate
-	cfg        *config.CleanConfig
-	attacker   *vegeta.Attacker
-	duration   time.Duration
+	randPool    sync.Pool
+	gzipPool    sync.Pool
+	bufferPool  sync.Pool
+	zstdEncoder *zstd.Encoder
+	pool        []generator.LogRecordTemplate
+	cfg         *config.CleanConfig
+	attacker    *vegeta.Attacker
+	duration    time.Duration
 }
 
 func NewAttack(cfg *config.CleanConfig, duration time.Duration) (*Attack, error) {
@@ -39,11 +41,21 @@ func NewAttack(cfg *config.CleanConfig, duration time.Duration) (*Attack, error)
 	}
 	fmt.Println("randomised pool generated")
 
+	var zEncoder *zstd.Encoder
+	if cfg.Encoding == "zstd" {
+		var err error
+		zEncoder, err = zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedDefault))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create zstd encoder: %v", err)
+		}
+	}
+
 	return &Attack{
-		attacker: vegeta.NewAttacker(),
-		pool:     logPool,
-		cfg:      cfg,
-		duration: duration,
+		attacker:    vegeta.NewAttacker(),
+		pool:        logPool,
+		cfg:         cfg,
+		duration:    duration,
+		zstdEncoder: zEncoder,
 		randPool: sync.Pool{
 			New: func() any {
 				n := counter.Add(1)
@@ -52,7 +64,7 @@ func NewAttack(cfg *config.CleanConfig, duration time.Duration) (*Attack, error)
 		},
 		gzipPool: sync.Pool{
 			New: func() any {
-				if !cfg.Gzip {
+				if !(cfg.Encoding == "gzip") {
 					return nil
 				}
 
@@ -61,13 +73,49 @@ func NewAttack(cfg *config.CleanConfig, duration time.Duration) (*Attack, error)
 		},
 		bufferPool: sync.Pool{
 			New: func() any {
-				if !cfg.Gzip {
+				if !(cfg.Encoding == "gzip") {
 					return nil
 				}
 				return new(bytes.Buffer)
 			},
 		},
 	}, nil
+}
+
+// helper to gzip compress and set tgt body and header
+func (a *Attack) writeGzip(tgt *vegeta.Target, payload []byte) error {
+	buf := a.bufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer a.bufferPool.Put(buf)
+
+	gz := a.gzipPool.Get().(*gzip.Writer)
+	gz.Reset(buf)
+	defer a.gzipPool.Put(gz)
+
+	if _, err := gz.Write(payload); err != nil {
+		return fmt.Errorf("gzip write error: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return fmt.Errorf("gzip close error: %w", err)
+	}
+
+	tgt.Body = bytes.Clone(buf.Bytes())
+	tgt.Header = http.Header{
+		"Content-Type":     []string{"application/json"},
+		"Content-Encoding": []string{"gzip"},
+	}
+	return nil
+}
+
+func (a *Attack) writeZstd(tgt *vegeta.Target, payload []byte) {
+	buf := make([]byte, 0, len(payload))
+	compressed := a.zstdEncoder.EncodeAll(payload, buf)
+
+	tgt.Body = compressed
+	tgt.Header = http.Header{
+		"Content-Type":     []string{"application/json"},
+		"Content-Encoding": []string{"zstd"},
+	}
 }
 
 func (a *Attack) Start() <-chan *vegeta.Result {
@@ -87,28 +135,14 @@ func (a *Attack) Start() <-chan *vegeta.Result {
 			return fmt.Errorf("error marshaling json: %w", err)
 		}
 
-		if a.cfg.Gzip {
-			buf := a.bufferPool.Get().(*bytes.Buffer)
-			buf.Reset()
-			defer a.bufferPool.Put(buf)
-
-			gz := a.gzipPool.Get().(*gzip.Writer)
-			gz.Reset(buf)
-			defer a.gzipPool.Put(gz)
-
-			if _, err := gz.Write(payload); err != nil {
-				return fmt.Errorf("gzip write error: %w", err)
+		switch a.cfg.Encoding {
+		case "zstd":
+			a.writeZstd(tgt, payload)
+		case "gzip":
+			if err := a.writeGzip(tgt, payload); err != nil {
+				return fmt.Errorf("failed to encode gzip: %w", err)
 			}
-			if err := gz.Close(); err != nil {
-				return fmt.Errorf("gzip close error: %w", err)
-			}
-
-			tgt.Body = bytes.Clone(buf.Bytes())
-			tgt.Header = http.Header{
-				"Content-Type":     []string{"application/json"},
-				"Content-Encoding": []string{"gzip"},
-			}
-		} else {
+		default:
 			tgt.Body = payload
 			tgt.Header = http.Header{
 				"Content-Type": []string{"application/json"},
