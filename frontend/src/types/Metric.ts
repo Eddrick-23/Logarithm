@@ -16,3 +16,7 @@ export type ErrorMetrics = {
     totalErrors: number;
     errorRate: number; // the API returns a float
 };
+
+export type GetErrorMetricsResponse = {
+    data: ErrorMetrics[];
+};

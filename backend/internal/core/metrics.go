@@ -20,6 +20,10 @@ type ErrorMetrics struct {
 	ErrorRate   float64 `ch:"ErrorRate" json:"errorRate"`
 }
 
+type ErrorMetricsResponse struct {
+	Data []ErrorMetrics `json:"data"`
+}
+
 func NewIngestionMetricsMap(rows []IngestionMetrics) IngestionMetricsMap {
 	result := make(IngestionMetricsMap)
 	for _, row := range rows {

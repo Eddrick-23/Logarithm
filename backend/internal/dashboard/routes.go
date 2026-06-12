@@ -246,10 +246,14 @@ func handleErrorMetrics(logger *slog.Logger, logStore *storage.ClickHouseStore) 
 			return
 		}
 
+		response := core.ErrorMetricsResponse{
+			Data: errorMetrics,
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 
-		err = json.NewEncoder(w).Encode(errorMetrics)
+		err = json.NewEncoder(w).Encode(response)
 		if err != nil {
 			logger.Error("failed to write response", "err", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
