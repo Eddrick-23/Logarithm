@@ -20,6 +20,32 @@ func FileExists(path string) (bool, error) {
 
 }
 
+func GenerateFileName(path string, prefix string) (string, error) {
+	n, err := NumFilesInFolder(path)
+	if err != nil {
+		return "", err
+	}
+
+	for suffix := 0; suffix <= n; suffix++ {
+		name := prefix
+		if suffix != 0 {
+			name += strconv.Itoa(suffix)
+		}
+		name += ".bin"
+
+		exists, err := FileExists(filepath.Join(path, name))
+		if err != nil {
+			return "", err
+		}
+
+		if !exists {
+			return name, nil
+		}
+	}
+
+	return "", fmt.Errorf("no valid name found")
+}
+
 func FolderExists(path string) (bool, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -48,7 +74,7 @@ func CreateResultFile(outDir string) (*os.File, error) {
 	}
 	exists, err := FolderExists(filepath.Join(dir, outDir))
 	if err != nil {
-		fmt.Printf("Could not verify if results folder exists: %v", err)
+		fmt.Printf("Could not verify if target folder exists: %v", err)
 		return nil, err
 	}
 
@@ -60,16 +86,11 @@ func CreateResultFile(outDir string) (*os.File, error) {
 		}
 	}
 
-	count, err := NumFilesInFolder(filepath.Join(dir, outDir))
+	filename, err := GenerateFileName(outDir, "results")
 	if err != nil {
-		return nil, fmt.Errorf("could not count result files: %w", err)
+		fmt.Printf("could not find suitable result file name: %v", err)
+		return nil, err
 	}
-
-	filename := "results"
-	if count > 0 {
-		filename = filename + strconv.Itoa(count)
-	}
-	filename += ".bin"
 
 	file, err := os.Create(filepath.Join(dir, outDir, filename))
 	if err != nil {
