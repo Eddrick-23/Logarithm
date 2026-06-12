@@ -55,7 +55,33 @@ SELECT
     count() AS LogsCount,
     countIf(SeverityNumber >= 17) AS ErrorsCount -- ErrorsCount includes ERROR (17-20) and FATAL (21-24)
 FROM logarithm.logs
-GROUP BY Timestamp, ServiceName;
+GROUP BY ServiceName, Timestamp;
+
+-- metrics stored in 1 minute buckets
+CREATE TABLE IF NOT EXISTS logarithm.metrics_1m (
+    Timestamp DateTime('UTC'),
+    ServiceName LowCardinality(String),
+    LogsCount UInt64,
+    ErrorsCount UInt64,
+)
+ENGINE = SummingMergeTree()
+PARTITION BY toYYYYMM(Timestamp)
+ORDER BY (ServiceName, Timestamp)
+
+-- Auto-delete old log metrics to save disk space
+TTL Timestamp + INTERVAL 1 DAY;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS logarithm.metrics_1m_mv
+TO logarithm.metrics_1m
+AS
+SELECT
+    -- all logs with the same start minute will be grouped together
+    toStartOfMinute(Timestamp) AS Timestamp,
+    ServiceName,
+    sum(LogsCount) AS LogsCount,
+    sum(ErrorsCount) AS ErrorsCount
+FROM logarithm.metrics
+GROUP BY ServiceName, Timestamp;
 
 CREATE TABLE IF NOT EXISTS logarithm.service_registry (
     ServiceName LowCardinality(String),
