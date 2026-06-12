@@ -3,6 +3,7 @@ import { card, sectionLabel } from "../theme/tokens";
 import { useErrorMetrics } from "../hooks/useMetrics";
 import type { ErrorMetrics } from "../types/Metric";
 import ErrorBanner from "./ErrorBanner";
+import { formatNumber } from "../utils/utils";
 
 const NUM_SERVICES = 5;
 const SEVERITY_THRESHOLDS = [
@@ -47,7 +48,11 @@ function ServiceErrorRow({ serviceName, totalErrors, errorRate }: ServiceErrorRo
                 />
             </Box>
             <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, width: 60 }}>
-                <Typography sx={{ fontWeight: "bold", fontSize: "0.85rem" }}>{totalErrors.toLocaleString()}</Typography>
+                <Tooltip title={totalErrors.toLocaleString()} placement="top">
+                    <Typography sx={{ fontWeight: "bold", fontSize: "0.85rem" }}>
+                        {formatNumber(totalErrors)}
+                    </Typography>
+                </Tooltip>
                 <Typography sx={{ fontSize: "0.75rem", color: "#8b949e" }}>{errorRate.toFixed(2)}%</Typography>
             </Box>
         </Box>
