@@ -1,6 +1,6 @@
 import { LineChart } from "@mui/x-charts/LineChart";
 import { useMemo } from "react";
-import { useMetrics } from "../hooks/useMetrics";
+import { useIngestionMetrics } from "../hooks/useMetrics";
 import { Alert, Box, Skeleton, Typography } from "@mui/material";
 import { card, sectionLabel } from "../theme/tokens";
 import ErrorBanner from "./ErrorBanner";
@@ -11,7 +11,7 @@ const CHART_HEIGHT = 400;
 const generateColour = (index: number) => `hsl(${(index * 137.5) % 360}, 70%, 50%)`;
 
 export default function IngestionGraph() {
-    const { data, isLoading, isError, refetch } = useMetrics();
+    const { data, isLoading, isError, refetch } = useIngestionMetrics();
 
     const services = useMemo(() => Object.keys(data ?? {}), [data]);
 
