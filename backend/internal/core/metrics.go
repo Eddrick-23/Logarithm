@@ -14,6 +14,12 @@ type IngestionMetricsResponse struct {
 	Metrics IngestionMetricsMap `json:"metrics"`
 }
 
+type ErrorMetrics struct {
+	ServiceName string  `ch:"ServiceName" json:"serviceName"`
+	TotalErrors uint64  `ch:"TotalErrors" json:"totalErrors"`
+	ErrorRate   float64 `ch:"ErrorRate" json:"errorRate"`
+}
+
 func NewIngestionMetricsMap(rows []IngestionMetrics) IngestionMetricsMap {
 	result := make(IngestionMetricsMap)
 	for _, row := range rows {

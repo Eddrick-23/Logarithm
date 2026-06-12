@@ -301,3 +301,30 @@ func (s *ClickHouseStore) GetIngestionMetrics(ctx context.Context) (core.Ingesti
 
 	return core.NewIngestionMetricsMap(rows), nil
 }
+
+func (s *ClickHouseStore) GetErrorMetrics(ctx context.Context) ([]core.ErrorMetrics, error) {
+	// error metrics will return error rates within the past 1 hour
+	tbl, err := s.table(TableMetrics1m)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get table: %v", err)
+	}
+
+	queryString := fmt.Sprintf(`
+        SELECT 
+            ServiceName, 
+            sum(ErrorsCount) AS TotalErrors, 
+            round(sum(ErrorsCount) / sum(LogsCount) * 100, 2) AS ErrorRate
+        FROM %v
+        WHERE Timestamp >= now() - toIntervalHour(@hour)
+        GROUP BY ServiceName
+        ORDER BY TotalErrors DESC
+        LIMIT 10
+    `, tbl)
+
+	var result []core.ErrorMetrics
+	if err := s.conn.Select(ctx, &result, queryString, clickhouse.Named("hour", 1)); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
