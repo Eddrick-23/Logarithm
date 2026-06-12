@@ -317,8 +317,8 @@ func (s *ClickHouseStore) GetErrorMetrics(ctx context.Context) ([]core.ErrorMetr
         FROM %v
         WHERE Timestamp >= now() - toIntervalHour(@hour)
         GROUP BY ServiceName
-        ORDER BY TotalErrors DESC
-        LIMIT 10
+        ORDER BY ErrorRate DESC
+        LIMIT 5
     `, tbl)
 
 	var result []core.ErrorMetrics
