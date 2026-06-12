@@ -150,7 +150,7 @@ func main() {
 	durationPtr := flag.Int("duration", 1, "test duration in seconds")
 	warmupPtr := flag.Int("warmup", 0, "warmup duration in seconds")
 	warmupRestPtr := flag.Int("rest", 5, "resting duration after warmup in seconds")
-	outdirPtr := flag.String("o", "results", "output direcotry of result.bin")
+	outdirPtr := flag.String("o", "results", "output directory of result.bin")
 	showConfigPtr := flag.Bool("showConfig", false, "display parsed config once at startup")
 
 	flag.Parse()

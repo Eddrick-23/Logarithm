@@ -23,13 +23,12 @@ type BodyTokenFormat struct {
 }
 
 type RawConfig struct {
-	Seed      int    `json:"seed"`
-	PoolSize  int    `json:"poolSize"`
-	HealthUrl string `json:"healthUrl"`
-	TargetUrl string `json:"targetUrl"`
-	Method    string `json:"method"`
-	Encoding  string `json:"encoding"`
-	// Gzip                 bool            `json:"gzip"` // TODO remove in favour of Encoding field
+	Seed                 int             `json:"seed"`
+	PoolSize             int             `json:"poolSize"`
+	HealthUrl            string          `json:"healthUrl"`
+	TargetUrl            string          `json:"targetUrl"`
+	Method               string          `json:"method"`
+	Encoding             string          `json:"encoding"`
 	Rps                  int             `json:"rps"`
 	BatchSize            int             `json:"batchSize"`
 	SeverityDistribution []float64       `json:"severityDistribution"`
@@ -40,13 +39,12 @@ type RawConfig struct {
 }
 
 type CleanConfig struct {
-	Seed      int    `json:"seed"`
-	PoolSize  int    `json:"poolSize"`
-	HealthUrl string `json:"healthUrl"`
-	TargetUrl string `json:"targetUrl"`
-	Method    string `json:"method"`
-	Encoding  string `json:"encoding"`
-	// Gzip                 bool            `json:"gzip"` // TODO remove in favour of Encoding field
+	Seed                 int             `json:"seed"`
+	PoolSize             int             `json:"poolSize"`
+	HealthUrl            string          `json:"healthUrl"`
+	TargetUrl            string          `json:"targetUrl"`
+	Method               string          `json:"method"`
+	Encoding             string          `json:"encoding"`
 	Rps                  int             `json:"rps"`
 	BatchSize            int             `json:"batchSize"`
 	SeverityDistribution []float64       `json:"severityDistribution"`
