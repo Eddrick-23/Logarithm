@@ -48,12 +48,12 @@ func run(ctx context.Context, configPath string, interval int, duration time.Dur
 	if showConfig {
 		printJson(*cfg)
 	}
-	fmt.Printf("Test configs: RPS: %v, BatchSize:%v, Duration: %v, Warmup: %v, useGzip: %v\n",
+	fmt.Printf("Test configs: RPS: %v, BatchSize:%v, Duration: %v, Warmup: %v, encoding: %v\n",
 		cfg.Rps,
 		cfg.BatchSize,
 		duration,
 		warmupDuration,
-		cfg.Gzip,
+		cfg.Encoding,
 	)
 
 	if err := checkHealth(cfg.HealthUrl); err != nil { // check endpoint health
@@ -132,13 +132,14 @@ func run(ctx context.Context, configPath string, interval int, duration time.Dur
 	wg.Wait()
 	metrics.Close()
 
-	fmt.Printf("Test Summary:\n P99 Latency: %v\n Throughput: %vrps\n Requests Sent: %v\n SuccessRate: %v\n TotalLogsSent: %v\n Logs/sec: %v\n",
+	fmt.Printf("Test Summary:\n P99 Latency: %v\n Throughput: %vrps\n Requests Sent: %v\n SuccessRate: %v\n TotalLogsSent: %v\n Logs/sec: %v\n AveragePayloadSize: %.2fKB\n",
 		metrics.Latencies.P99,
 		metrics.Throughput,
 		metrics.Requests,
 		metrics.Success*100,
 		cfg.BatchSize*int(metrics.Requests),
 		(cfg.BatchSize*int(metrics.Requests))/int(duration.Seconds()),
+		metrics.BytesOut.Mean/1000,
 	)
 	return nil
 }
