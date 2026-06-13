@@ -1,23 +1,11 @@
-import { Box, LinearProgress, Typography } from "@mui/material";
+import { Box, LinearProgress, Skeleton, Tooltip, Typography } from "@mui/material";
 import { card, sectionLabel } from "../theme/tokens";
+import { useErrorMetrics } from "../hooks/useMetrics";
+import type { ErrorMetrics } from "../types/Metric";
+import ErrorBanner from "./ErrorBanner";
+import { formatNumber } from "../utils/utils";
 
-interface ServiceError {
-    service: string;
-    count: number;
-}
-
-type ServiceErrorProps = ServiceError & {
-    maxCount: number;
-};
-
-const errorData: ServiceError[] = [
-    { service: "payments", count: 100 },
-    { service: "auth-svc", count: 79 },
-    { service: "db-proxy", count: 59 },
-    { service: "inventory", count: 39 },
-    { service: "api-gateway", count: 19 },
-];
-
+const NUM_SERVICES = 5;
 const SEVERITY_THRESHOLDS = [
     { min: 80, colour: "#ef5350" }, // critical  — red
     { min: 60, colour: "#ffa726" }, // high      — orange
@@ -26,69 +14,102 @@ const SEVERITY_THRESHOLDS = [
     { min: 0, colour: "#607d8b" }, // minimal   — grey
 ] as const;
 
-function getSeverityColour(count: number, maxCount: number): string {
-    const percentage = (count / maxCount) * 100;
-    return SEVERITY_THRESHOLDS.find(({ min }) => percentage >= min)!.colour;
+function getSeverityColour(errorRate: number): string {
+    return SEVERITY_THRESHOLDS.find(({ min }) => errorRate >= min)!.colour;
 }
 
-function ServiceErrorRow({ service, count, maxCount }: ServiceErrorProps) {
-    const progressValue = (count / maxCount) * 100;
+interface ServiceErrorRowProps {
+    serviceName: string;
+    totalErrors: number;
+    errorRate: number;
+}
+
+function ServiceErrorRow({ serviceName, totalErrors, errorRate }: ServiceErrorRowProps) {
     return (
-        <Box sx={{ display: "flex", alignItems: "center", py: 1.5, overflow: "hidden" }}>
-            <Typography noWrap sx={{ minWidth: 80, maxWidth: 120, fontSize: "0.85rem", flexShrink: 0 }}>
-                {service}
-            </Typography>
-            <Box sx={{ flexGrow: 1, flexShrink: 1, minWidth: 60, mx: 2 }}>
+        <Box sx={{ display: "flex", alignItems: "center", py: 1.5 }}>
+            <Tooltip title={serviceName} placement="top-start">
+                <Typography noWrap sx={{ width: 120, fontSize: "0.85rem", flexShrink: 0, cursor: "default" }}>
+                    {serviceName}
+                </Typography>
+            </Tooltip>
+            <Box sx={{ flexGrow: 1, minWidth: 60, mx: 2 }}>
                 <LinearProgress
                     variant="determinate"
-                    value={progressValue}
+                    value={errorRate}
                     sx={{
                         height: 6,
                         borderRadius: 3,
                         backgroundColor: "rgba(255, 255, 255, 0.08)",
                         "& .MuiLinearProgress-bar": {
-                            backgroundColor: getSeverityColour(count, maxCount),
+                            backgroundColor: getSeverityColour(errorRate),
                             borderRadius: 3,
                         },
                     }}
                 />
             </Box>
-            <Typography sx={{ fontWeight: "bold", minWidth: 40, textAlign: "right", flexShrink: 0 }}>
-                {count}
-            </Typography>
+            <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, width: 60 }}>
+                <Tooltip title={totalErrors.toLocaleString()} placement="top">
+                    <Typography sx={{ fontWeight: "bold", fontSize: "0.85rem" }}>
+                        {formatNumber(totalErrors)}
+                    </Typography>
+                </Tooltip>
+                <Typography sx={{ fontSize: "0.75rem", color: "#8b949e" }}>{errorRate.toFixed(2)}%</Typography>
+            </Box>
         </Box>
     );
 }
 
 export default function ServiceError() {
-    const maxCount = Math.max(...errorData.map((data) => data.count));
+    const { data, isLoading, isError, refetch } = useErrorMetrics();
 
     return (
-        <>
-            <Box sx={{ ...card, height: "100%" }}>
-                <Box
-                    sx={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                    }}
-                >
-                    <Typography sx={sectionLabel}>Top errors by service</Typography>
-                    <Typography variant="caption" sx={{ color: "#8b949e", fontSize: "0.85rem" }}>
-                        last 1h
+        <Box sx={{ ...card, height: "100%" }}>
+            {/* header */}
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <Typography sx={sectionLabel}>Top errors by service</Typography>
+                <Typography variant="caption" sx={{ color: "#8b949e", fontSize: "0.85rem" }}>
+                    last 1h
+                </Typography>
+            </Box>
+
+            {/* create loading skeleton bars to simulate loading service errors */}
+            {isLoading && (
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, mt: 1 }}>
+                    {Array.from({ length: NUM_SERVICES }).map((_, i) => (
+                        <Skeleton key={i} variant="rectangular" height={36} sx={{ borderRadius: 1 }} />
+                    ))}
+                </Box>
+            )}
+
+            {/* error handling */}
+            {isError && (
+                <Box sx={{ py: 3, textAlign: "center" }}>
+                    <ErrorBanner service="error metrics" handleReconnect={refetch} />
+                </Box>
+            )}
+
+            {/* no errors found in past hour */}
+            {!isLoading && !isError && (!data || data.length === 0) && (
+                <Box sx={{ py: 3, textAlign: "center" }}>
+                    <Typography variant="body2" sx={{ color: "#8b949e" }}>
+                        No errors recorded in the last hour.
                     </Typography>
                 </Box>
-                {errorData.map((item) => {
-                    return (
+            )}
+
+            {/* display rows */}
+            {!isLoading && !isError && data && data.length > 0 && (
+                <Box>
+                    {data.map((item: ErrorMetrics) => (
                         <ServiceErrorRow
-                            key={item.service}
-                            service={item.service}
-                            count={item.count}
-                            maxCount={maxCount}
+                            key={item.serviceName}
+                            serviceName={item.serviceName}
+                            totalErrors={item.totalErrors}
+                            errorRate={item.errorRate}
                         />
-                    );
-                })}
-            </Box>
-        </>
+                    ))}
+                </Box>
+            )}
+        </Box>
     );
 }

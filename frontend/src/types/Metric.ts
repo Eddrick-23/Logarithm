@@ -10,3 +10,13 @@ export type IngestionMetricsMap = Record<string, IngestionMetrics[]>;
 export type GetIngestionMetricsResponse = {
     metrics: IngestionMetricsMap;
 };
+
+export type ErrorMetrics = {
+    serviceName: string;
+    totalErrors: number;
+    errorRate: number; // the API returns a float
+};
+
+export type GetErrorMetricsResponse = {
+    data: ErrorMetrics[];
+};
