@@ -1,6 +1,8 @@
 package core
 
-import "time"
+import (
+	"time"
+)
 
 type IngestionMetrics struct {
 	Timestamp   time.Time `ch:"Timestamp" json:"timestamp"`
@@ -11,7 +13,8 @@ type IngestionMetrics struct {
 type IngestionMetricsMap map[string][]IngestionMetrics
 
 type IngestionMetricsResponse struct {
-	Metrics IngestionMetricsMap `json:"metrics"`
+	Timestamps []int64             `json:"timestamps"`
+	Metrics    IngestionMetricsMap `json:"metrics"`
 }
 
 type ErrorMetrics struct {
@@ -30,4 +33,19 @@ func NewIngestionMetricsMap(rows []IngestionMetrics) IngestionMetricsMap {
 		result[row.ServiceName] = append(result[row.ServiceName], row)
 	}
 	return result
+}
+
+func NewIngestionMetricsResponse(rows []IngestionMetrics, numTimestamps int) IngestionMetricsResponse {
+	if len(rows) == 0 {
+		return IngestionMetricsResponse{}
+	}
+
+	timestamps := make([]int64, numTimestamps)
+	// copy over the timestamps to return to the frontend, made possible due to backfilling
+	for i := range numTimestamps {
+		timestamps[i] = rows[i].Timestamp.UnixMilli() // convert to numbers so MUI X time scale works
+	}
+
+	ingestionMetricsMap := NewIngestionMetricsMap(rows)
+	return IngestionMetricsResponse{Timestamps: timestamps, Metrics: ingestionMetricsMap}
 }

@@ -9,6 +9,7 @@ export type IngestionMetricsMap = Record<string, IngestionMetrics[]>;
 
 export type GetIngestionMetricsResponse = {
     metrics: IngestionMetricsMap;
+    timestamps: number[]; // API returns ISO time numbers
 };
 
 export type ErrorMetrics = {
