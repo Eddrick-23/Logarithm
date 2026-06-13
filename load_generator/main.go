@@ -39,7 +39,7 @@ func checkHealth(url string) error {
 }
 
 func run(ctx context.Context, configPath string, interval int, duration time.Duration,
-	warmupDuration time.Duration, restDuration time.Duration, showConfig bool) error {
+	warmupDuration time.Duration, restDuration time.Duration, outDir string, showConfig bool) error {
 	cfg, err := config.ParseConfig(configPath) // load config
 	if err != nil {
 		return err
@@ -48,12 +48,12 @@ func run(ctx context.Context, configPath string, interval int, duration time.Dur
 	if showConfig {
 		printJson(*cfg)
 	}
-	fmt.Printf("Test configs: RPS: %v, BatchSize:%v, Duration: %v, Warmup: %v, useGzip: %v\n",
+	fmt.Printf("Test configs: RPS: %v, BatchSize:%v, Duration: %v, Warmup: %v, encoding: %v\n",
 		cfg.Rps,
 		cfg.BatchSize,
 		duration,
 		warmupDuration,
-		cfg.Gzip,
+		cfg.Encoding,
 	)
 
 	if err := checkHealth(cfg.HealthUrl); err != nil { // check endpoint health
@@ -82,7 +82,7 @@ func run(ctx context.Context, configPath string, interval int, duration time.Dur
 		fmt.Println("Warmup complete. Starting main test...")
 	}
 
-	resultsFile, err := files.CreateResultFile() // create output file
+	resultsFile, err := files.CreateResultFile(outDir) // create output file
 	if err != nil {
 		return fmt.Errorf("failed to create results file: %w", err)
 	}
@@ -132,13 +132,14 @@ func run(ctx context.Context, configPath string, interval int, duration time.Dur
 	wg.Wait()
 	metrics.Close()
 
-	fmt.Printf("Test Summary:\n P99 Latency: %v\n Throughput: %vrps\n Requests Sent: %v\n SuccessRate: %v\n TotalLogsSent: %v\n Logs/sec: %v\n",
+	fmt.Printf("Test Summary:\n P99 Latency: %v\n Throughput: %vrps\n Requests Sent: %v\n SuccessRate: %v\n TotalLogsSent: %v\n Logs/sec: %v\n AveragePayloadSize: %.2fKB\n",
 		metrics.Latencies.P99,
 		metrics.Throughput,
 		metrics.Requests,
 		metrics.Success*100,
 		cfg.BatchSize*int(metrics.Requests),
 		(cfg.BatchSize*int(metrics.Requests))/int(duration.Seconds()),
+		metrics.BytesOut.Mean/1000,
 	)
 	return nil
 }
@@ -149,6 +150,7 @@ func main() {
 	durationPtr := flag.Int("duration", 1, "test duration in seconds")
 	warmupPtr := flag.Int("warmup", 0, "warmup duration in seconds")
 	warmupRestPtr := flag.Int("rest", 5, "resting duration after warmup in seconds")
+	outdirPtr := flag.String("o", "results", "output directory of result.bin")
 	showConfigPtr := flag.Bool("showConfig", false, "display parsed config once at startup")
 
 	flag.Parse()
@@ -168,7 +170,7 @@ func main() {
 	testDuration := time.Duration(*durationPtr) * time.Second
 
 	ctx := context.Background()
-	if err := run(ctx, *pathToConfigPtr, *intervalPtr, testDuration, warmupDuration, restDuration, *showConfigPtr); err != nil {
+	if err := run(ctx, *pathToConfigPtr, *intervalPtr, testDuration, warmupDuration, restDuration, *outdirPtr, *showConfigPtr); err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}

@@ -3,6 +3,7 @@ module github.com/Eddrick-23/Logarithm/load_generator
 go 1.25.4
 
 require (
+	github.com/klauspost/compress v1.18.6
 	github.com/mroth/weightedrand/v3 v3.0.0
 	github.com/tsenart/vegeta/v12 v12.13.0
 	go.opentelemetry.io/collector/pdata v1.60.0

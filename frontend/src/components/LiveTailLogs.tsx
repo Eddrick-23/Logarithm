@@ -16,13 +16,13 @@ import {
 import { useState, useRef, useEffect, useCallback } from "react";
 import { card, pulseSx, sectionLabel } from "../theme/tokens";
 import PauseIcon from "@mui/icons-material/Pause";
-import ErrorIcon from "@mui/icons-material/Error";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import SearchIcon from "@mui/icons-material/Search";
 import ClearIcon from "@mui/icons-material/Clear";
 import type { FlatLogRecord, LogType } from "../types/Log";
 import { useDistinctServices } from "../hooks/useDistinctServices";
 import TailLogRow, { columnWidths } from "./TailLogRow";
+import ErrorBanner from "./ErrorBanner";
 
 type ConnectionStatus = "connecting" | "connected" | "error";
 
@@ -37,13 +37,14 @@ const SEVERITY_NORMALISE_MAP: Record<string, LogType> = {
     debug: "debug",
     info: "info",
     warning: "warn", // logs coming in have severity text of WARNING
+    warn: "warn", // by default OTEL uses "warn" instead of "warning" but we support both
     error: "error",
     fatal: "fatal",
 };
 
 const parseSeverity = (severityText: string | null | undefined): LogType => {
     // guard in case log has no severity text
-    if (!severityText) return "info"
+    if (!severityText) return "info";
     // strip numbered variants: "DEBUG2" -> "debug", "WARN3" -> "warn"
     const base = severityText.replace(/\d+$/, "").toLowerCase();
     // fallback to info if we get an unsupported severity name
@@ -94,7 +95,7 @@ export default function LiveTailLogs() {
 
             let batch: FlatLogRecord[];
             try {
-                batch = JSON.parse(e.data)
+                batch = JSON.parse(e.data);
             } catch {
                 console.error("failed to parse websocket message", e.data);
                 return;
@@ -300,40 +301,7 @@ export default function LiveTailLogs() {
 
                 {/* WebSocket Error Alert Bar */}
                 {connectionStatus === "error" && (
-                    <Box
-                        sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 1,
-                            width: "100%",
-                            px: 2,
-                            py: 1,
-                            border: "1px solid #7f1d1d",
-                            backgroundColor: "rgba(127, 29, 29, 0.15)",
-                            borderRadius: "6px",
-                            mb: 3,
-                        }}
-                    >
-                        <ErrorIcon sx={{ fontSize: 16, color: "#ef4444" }} />
-                        <Typography variant="body2" sx={{ color: "#ef4444" }}>
-                            Connection lost. Failed to connect to the live tail server.{" "}
-                        </Typography>
-                        <Button
-                            size="small"
-                            sx={{
-                                ml: "auto",
-                                color: "#ef4444",
-                                borderColor: "#ef4444",
-                                textTransform: "none",
-                                fontSize: 12,
-                                "&:hover": { borderColor: "#ef4444", backgroundColor: "rgba(239, 68, 68, 0.08)" },
-                            }}
-                            variant="outlined"
-                            onClick={handleReconnect}
-                        >
-                            Retry
-                        </Button>
-                    </Box>
+                    <ErrorBanner service="live tail server" handleReconnect={handleReconnect} />
                 )}
 
                 {/* Connecting alert bar */}

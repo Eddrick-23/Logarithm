@@ -4,7 +4,7 @@
   "healthUrl": "http://localhost:8090/health",
   "targetUrl": "http://localhost:8090/v1/logs",
   "method": "POST",
-  "gzip": false,
+  "encoding": "zstd",
   "rps": 1000,
   "batchSize": 100,
   "severityDistribution": [0.1, 0.6, 0.1, 0.1, 0.1],

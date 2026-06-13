@@ -7,9 +7,18 @@ import (
 
 const (
 	TableLogs            = "logs"
-	TableMetrics         = "metrics"
+	TableMetrics         = "metrics"    // 1 second bucket
+	TableMetrics1m       = "metrics_1m" // 1 minute bucket
 	TableServiceRegistry = "service_registry"
 )
+
+// add new constants here
+var allTables = []string{
+	TableLogs,
+	TableMetrics,
+	TableMetrics1m,
+	TableServiceRegistry,
+}
 
 var validTableName = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
@@ -20,9 +29,8 @@ func isValidTableName(name string) bool {
 
 // map table to dbName.table
 func initTables(dbName string) (map[string]string, error) {
-	names := []string{TableLogs, TableMetrics, TableServiceRegistry}
-	tables := make(map[string]string, len(names))
-	for _, t := range names {
+	tables := make(map[string]string, len(allTables))
+	for _, t := range allTables {
 		if !isValidTableName(t) {
 			return nil, fmt.Errorf("invalid table name: %s", t)
 		}

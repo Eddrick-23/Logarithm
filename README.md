@@ -154,7 +154,7 @@ bin/main --config config.json --duration 10 --warmup 5
 ```
 
 To view flags use `bin/main --help` or `go run main.go --help`
-Results after the test will be in the results folder labelled results.bin. To convert to other formats, you can use the [vegeta cli](https://github.com/tsenart/vegeta) to generate reports.
+Results after the test will be in the results folder labelled results.bin, at any optionally passed in directory. To convert to other formats, you can use the [vegeta cli](https://github.com/tsenart/vegeta) to generate reports.
 
 #### Benchmark with profiling
 
@@ -166,3 +166,4 @@ bash profile.sh 30 10 5 config.json <optional IP: default localhost>
 ```
 
 specify IP only if hosting logarithm and running load generator on different machines.
+The profile.sh script will write all results in the `benchmark_results` directory under a timestamped folder.

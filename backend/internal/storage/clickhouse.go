@@ -277,18 +277,54 @@ func (s *ClickHouseStore) GetDistinctServices(ctx context.Context) ([]string, er
 	return services, nil
 }
 
-func (s *ClickHouseStore) GetLoggingMetrics(ctx context.Context) ([]core.LogMetrics, error) {
+const INGESTION_METRICS_DURATION = 1 // it is in minutes
+
+func (s *ClickHouseStore) GetIngestionMetrics(ctx context.Context) (core.IngestionMetricsResponse, error) {
 	tbl, err := s.table(TableMetrics)
+	if err != nil {
+		return core.IngestionMetricsResponse{}, fmt.Errorf("failed to get table: %v", err)
+	}
+
+	whereClause := `WHERE Timestamp >= now() - toIntervalMinute(@mins)
+					GROUP BY ServiceName, Timestamp
+					ORDER BY ServiceName, Timestamp ASC
+					WITH FILL
+						FROM toDateTime(now() - toIntervalMinute(@mins))
+    					TO toDateTime(now())
+						STEP toIntervalSecond(1)`
+	// back fills timestamps with no values
+	queryString := fmt.Sprintf("SELECT Timestamp, ServiceName, sum(LogsCount) AS LogsCount FROM %v %v ", tbl, whereClause)
+
+	var rows []core.IngestionMetrics
+	// for now, im taking the metrics in the past 1 min, can be adjusted based on specifications
+	if err := s.conn.Select(ctx, &rows, queryString, clickhouse.Named("mins", INGESTION_METRICS_DURATION)); err != nil {
+		return core.IngestionMetricsResponse{}, err
+	}
+
+	return core.NewIngestionMetricsResponse(rows, INGESTION_METRICS_DURATION*60), nil
+}
+
+func (s *ClickHouseStore) GetErrorMetrics(ctx context.Context) ([]core.ErrorMetrics, error) {
+	// error metrics will return error rates within the past 1 hour
+	tbl, err := s.table(TableMetrics1m)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get table: %v", err)
 	}
 
-	whereClause := "WHERE Timestamp >= now() - toIntervalMinute(@mins)"
-	queryString := fmt.Sprintf("SELECT * FROM %v %v ", tbl, whereClause)
+	queryString := fmt.Sprintf(`
+        SELECT 
+            ServiceName, 
+            sum(ErrorsCount) AS TotalErrors, 
+            round(sum(ErrorsCount) / sum(LogsCount) * 100, 2) AS ErrorRate
+        FROM %v
+        WHERE Timestamp >= now() - toIntervalHour(@hour)
+        GROUP BY ServiceName
+        ORDER BY ErrorRate DESC
+        LIMIT 5
+    `, tbl)
 
-	var result []core.LogMetrics
-	// for now, im taking the metrics in the past 60s, can be adjusted based on specifications
-	if err := s.conn.Select(ctx, &result, queryString, clickhouse.Named("mins", 1)); err != nil {
+	var result []core.ErrorMetrics
+	if err := s.conn.Select(ctx, &result, queryString, clickhouse.Named("hour", 1)); err != nil {
 		return nil, err
 	}
 

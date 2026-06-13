@@ -9,7 +9,7 @@ CONFIG_PATH="${4:?Usage: $0 <sample_duration_seconds> <warmup_duration_seconds> 
 # default to local host if no argument provided
 TARGET_IP="${5:-localhost}"
 
-DIR="./profiles/$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+DIR="./benchmark_results/$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 mkdir -p "$DIR"
 
 BASE_INGESTER="http://${TARGET_IP}:6060/debug/pprof"
@@ -26,6 +26,7 @@ mkdir -p bin && go build -o bin/main .
 echo "Starting load generator..."
 ./bin/main \
   -config "$CONFIG_PATH" \
+  -o "$DIR" \
   -duration "$SAMPLE_DURATION" \
   -warmup "$WARMUP_DURATION" \
   -rest "$WARMUP_REST" &
