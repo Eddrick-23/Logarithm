@@ -219,14 +219,10 @@ func handleIngestionMetrics(logger *slog.Logger, logStore *storage.ClickHouseSto
 			return
 		}
 
-		response := core.IngestionMetricsResponse{
-			Metrics: ingestionMetrics,
-		}
-
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 
-		err = json.NewEncoder(w).Encode(response)
+		err = json.NewEncoder(w).Encode(ingestionMetrics)
 		if err != nil {
 			logger.Error("failed to write response", "err", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)

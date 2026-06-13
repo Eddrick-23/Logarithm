@@ -12,22 +12,13 @@ const generateColour = (index: number) => `hsl(${(index * 137.5) % 360}, 70%, 50
 
 export default function IngestionGraph() {
     const { data, isLoading, isError, refetch } = useIngestionMetrics();
-
-    const services = useMemo(() => Object.keys(data ?? {}), [data]);
-
-    const timestamps = useMemo(() => {
-        if (!data || services.length === 0) return [];
-        // with the backfill of the timestamps performed in clickhouse db
-        // it guarantees that all timestamps will be present and we can
-        // just use the first service's timestamps as the x-axis spine
-        return (data[services[0]] ?? []).map((metric) => metric.timestamp);
-    }, [data, services]);
+    const services = useMemo(() => Object.keys(data?.metrics ?? {}), [data]);
 
     const series = useMemo(() => {
         if (!data) return [];
         return services.map((service, index) => ({
             label: service,
-            data: (data[service] ?? []).map((metric) => metric.logsCount),
+            data: (data.metrics[service] ?? []).map((metric) => metric.logsCount),
             color: generateColour(index),
         }));
     }, [data, services]);
@@ -53,14 +44,16 @@ export default function IngestionGraph() {
                 </Alert>
             )}
 
-            {!isLoading && (
+            {/* only show the graph if data and timestamps are valid */}
+            {!isLoading && data && data.timestamps.length > 0 && (
                 <LineChart
                     xAxis={[
                         {
-                            data: timestamps,
-                            scaleType: "point",
+                            data: data.timestamps,
+                            scaleType: "time",
                             valueFormatter: (v) => new Date(v).toLocaleTimeString(),
                             label: "Time",
+                            tickInterval: data.timestamps.filter((_, i) => i % 5 === 0), // longer lines at x axis only appear for every 5 seconds
                         },
                     ]}
                     yAxis={[{ min: 0, label: "Logs / sec" }]} // set min to 0 so that y starts from 0

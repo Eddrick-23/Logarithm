@@ -277,10 +277,12 @@ func (s *ClickHouseStore) GetDistinctServices(ctx context.Context) ([]string, er
 	return services, nil
 }
 
-func (s *ClickHouseStore) GetIngestionMetrics(ctx context.Context) (core.IngestionMetricsMap, error) {
+const INGESTION_METRICS_DURATION = 1 // it is in minutes
+
+func (s *ClickHouseStore) GetIngestionMetrics(ctx context.Context) (core.IngestionMetricsResponse, error) {
 	tbl, err := s.table(TableMetrics)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get table: %v", err)
+		return core.IngestionMetricsResponse{}, fmt.Errorf("failed to get table: %v", err)
 	}
 
 	whereClause := `WHERE Timestamp >= now() - toIntervalMinute(@mins)
@@ -295,11 +297,11 @@ func (s *ClickHouseStore) GetIngestionMetrics(ctx context.Context) (core.Ingesti
 
 	var rows []core.IngestionMetrics
 	// for now, im taking the metrics in the past 1 min, can be adjusted based on specifications
-	if err := s.conn.Select(ctx, &rows, queryString, clickhouse.Named("mins", 1)); err != nil {
-		return nil, err
+	if err := s.conn.Select(ctx, &rows, queryString, clickhouse.Named("mins", INGESTION_METRICS_DURATION)); err != nil {
+		return core.IngestionMetricsResponse{}, err
 	}
 
-	return core.NewIngestionMetricsMap(rows), nil
+	return core.NewIngestionMetricsResponse(rows, INGESTION_METRICS_DURATION*60), nil
 }
 
 func (s *ClickHouseStore) GetErrorMetrics(ctx context.Context) ([]core.ErrorMetrics, error) {
