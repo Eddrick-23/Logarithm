@@ -1,5 +1,5 @@
 services:
-  react:
+  react: 
     build:
       context: ./frontend
     ports:
@@ -32,8 +32,6 @@ services:
       timeout: 5s
       retries: 10
       start_period: 60s # increased to allow more time for init.sql migrations
-    cpuset:
-      "1,2,3"
   nats:
     image: nats:2.14-alpine
     ports:
@@ -49,30 +47,26 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
-    cpuset:
-      "4,5"
 
   ingester:
     build:
       context: ./backend
-    ports:
-      - "8090:8090"
-      - "6060:6060"
     command: ./ingester
     env_file:
       - ./backend/.env
     environment:
       - ENABLE_PPROF=true
       - PPROF_HOST=0.0.0.0
+      - NATS_URL=nats://127.0.0.1:4222 # override only for this service because we use network_mode host
     depends_on:
       nats:
         condition: service_healthy
-    cpuset:
-      "6,7"
     ulimits:
       nofile:
         soft: 65535
         hard: 65535
+    network_mode:
+      "host"
   worker:
     build:
       context: ./backend
@@ -89,8 +83,6 @@ services:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
-    cpuset:
-      "8,9,10"
   dashboard-api:
     build:
       context: ./backend
@@ -99,9 +91,12 @@ services:
     command: ./dashboard
     env_file:
       - ./backend/.env
-    depends_on: # TODO: add NATS later when implementing live tail websocket conn
+    depends_on:
+      nats:
+        condition: service_healthy
       clickhouse:
         condition: service_healthy
+      
 volumes:
   clickhouse_data:
   clickhouse_logs:
