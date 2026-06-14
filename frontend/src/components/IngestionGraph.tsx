@@ -1,7 +1,7 @@
 import { LineChart } from "@mui/x-charts/LineChart";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useIngestionMetrics } from "../hooks/useMetrics";
-import { Alert, Box, Skeleton, Typography } from "@mui/material";
+import { Alert, Box, Checkbox, Chip, FormControlLabel, FormGroup, Skeleton, Stack, Typography } from "@mui/material";
 import { card, sectionLabel } from "../theme/tokens";
 import ErrorBanner from "./ErrorBanner";
 
@@ -12,22 +12,87 @@ const generateColour = (index: number) => `hsl(${(index * 137.5) % 360}, 70%, 50
 
 export default function IngestionGraph() {
     const { data, isLoading, isError, refetch } = useIngestionMetrics();
+    const [hiddenServices, setHiddenServices] = useState<Set<string>>(new Set());
+
     const services = useMemo(() => Object.keys(data?.metrics ?? {}), [data]);
+
+    const serviceColours = useMemo(
+        // map service name to colour based on the idx
+        () => Object.fromEntries(services.map((s, i) => [s, generateColour(i)])),
+        [services],
+    );
 
     const series = useMemo(() => {
         if (!data) return [];
-        return services.map((service, index) => ({
-            label: service,
-            data: (data.metrics[service] ?? []).map((metric) => metric.logsCount),
-            color: generateColour(index),
-        }));
-    }, [data, services]);
+        return services
+            .filter((service) => !hiddenServices.has(service)) // only show services which are not hidden
+            .map((service, index) => ({
+                label: service,
+                data: (data.metrics[service] ?? []).map((metric) => metric.logsCount),
+                color: generateColour(index),
+            }));
+    }, [data, services, hiddenServices, serviceColours]);
+
+    const toggleService = (service: string) => {
+        setHiddenServices((prev) => {
+            const currServices = new Set(prev);
+            if (currServices.has(service)) {
+                currServices.delete(service);
+            } else {
+                currServices.add(service);
+            }
+            return currServices;
+        });
+    };
+
+    const allSelected = services.every((service) => !hiddenServices.has(service));
+    const toggleAll = () => {
+        setHiddenServices(allSelected ? new Set(services) : new Set());
+    };
 
     const isEmpty = !isLoading && !isError && services.length === 0;
 
     return (
         <Box sx={{ ...card }}>
             <Typography sx={sectionLabel}>Ingestion Throughput - Last 60s</Typography>
+
+            {/* filters to choose which services to track on ingestion graph */}
+            {!isLoading && services.length > 0 && (
+                <Box sx={{ mb: 2 }}>
+                    <Stack direction="row" sx={{ flexWrap: "wrap", gap: 2.5, alignItems: "center" }}>
+                        <Chip
+                            label="All"
+                            size="small"
+                            variant={allSelected ? "filled" : "outlined"}
+                            onClick={toggleAll}
+                            sx={{ fontWeight: 600 }}
+                        />
+                        <FormGroup row>
+                            {services.map((service) => (
+                                <FormControlLabel
+                                    key={service}
+                                    control={
+                                        <Checkbox
+                                            size="small"
+                                            checked={!hiddenServices.has(service)}
+                                            onChange={() => toggleService(service)}
+                                            sx={{
+                                                color: serviceColours[service],
+                                                "&.Mui-checked": { color: serviceColours[service] },
+                                            }}
+                                        />
+                                    }
+                                    label={
+                                        <Typography variant="body2" noWrap>
+                                            {service}
+                                        </Typography>
+                                    }
+                                />
+                            ))}
+                        </FormGroup>
+                    </Stack>
+                </Box>
+            )}
 
             {/* rectangular skeleton box to signify loading of graph */}
             {isLoading && (
