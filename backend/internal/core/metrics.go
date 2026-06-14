@@ -30,7 +30,9 @@ type ErrorMetricsResponse struct {
 func NewIngestionMetricsMap(rows []IngestionMetrics) IngestionMetricsMap {
 	result := make(IngestionMetricsMap)
 	for _, row := range rows {
-		result[row.ServiceName] = append(result[row.ServiceName], row)
+		if row.ServiceName != "" {
+			result[row.ServiceName] = append(result[row.ServiceName], row)
+		}
 	}
 	return result
 }
