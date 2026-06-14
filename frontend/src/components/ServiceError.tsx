@@ -68,9 +68,9 @@ export default function ServiceError() {
     return (
         <Box sx={{ ...card, height: "100%" }}>
             {/* header */}
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 2 }}>
                 <Typography sx={sectionLabel}>Top errors by service</Typography>
-                <Typography variant="caption" sx={{ color: "#8b949e", fontSize: "0.85rem" }}>
+                <Typography variant="caption" sx={{ color: "#8b949e", fontSize: "0.85rem", mb: 1 }}>
                     last 1h
                 </Typography>
             </Box>
