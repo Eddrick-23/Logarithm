@@ -1,11 +1,11 @@
 {
   "seed": 42,
   "poolSize": 500000,
-  "healthUrl": "http://localhost:8090/health",
-  "targetUrl": "http://localhost:8090/v1/logs",
+  "healthUrl": "http://10.0.0.1:8090/health",
+  "targetUrl": "http://10.0.0.1:8090/v1/logs",
   "method": "POST",
   "encoding": "zstd",
-  "rps": 1000,
+  "rps": 2500,
   "batchSize": 100,
   "severityDistribution": [0.1, 0.6, 0.1, 0.1, 0.1],
   "serviceNames": [

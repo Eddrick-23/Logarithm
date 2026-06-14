@@ -141,7 +141,7 @@ cd frontend
 npm run test:watch
 ```
 
-### Load generator and benchmarks
+### [Load generator and benchmarks](benchmarks/benchmarks.md)
 
 Benchmarking logarithm uses a seeded randomised load generator using go and the vegeta library
 
