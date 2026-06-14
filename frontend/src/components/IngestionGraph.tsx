@@ -26,10 +26,10 @@ export default function IngestionGraph() {
         if (!data) return [];
         return services
             .filter((service) => !hiddenServices.has(service)) // only show services which are not hidden
-            .map((service, index) => ({
+            .map((service) => ({
                 label: service,
                 data: (data.metrics[service] ?? []).map((metric) => metric.logsCount),
-                color: generateColour(index),
+                color: serviceColours[service],
             }));
     }, [data, services, hiddenServices, serviceColours]);
 
