@@ -46,6 +46,7 @@ type Config struct {
 	NatsLogStreamMaxBytes     ByteSize        `env:"NATS_LOG_STREAM_MAX_BYTES, default=50GB"`
 	NatsDLQMaxBytes           ByteSize        `env:"NATS_DLQ_MAX_BYTES, default=10GB"`
 	NatsLiveTailMaxBytes      ByteSize        `env:"NATS_LIVE_TAIL_MAX_BYTES, default=50MB"`
+	NatsConsumerMaxAckPending int             `env:"NATS_CONSUMER_MAX_ACK_PENDING, default=1000"`
 	WorkerLogLevel            string          `env:"WORKER_LOG_LEVEL, default=INFO"`
 	WorkerMaxBatch            int             `env:"WORKER_MAX_BATCH, default=10"`
 	WorkerMaxWait             time.Duration   `env:"WORKER_MAX_WAIT, default=2s"`
@@ -63,5 +64,21 @@ func LoadConfig(ctx context.Context) (*Config, error) {
 	if err := envconfig.Process(ctx, &c); err != nil {
 		return nil, fmt.Errorf("failed to load config from environment variables: %w", err)
 	}
+
+	if err := c.validate(); err != nil {
+		return nil, err
+	}
+
 	return &c, nil
+}
+
+func (c *Config) validate() error {
+	if c.NatsConsumerMaxAckPending < c.WorkerMaxBatch {
+		safeLimit := c.WorkerMaxBatch * 2
+		return fmt.Errorf("NATS_CONSUMER_MAX_ACK_PENDING (%d) is dangerously low. To prevent deadlocks between nats and worker, set it to at least (%d)",
+			c.NatsConsumerMaxAckPending,
+			safeLimit,
+		)
+	}
+	return nil
 }

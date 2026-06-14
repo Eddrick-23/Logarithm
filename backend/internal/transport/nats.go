@@ -160,13 +160,15 @@ func (nb *NatsBroker) PublishLiveTail(subject string, data []byte) error {
 	return nb.conn.Publish(subject, data) // core NATS, no ack just fire and forget
 }
 
-func (nb *NatsBroker) NewDurableConsumer(ctx context.Context, stream jetstream.Stream, consumerName string, maxDeliver int, backoff []time.Duration) (*NatsJSConsumer, error) {
+func (nb *NatsBroker) NewDurableConsumer(ctx context.Context, stream jetstream.Stream, consumerName string,
+	maxDeliver int, backoff []time.Duration, maxAckPending int) (*NatsJSConsumer, error) {
 	cons, err := stream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
-		Name:       consumerName,
-		Durable:    consumerName,
-		AckPolicy:  jetstream.AckExplicitPolicy,
-		MaxDeliver: maxDeliver,
-		BackOff:    backoff, // does not affect Nak, it defines how long nats waits for an Ack() before it times out
+		Name:          consumerName,
+		Durable:       consumerName,
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		MaxDeliver:    maxDeliver,
+		BackOff:       backoff, // does not affect Nak, it defines how long nats waits for an Ack() before it times out
+		MaxAckPending: maxAckPending,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create jetstream consumer: %w", err)
