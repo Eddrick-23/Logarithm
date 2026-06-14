@@ -1,7 +1,7 @@
 import IngestionGraph from "../components/IngestionGraph";
 import { Grid, Box, Stack, Typography } from "@mui/material";
 import ServiceOverview from "../components/ServiceOverview";
-import LatencyView from "../components/ServiceError";
+import ServiceError from "../components/ServiceError";
 import LiveTailLogs from "../components/LiveTailLogs";
 import { pulseSx } from "../theme/tokens";
 
@@ -38,8 +38,10 @@ export default function Dashboard() {
                 <Grid size="grow">
                     <IngestionGraph />
                 </Grid>
-                <Grid size={2.75}>
-                    <LatencyView />
+                {/* for 1200px <= size < 1536px, size assigned is larger to fit the ServiceError without overflowing
+                    for size >= 1536px, size assigned is smaller since there is sufficient space to fit ServiceError without overflowing */}
+                <Grid size={{ lg: 3.25, xl: 2.75 }}>
+                    <ServiceError />
                 </Grid>
             </Grid>
 

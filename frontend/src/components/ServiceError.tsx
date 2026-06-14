@@ -28,11 +28,14 @@ function ServiceErrorRow({ serviceName, totalErrors, errorRate }: ServiceErrorRo
     return (
         <Box sx={{ display: "flex", alignItems: "center", py: 1.5 }}>
             <Tooltip title={serviceName} placement="top-start">
-                <Typography noWrap sx={{ width: 120, fontSize: "0.85rem", flexShrink: 0, cursor: "default" }}>
+                <Typography
+                    noWrap
+                    sx={{ width: { lg: 75, xl: 120 }, fontSize: "0.85rem", flexShrink: 0, cursor: "default" }}
+                >
                     {serviceName}
                 </Typography>
             </Tooltip>
-            <Box sx={{ flexGrow: 1, minWidth: 60, mx: 2 }}>
+            <Box sx={{ flexGrow: 1, minWidth: { lg: 30, xl: 60 }, mx: 2 }}>
                 <LinearProgress
                     variant="determinate"
                     value={errorRate}

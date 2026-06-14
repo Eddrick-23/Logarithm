@@ -1,3 +1,4 @@
+import "./App.css";
 import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import { ThemeProvider } from "@mui/material/styles";
