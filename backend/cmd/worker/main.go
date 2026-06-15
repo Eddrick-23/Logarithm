@@ -93,7 +93,7 @@ func run(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("failed to ensure log stream: %w", err)
 	}
 
-	consumer, err := natsBroker.NewDurableConsumer(ctx, stream, workerName, config.NatsMaxDeliver, config.NatsBackoff)
+	consumer, err := natsBroker.NewDurableConsumer(ctx, stream, workerName, config.NatsMaxDeliver, config.NatsBackoff, config.NatsConsumerMaxAckPending)
 	if err != nil {
 		return fmt.Errorf("failed to create durable consumer: %w", err)
 	}
