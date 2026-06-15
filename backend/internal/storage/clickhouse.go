@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -285,19 +286,21 @@ func (s *ClickHouseStore) GetIngestionMetrics(ctx context.Context) (core.Ingesti
 		return core.IngestionMetricsResponse{}, fmt.Errorf("failed to get table: %v", err)
 	}
 
-	whereClause := `WHERE Timestamp >= now() - toIntervalMinute(@mins)
+	whereClause := `WHERE Timestamp >= @start AND Timestamp < @end
 					GROUP BY ServiceName, Timestamp
 					ORDER BY ServiceName, Timestamp ASC
 					WITH FILL
-						FROM toDateTime(now() - toIntervalMinute(@mins))
-    					TO toDateTime(now())
+						FROM @start
+    					TO @end
 						STEP toIntervalSecond(1)`
 	// back fills timestamps with no values
 	queryString := fmt.Sprintf("SELECT Timestamp, ServiceName, sum(LogsCount) AS LogsCount FROM %v %v ", tbl, whereClause)
+	end := time.Now().UTC().Truncate(time.Second)
+	start := end.Add(-time.Duration(INGESTION_METRICS_DURATION) * time.Minute)
 
 	var rows []core.IngestionMetrics
 	// for now, im taking the metrics in the past 1 min, can be adjusted based on specifications
-	if err := s.conn.Select(ctx, &rows, queryString, clickhouse.Named("mins", INGESTION_METRICS_DURATION)); err != nil {
+	if err := s.conn.Select(ctx, &rows, queryString, clickhouse.Named("start", start), clickhouse.Named("end", end)); err != nil {
 		return core.IngestionMetricsResponse{}, err
 	}
 
