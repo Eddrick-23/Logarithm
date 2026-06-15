@@ -38,7 +38,7 @@ func setupDashboardServer(t *testing.T, ctx context.Context) (*httptest.Server, 
 	}
 
 	mux := http.NewServeMux()
-	dashboard.AddRoutes(mux, slog.Default(), &config.Config{LiveTailRefreshInterval: 50}, logStore, broker)
+	dashboard.AddRoutes(mux, slog.Default(), &config.Config{LiveTailRefreshInterval: 50}, logStore, broker, ctx)
 
 	server := httptest.NewServer(mux)
 	t.Cleanup(func() {
