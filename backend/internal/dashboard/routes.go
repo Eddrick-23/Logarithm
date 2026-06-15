@@ -22,6 +22,7 @@ func AddRoutes(
 	config *config.Config,
 	logStore *storage.ClickHouseStore,
 	broker *transport.NatsBroker,
+	appCtx context.Context,
 ) {
 	mux.HandleFunc("GET /", handleRoot(logger))
 	mux.HandleFunc("GET /health", handleHealth(logger))
@@ -29,7 +30,7 @@ func AddRoutes(
 	mux.Handle("GET /api/services", handleDistinctServices(logger, logStore))
 	mux.Handle("GET /api/error-metrics", handleErrorMetrics(logger, logStore))
 	mux.Handle("GET /api/ingestion-metrics", handleIngestionMetrics(logger, logStore))
-	mux.Handle("GET /api/ingestion-metrics/stream", handleIngestionMetricsStream(logger, logStore))
+	mux.Handle("GET /api/ingestion-metrics/stream", handleIngestionMetricsStream(logger, logStore, appCtx))
 	mux.Handle("GET /ws/logs/tail", handleLiveTail(logger, broker, config))
 }
 
@@ -260,7 +261,7 @@ func writeIngestionMetricsEvent(
 	return nil
 }
 
-func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
+func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHouseStore, appCtx context.Context) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
@@ -273,24 +274,28 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 
-		ctx := context.Background()
-
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 
 		// send an initial payload immediately, don't wait for first tick
-		if err := writeIngestionMetricsEvent(ctx, w, flusher, logger, logStore); err != nil {
+		if err := writeIngestionMetricsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
 			return
 		}
 
 		for {
 			select {
-			case <-ctx.Done():
+			case <-r.Context().Done():
+				// Client closed the browser tab
 				logger.Debug("client disconnected from ingestion metrics stream")
 				return
 
+			case <-appCtx.Done():
+				// Server is shutting down (ctrl-c)
+				logger.Debug("server is shutting down, closing SSE stream gracefully")
+				return
+
 			case <-ticker.C:
-				if err := writeIngestionMetricsEvent(ctx, w, flusher, logger, logStore); err != nil {
+				if err := writeIngestionMetricsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
 					return
 				}
 			}

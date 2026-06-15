@@ -24,9 +24,9 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
 
-func NewServer(logger *slog.Logger, config *config.Config, logStore *storage.ClickHouseStore, broker *transport.NatsBroker) http.Handler {
+func NewServer(logger *slog.Logger, config *config.Config, logStore *storage.ClickHouseStore, broker *transport.NatsBroker, appCtx context.Context) http.Handler {
 	mux := http.NewServeMux()
-	dashboard.AddRoutes(mux, logger, config, logStore, broker)
+	dashboard.AddRoutes(mux, logger, config, logStore, broker, appCtx)
 
 	var handler http.Handler = mux
 	// add middlewares if any
@@ -227,7 +227,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		}
 	}
 
-	srv := NewServer(httpLogger, config, logStore, broker)
+	srv := NewServer(httpLogger, config, logStore, broker, ctx)
 
 	httpServer := &http.Server{
 		Addr:    net.JoinHostPort(config.AppHost, config.AppPort),
