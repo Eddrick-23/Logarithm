@@ -412,6 +412,16 @@ func TestDecompress(t *testing.T) {
 			message:     makeMessages(t, [][]byte{gzipCompress(t, []byte("data"))}, map[string][]string{"Content-Encoding": {"zstd"}})[0],
 			expectedErr: true,
 		},
+		{
+			name:           "no header returns raw zstd data",
+			message:        makeMessages(t, [][]byte{zstdCompress(t, []byte("data"))}, nil)[0],
+			expectedResult: zstdCompress(t, []byte("data")),
+		},
+		{
+			name:           "no header returns raw gzip data",
+			message:        makeMessages(t, [][]byte{gzipCompress(t, []byte("data"))}, nil)[0],
+			expectedResult: gzipCompress(t, []byte("data")),
+		},
 	}
 
 	decompress, err := makeDecompressor()
