@@ -29,6 +29,7 @@ func AddRoutes(
 	mux.Handle("GET /api/services", handleDistinctServices(logger, logStore))
 	mux.Handle("GET /api/error-metrics", handleErrorMetrics(logger, logStore))
 	mux.Handle("GET /api/ingestion-metrics", handleIngestionMetrics(logger, logStore))
+	mux.Handle("GET /api/ingestion-metrics/stream", handleIngestionMetricsStream(logger, logStore))
 	mux.Handle("GET /ws/logs/tail", handleLiveTail(logger, broker, config))
 }
 
@@ -226,6 +227,73 @@ func handleIngestionMetrics(logger *slog.Logger, logStore *storage.ClickHouseSto
 		if err != nil {
 			logger.Error("failed to write response", "err", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+	}
+}
+
+func writeIngestionMetricsEvent(
+	ctx context.Context,
+	w http.ResponseWriter,
+	flusher http.Flusher,
+	logger *slog.Logger,
+	logStore *storage.ClickHouseStore,
+) error {
+	ingestionMetrics, err := logStore.GetIngestionMetrics(ctx)
+	if err != nil {
+		logger.Error("failed to get ingestion metrics", "err", err)
+		return err
+	}
+
+	data, err := json.Marshal(ingestionMetrics)
+	if err != nil {
+		logger.Error("failed to marshal ingestion metrics", "err", err)
+		return err
+	}
+
+	// data: <payload>\n\n is the SSE wire protocol
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+		// client likely disconnected
+		return err
+	}
+
+	flusher.Flush()
+	return nil
+}
+
+func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+
+		// write headers for SSE
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		ctx := context.Background()
+
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		// send an initial payload immediately, don't wait for first tick
+		if err := writeIngestionMetricsEvent(ctx, w, flusher, logger, logStore); err != nil {
+			return
+		}
+
+		for {
+			select {
+			case <-ctx.Done():
+				logger.Debug("client disconnected from ingestion metrics stream")
+				return
+
+			case <-ticker.C:
+				if err := writeIngestionMetricsEvent(ctx, w, flusher, logger, logStore); err != nil {
+					return
+				}
+			}
 		}
 	}
 }

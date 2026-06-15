@@ -14,7 +14,19 @@ export default function IngestionGraph() {
     const { data, isLoading, isError, refetch } = useIngestionMetrics();
     const [hiddenServices, setHiddenServices] = useState<Set<string>>(new Set());
 
-    const services = useMemo(() => Object.keys(data?.metrics ?? {}), [data]);
+    // use to store the service names in ascending order
+    const servicesKey = useMemo(
+        () =>
+            Object.keys(data?.metrics ?? {})
+                .sort()
+                .join(","),
+        [data],
+    );
+
+    const services = useMemo(
+        () => Object.keys(data?.metrics ?? {}),
+        [servicesKey], // only recompute when the actual set of service names changes
+    );
 
     const serviceColours = useMemo(
         // map service name to colour based on the idx
@@ -100,7 +112,7 @@ export default function IngestionGraph() {
             )}
 
             {/* error banner */}
-            {isError && <ErrorBanner service="server" handleReconnect={refetch} />}
+            {!isLoading && isError && <ErrorBanner service="server" handleReconnect={refetch} />}
 
             {/* no logs received from api */}
             {isEmpty && (
