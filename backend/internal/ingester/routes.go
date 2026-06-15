@@ -1,10 +1,6 @@
 package ingester
 
 import (
-	"compress/gzip"
-
-	"github.com/klauspost/compress/zstd"
-
 	"context"
 	"encoding/json"
 	"fmt"
@@ -25,51 +21,16 @@ func AddRoutes(
 ) {
 	mux.HandleFunc("GET /", handleRoot(logger))
 	mux.HandleFunc("GET /health", handleHealth(logger))
-	mux.Handle("POST /v1/logs", newContentTypeMiddleware("application/json")(
-		decompressMiddleware(handleOTLPLogs(logger, producer, natsSubjectPrefix))))
+	mux.Handle("POST /v1/logs",
+		newContentTypeMiddleware("application/json")(
+			newContentEncodingMiddleware("gzip", "zstd")(
+				handleOTLPLogs(logger, producer, natsSubjectPrefix),
+			),
+		),
+	)
 }
 
-func decompressMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		encoding := r.Header.Get("Content-Encoding")
-
-		if encoding == "" || encoding == "identity" {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		var uncompressedBody io.ReadCloser
-		var err error
-		switch encoding {
-		case "gzip":
-			uncompressedBody, err = gzip.NewReader(r.Body)
-		case "zstd":
-			var decoder *zstd.Decoder
-			decoder, err = zstd.NewReader(r.Body)
-			if err == nil {
-				uncompressedBody = decoder.IOReadCloser()
-			}
-		default:
-			http.Error(w, "Unsupported Content-Encoding format", http.StatusUnsupportedMediaType)
-			return
-		}
-
-		if err != nil {
-			http.Error(w, "Malformed compressed body", http.StatusBadRequest)
-			return
-		}
-
-		defer r.Body.Close()
-		defer uncompressedBody.Close()
-
-		r.Body = io.NopCloser(uncompressedBody)
-		r.ContentLength = -1
-		r.Header.Del("Content-Encoding")
-
-		next.ServeHTTP(w, r)
-	})
-}
-
+// TODO allow protobuf bytes in the future, now assume all json bytes only
 func newContentTypeMiddleware(targetMediaType string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -83,6 +44,29 @@ func newContentTypeMiddleware(targetMediaType string) func(http.Handler) http.Ha
 			if mediaType != targetMediaType {
 				http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
 				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func newContentEncodingMiddleware(supportedEncodings ...string) func(http.Handler) http.Handler {
+	supported := make(map[string]struct{}, len(supportedEncodings))
+
+	for _, s := range supportedEncodings {
+		supported[s] = struct{}{}
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			contentEncoding := r.Header.Get("Content-Encoding")
+			if contentEncoding == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			if _, ok := supported[contentEncoding]; !ok {
+				http.Error(w, fmt.Sprintf("Unsupported Content-Encoding: %s", contentEncoding), http.StatusUnsupportedMediaType)
 			}
 			next.ServeHTTP(w, r)
 		})
@@ -122,12 +106,18 @@ func handleOTLPLogs(logger *slog.Logger, producer transport.Producer, natsSubjec
 		bodyBytes, _ := io.ReadAll(r.Body)
 		defer r.Body.Close()
 
-		// TODO add routing based on content-type in the future
-		// now we assume all is json payload
+		headers := map[string][]string{}
+		if ct := r.Header.Get("Content-Type"); ct != "" {
+			headers["Content-Type"] = []string{ct}
+		}
+
+		if ce := r.Header.Get("Content-Encoding"); ce != "" {
+			headers["Content-Encoding"] = []string{ce}
+		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if err := producer.PublishLogs(ctx, natsSubjectTemplate+"raw", bodyBytes); err != nil {
+		if err := producer.PublishLogs(ctx, natsSubjectTemplate+"raw", bodyBytes, headers); err != nil {
 			logger.Error("failed to publish to nats", "err", err)
 			http.Error(w, "Message broker unavailable", http.StatusServiceUnavailable)
 			return

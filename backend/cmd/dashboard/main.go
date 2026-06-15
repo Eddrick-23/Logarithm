@@ -141,7 +141,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 					continue
 				}
 
-				if err := broker.PublishLogs(ctx, "logs.auth-service", authPayload); err != nil {
+				if err := broker.PublishLogs(ctx, "logs.auth-service", authPayload, nil); err != nil {
 					natsLogger.Error("publish error:", "err", err)
 				}
 
@@ -204,7 +204,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 					continue
 				}
 
-				if err := broker.PublishLogs(ctx, "logs.logging-service", logPayload); err != nil {
+				if err := broker.PublishLogs(ctx, "logs.logging-service", logPayload, nil); err != nil {
 					natsLogger.Error("publish error:", "err", err)
 				}
 

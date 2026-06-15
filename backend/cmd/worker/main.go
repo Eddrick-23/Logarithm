@@ -16,6 +16,7 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/config"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
+	"github.com/Eddrick-23/Logarithm/internal/worker"
 )
 
 func startPprof(logger *slog.Logger, config *config.Config) {
@@ -34,8 +35,7 @@ func startPprof(logger *slog.Logger, config *config.Config) {
 }
 
 func run(ctx context.Context, w io.Writer) error {
-
-	workerName := "worker"
+	const workerName = "worker"
 
 	config, err := config.LoadConfig(ctx)
 	if err != nil {
@@ -107,11 +107,14 @@ func run(ctx context.Context, w io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("failed to ensure live tail stream: %w", err)
 	}
-
+	consumeCallback, err := worker.ConsumeCallback(workerLogger, store, natsBroker)
+	if err != nil {
+		return err
+	}
 	return consumer.ConsumeLogs(ctx,
-		ConsumeCallback(workerLogger, store, natsBroker),
-		DLQCallback(natsBroker, transport.DLQSubject),
-		DelayCalculator(config.WorkerBackoff),
+		consumeCallback,
+		worker.DLQCallback(natsBroker, transport.DLQSubject),
+		worker.DelayCalculator(config.WorkerBackoff),
 		config.WorkerMaxBatch,
 		config.WorkerMaxWait,
 	)
