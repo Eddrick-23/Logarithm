@@ -24,7 +24,11 @@ const ( // infra constants
 var _ Producer = (*NatsBroker)(nil)
 var _ Consumer = (*NatsJSConsumer)(nil)
 
-type ProcessLogFunc func(payload [][]byte) error                     // callback to consume from stream
+type Message struct {
+	Payload []byte
+	Headers map[string][]string
+}
+type ProcessLogFunc func(messages []Message) error                   // callback to consume from stream
 type DLQFunc func(payload []byte, headers map[string][]string) error // callback to move data to dlq stream
 type DelayCalcFunc func(maxDeliver uint64) time.Duration             // callback to determine delay for NakWithDelay
 
@@ -217,9 +221,12 @@ func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, logHandler ProcessLog
 			return
 		}
 
-		payloads := make([][]byte, len(batch))
+		payloads := make([]Message, len(batch))
 		for i, msg := range batch {
-			payloads[i] = msg.Data()
+			payloads[i] = Message{
+				Payload: msg.Data(),
+				Headers: msg.Headers(),
+			}
 		}
 
 		if err := logHandler(payloads); err != nil {

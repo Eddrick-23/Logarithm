@@ -107,9 +107,12 @@ func run(ctx context.Context, w io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("failed to ensure live tail stream: %w", err)
 	}
-
+	consumeCallback, err := ConsumeCallback(workerLogger, store, natsBroker)
+	if err != nil {
+		return err
+	}
 	return consumer.ConsumeLogs(ctx,
-		ConsumeCallback(workerLogger, store, natsBroker),
+		consumeCallback,
 		DLQCallback(natsBroker, transport.DLQSubject),
 		DelayCalculator(config.WorkerBackoff),
 		config.WorkerMaxBatch,

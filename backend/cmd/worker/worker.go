@@ -1,32 +1,43 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log/slog"
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
+	"github.com/klauspost/compress/zstd"
 
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
 
-func ConsumeCallback(logger *slog.Logger, store storage.LogStore, producer transport.Producer) func([][]byte) error {
+type decompressFunc func([]byte, map[string][]string) ([]byte, error)
+
+func ConsumeCallback(logger *slog.Logger, store storage.LogStore, producer transport.Producer) (func([]transport.Message) error, error) {
 	// ConsumeCallback returns the message handler used by the log consumer.
 	//
 	// Incoming OTLP logs are flattened, grouped by service, published to the
 	// live-tail stream on a file and forget basis, and bulk inserted into storage.
 	// Storage insertion failures are returned; live-tail publish failures are
 	// logged and ignored.
-	return func(payloads [][]byte) error {
-		if len(payloads) == 0 {
+	decompress, err := makeDecompressor()
+	if err != nil {
+		return nil, err
+	}
+	return func(messages []transport.Message) error {
+		if len(messages) == 0 {
 			return nil
 		}
 
 		flatLogsByServiceName := map[string][]core.FlatLogRecord{}
-		numRecords := processPayloads(logger, payloads, flatLogsByServiceName)
+		numRecords := processMessages(logger, decompress, messages, flatLogsByServiceName)
 
 		if len(flatLogsByServiceName) == 0 { // no valid payloads to insert
 			return nil
@@ -42,16 +53,23 @@ func ConsumeCallback(logger *slog.Logger, store storage.LogStore, producer trans
 		}
 
 		return store.BatchInsert(ctx, batch)
-	}
+	}, nil
 }
 
-// TODO, need to pass in headers, check content type and encodings and handle accordingly.
-func processPayloads(logger *slog.Logger, payloads [][]byte, flatLogsByServiceName map[string][]core.FlatLogRecord) int {
+func processMessages(logger *slog.Logger, decompress decompressFunc, messages []transport.Message,
+	flatLogsByServiceName map[string][]core.FlatLogRecord) int {
 	numRecords := 0
-	for _, payload := range payloads {
+
+	for _, msg := range messages {
+		decompressedPayload, err := decompress(msg.Payload, msg.Headers)
+		if err != nil {
+			logger.Error("dropped log payload due to decompress error", "err", err)
+			continue
+		}
+
 		req := plogotlp.NewExportRequest()
-		if err := req.UnmarshalJSON(payload); err != nil {
-			logger.Error("dropped malformed log payload", "err", err, "payload_preview", string(payload))
+		if err := req.UnmarshalJSON(decompressedPayload); err != nil {
+			logger.Error("dropped malformed log payload", "err", err)
 			continue
 		}
 
@@ -61,6 +79,33 @@ func processPayloads(logger *slog.Logger, payloads [][]byte, flatLogsByServiceNa
 		}
 	}
 	return numRecords
+}
+
+func makeDecompressor() (func([]byte, map[string][]string) ([]byte, error), error) {
+	zstdDecoder, err := zstd.NewReader(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init zstd decoder: %w", err)
+	}
+	return func(payload []byte, headers map[string][]string) ([]byte, error) {
+		encoding := ""
+		if vals, ok := headers["Content-Encoding"]; ok && len(vals) > 0 {
+			encoding = vals[0]
+		}
+
+		switch encoding {
+		case "zstd":
+			return zstdDecoder.DecodeAll(payload, nil)
+		case "gzip":
+			reader, err := gzip.NewReader(bytes.NewReader(payload))
+			if err != nil {
+				return nil, err
+			}
+			defer reader.Close()
+			return io.ReadAll(reader)
+		default:
+			return payload, nil
+		}
+	}, nil
 }
 
 func publishLiveTail(logger *slog.Logger, producer transport.Producer, serviceName string, logs []core.FlatLogRecord) {

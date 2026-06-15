@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
 	"log/slog"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -345,6 +348,114 @@ func newBaseRequest(t *testing.T) plogotlp.ExportRequest {
 	return req
 }
 
+func makeMessages(t *testing.T, payloads [][]byte, headers map[string][]string) []transport.Message {
+	t.Helper()
+	msgs := make([]transport.Message, len(payloads))
+
+	for i, p := range payloads {
+		msgs[i] = transport.Message{
+			Payload: p,
+			Headers: headers,
+		}
+	}
+
+	return msgs
+}
+
+func zstdCompress(t *testing.T, data []byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w, err := zstd.NewWriter(&buf)
+	require.NoError(t, err)
+	_, err = w.Write(data)
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+	return buf.Bytes()
+}
+
+func gzipCompress(t *testing.T, data []byte) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+
+	_, err := gz.Write(data)
+	require.NoError(t, err)
+	require.NoError(t, gz.Close())
+	return buf.Bytes()
+}
+
+func TestDecompress(t *testing.T) {
+	tests := []struct {
+		name           string
+		message        transport.Message
+		expectedErr    bool
+		expectedResult []byte
+	}{
+		{
+			name:           "decompress zstd",
+			message:        makeMessages(t, [][]byte{zstdCompress(t, []byte("data"))}, map[string][]string{"Content-Encoding": {"zstd"}})[0],
+			expectedResult: []byte("data"),
+		},
+		{
+			name:           "decompress gzip",
+			message:        makeMessages(t, [][]byte{gzipCompress(t, []byte("data"))}, map[string][]string{"Content-Encoding": {"gzip"}})[0],
+			expectedResult: []byte("data"),
+		},
+		{
+			name:        "decompress zstd wrong encoding",
+			message:     makeMessages(t, [][]byte{zstdCompress(t, []byte("data"))}, map[string][]string{"Content-Encoding": {"gzip"}})[0],
+			expectedErr: true,
+		},
+		{
+			name:        "decompress gzip wrong encoding",
+			message:     makeMessages(t, [][]byte{gzipCompress(t, []byte("data"))}, map[string][]string{"Content-Encoding": {"zstd"}})[0],
+			expectedErr: true,
+		},
+	}
+
+	decompress, err := makeDecompressor()
+	require.NoError(t, err)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := decompress(tc.message.Payload, tc.message.Headers)
+			if tc.expectedErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.expectedResult, res)
+			}
+		})
+	}
+}
+
+func assertPublishes(t *testing.T, mp *MockProducer, expectedCount int) {
+	t.Helper()
+	for i := 0; i < expectedCount; i++ {
+		select {
+		case <-mp.PublishCh:
+		case <-time.After(1 * time.Second):
+			t.Fatalf("timeout waiting for background nats publish (got %d of %d)", i, expectedCount)
+		}
+	}
+	if expectedCount > 0 {
+		mp.mu.Lock()
+		defer mp.mu.Unlock()
+		subject := transport.LiveTailSubjectPrefix + "auth-service"
+		assert.Contains(t, mp.PublishedRecords, subject)
+		assert.NotEmpty(t, mp.PublishedRecords[subject])
+	}
+}
+
+func assertInsertedRecords(t *testing.T, ms *MockLogStore, expected core.FlatLogRecord) {
+	t.Helper()
+	for _, record := range ms.InsertedRecords {
+		assert.Equal(t, expected.ServiceName, record.ServiceName)
+		assert.Equal(t, expected.Body, record.Body)
+		assert.Equal(t, expected.SeverityText, record.SeverityText)
+	}
+}
+
 func TestConsumeCallback(t *testing.T) {
 	req := newBaseRequest(t)
 
@@ -360,7 +471,7 @@ func TestConsumeCallback(t *testing.T) {
 
 	tests := []struct {
 		name                string
-		payloads            [][]byte
+		messages            []transport.Message
 		mockDBError         error
 		mockProducerError   error
 		expectedErr         bool
@@ -369,79 +480,89 @@ func TestConsumeCallback(t *testing.T) {
 		expectedPublishes   int
 	}{
 		{
-			"empty payloads slice",
-			[][]byte{},
-			nil,
-			nil,
-			false,
-			0,
-			0,
-			0,
+			name:     "empty payloads slice",
+			messages: []transport.Message{},
 		},
 		{
-			"successful batch insert",
-			[][]byte{
-				reqBytes,
-				reqBytes,
-			},
-			nil,
-			nil,
-			false,
-			1,
-			2,
-			1,
+			name:                "successful batch insert",
+			messages:            makeMessages(t, [][]byte{reqBytes, reqBytes}, nil),
+			expectedInsertCount: 1,
+			expectedRecordCount: 2,
+			expectedPublishes:   1,
 		},
 		{
-			"skip malformed json but insert valid ones",
-			[][]byte{
+			name: "skip malformed json but insert valid ones",
+			messages: makeMessages(t, [][]byte{
 				reqBytes,
 				[]byte(`{malformed payload]`),
 				reqBytes,
-			},
-			nil,
-			nil,
-			false,
-			1,
-			2,
-			1,
+			}, nil),
+			expectedInsertCount: 1,
+			expectedRecordCount: 2,
+			expectedPublishes:   1,
 		},
 		{
-			"all malformed json returns no error and no insert",
-			[][]byte{
+			name: "all malformed json returns no error and no insert",
+			messages: makeMessages(t, [][]byte{
 				[]byte(`{malformed payload]`),
 				[]byte(`{malformed payload]`),
 				[]byte(`{malformed payload]`),
-			},
-			nil,
-			nil,
-			false,
-			0,
-			0,
-			0,
+			}, nil),
 		},
 		{
-			"database insert failure returns error, live tail still publishes",
-			[][]byte{
+			name: "database insert failure returns error, live tail still publishes",
+			messages: makeMessages(t, [][]byte{
 				reqBytes,
-			},
-			fmt.Errorf("test insert error"),
-			nil,
-			true,
-			1,
-			1,
-			1,
+			}, nil),
+			mockDBError:         fmt.Errorf("test insert error"),
+			expectedErr:         true,
+			expectedInsertCount: 1,
+			expectedRecordCount: 1,
+			expectedPublishes:   1,
 		},
 		{
-			"database insert sucess, live tail publish failure",
-			[][]byte{
+			name: "database insert sucess, live tail publish failure",
+			messages: makeMessages(t, [][]byte{
 				reqBytes,
-			},
-			nil,
-			fmt.Errorf("test publish error"),
-			false,
-			1,
-			1,
-			1,
+			}, nil),
+			mockProducerError:   fmt.Errorf("test publish error"),
+			expectedInsertCount: 1,
+			expectedRecordCount: 1,
+			expectedPublishes:   1,
+		},
+		{
+			name:                "zstd compressed payload is decompressed and consumed correctly",
+			messages:            makeMessages(t, [][]byte{zstdCompress(t, reqBytes)}, map[string][]string{"Content-Encoding": {"zstd"}}),
+			expectedInsertCount: 1,
+			expectedRecordCount: 1,
+			expectedPublishes:   1,
+		},
+		{
+			name:     "zstd compressed payload with wrong header is dropped",
+			messages: makeMessages(t, [][]byte{zstdCompress(t, reqBytes)}, map[string][]string{"Content-Encoding": {"gzip"}}),
+		},
+		{
+			name:     "zstd compressed payload with no header is dropped",
+			messages: makeMessages(t, [][]byte{zstdCompress(t, reqBytes)}, nil),
+		},
+		{
+			name:                "gzip compressed payload is decompressed and consumed correctly",
+			messages:            makeMessages(t, [][]byte{gzipCompress(t, reqBytes)}, map[string][]string{"Content-Encoding": {"gzip"}}),
+			expectedInsertCount: 1,
+			expectedRecordCount: 1,
+			expectedPublishes:   1,
+		},
+		{
+			name:     "gzip compressed payload with wrong header is dropped",
+			messages: makeMessages(t, [][]byte{gzipCompress(t, reqBytes)}, map[string][]string{"Content-Encoding": {"zstd"}}),
+		},
+		{
+			name:     "gzip compressed payload with no header is dropped",
+			messages: makeMessages(t, [][]byte{gzipCompress(t, reqBytes)}, nil),
+		},
+		{
+			name:     "failed decompression returns no error and no insert",
+			messages: makeMessages(t, [][]byte{[]byte("invalid")}, map[string][]string{"Content-Encoding": {"zstd"}}),
 		},
 	}
 
@@ -457,8 +578,9 @@ func TestConsumeCallback(t *testing.T) {
 				PublishErr:       tc.mockProducerError,
 			}
 
-			callback := ConsumeCallback(slog.Default(), mockStore, mockProducer)
-			err := callback(tc.payloads)
+			callback, err := ConsumeCallback(slog.Default(), mockStore, mockProducer)
+			require.NoError(t, err)
+			err = callback(tc.messages)
 
 			if tc.expectedErr {
 				assert.Error(t, err)
@@ -466,38 +588,11 @@ func TestConsumeCallback(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			// wait for background go routines to finish publishing
-			// check that we receive exact number of publishes
-			for i := 0; i < tc.expectedPublishes; i++ {
-				select {
-				case <-mockProducer.PublishCh:
-					// received publish
-				case <-time.After(1 * time.Second):
-					t.Fatalf("timeout waiting for background nats publish")
-				}
-			}
-
+			assertPublishes(t, mockProducer, tc.expectedPublishes)
 			assert.Equal(t, tc.expectedInsertCount, mockStore.InsertCount)
 			assert.Len(t, mockStore.InsertedRecords, tc.expectedRecordCount)
-
 			if tc.expectedInsertCount > 0 && !tc.expectedErr {
-
-				for _, record := range mockStore.InsertedRecords {
-					assert.Equal(t, expectedRecord.ServiceName, record.ServiceName)
-					assert.Equal(t, expectedRecord.Body, record.Body)
-					assert.Equal(t, expectedRecord.SeverityText, record.SeverityText)
-				}
-			}
-
-			if tc.expectedPublishes > 0 {
-				mockProducer.mu.Lock()
-
-				subject := transport.LiveTailSubjectPrefix + "auth-service"
-				assert.Contains(t, mockProducer.PublishedRecords, subject)
-
-				assert.NotEmpty(t, mockProducer.PublishedRecords[subject])
-
-				mockProducer.mu.Unlock()
+				assertInsertedRecords(t, mockStore, expectedRecord)
 			}
 
 		})
