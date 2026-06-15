@@ -24,9 +24,9 @@ const ( // infra constants
 var _ Producer = (*NatsBroker)(nil)
 var _ Consumer = (*NatsJSConsumer)(nil)
 
-type ProcessLogFunc func(payload [][]byte) error         // callback to consume from stream
-type DLQFunc func(payload []byte) error                  // callback to move data to dlq stream
-type DelayCalcFunc func(maxDeliver uint64) time.Duration // callback to determine delay for NakWithDelay
+type ProcessLogFunc func(payload [][]byte) error                     // callback to consume from stream
+type DLQFunc func(payload []byte, headers map[string][]string) error // callback to move data to dlq stream
+type DelayCalcFunc func(maxDeliver uint64) time.Duration             // callback to determine delay for NakWithDelay
 
 type Producer interface { // for ingestion endpoint to push payload
 	PublishLogs(context.Context, string, []byte, map[string][]string) error
@@ -236,7 +236,7 @@ func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, logHandler ProcessLog
 					continue
 				}
 				if metadata.NumDelivered >= nc.maxDeliver {
-					if err := dlqHandler(msg.Data()); err != nil {
+					if err := dlqHandler(msg.Data(), msg.Headers()); err != nil {
 						nc.logger.Error("Failed to publish to DLQ, message will be lost",
 							"err", err,
 							"payload", string(msg.Data()),

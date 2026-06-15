@@ -131,7 +131,7 @@ func handleOTLPLogs(logger *slog.Logger, producer transport.Producer, natsSubjec
 		}
 
 		if ce := r.Header.Get("Content-Encoding"); ce != "" {
-			headers["Content-Type"] = []string{ce}
+			headers["Content-Encoding"] = []string{ce}
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

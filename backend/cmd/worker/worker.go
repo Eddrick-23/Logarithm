@@ -45,6 +45,7 @@ func ConsumeCallback(logger *slog.Logger, store storage.LogStore, producer trans
 	}
 }
 
+// TODO, need to pass in headers, check content type and encodings and handle accordingly.
 func processPayloads(logger *slog.Logger, payloads [][]byte, flatLogsByServiceName map[string][]core.FlatLogRecord) int {
 	numRecords := 0
 	for _, payload := range payloads {
@@ -77,12 +78,12 @@ func publishLiveTail(logger *slog.Logger, producer transport.Producer, serviceNa
 	}
 }
 
-func DLQCallback(producer transport.Producer, subject string) func([]byte) error {
+func DLQCallback(producer transport.Producer, subject string) func([]byte, map[string][]string) error {
 
-	return func(payload []byte) error {
+	return func(payload []byte, headers map[string][]string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		return producer.PublishLogs(ctx, subject, payload, nil)
+		return producer.PublishLogs(ctx, subject, payload, headers)
 	}
 }
 
