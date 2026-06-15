@@ -29,7 +29,7 @@ type DLQFunc func(payload []byte) error                  // callback to move dat
 type DelayCalcFunc func(maxDeliver uint64) time.Duration // callback to determine delay for NakWithDelay
 
 type Producer interface { // for ingestion endpoint to push payload
-	PublishLogs(context.Context, string, []byte) error
+	PublishLogs(context.Context, string, []byte, map[string][]string) error
 	PublishLiveTail(string, []byte) error
 }
 
@@ -114,11 +114,7 @@ func (nb *NatsBroker) EnsureDLQStream(ctx context.Context, streamName string, su
 }
 
 func (nb *NatsBroker) EnsureLiveTailStream(ctx context.Context, streamName string, subject string, maxBytes int64) (jetstream.Stream, error) {
-	// no max age
-	// small storage limit for ram
-	// memory storage only
-	// acts as a small circular buffer
-	// TODO make maxBytes configurable
+	// acts as a small circular buffer, no max age, small storage limits, memory storage only
 	nb.logger.Info("Ensuring stream exists", "subject", subject)
 	streamConfig := jetstream.StreamConfig{
 		Name:        streamName,
@@ -142,8 +138,14 @@ func (nb *NatsBroker) ensureStream(ctx context.Context, config *jetstream.Stream
 	return stream, nil
 }
 
-func (nb *NatsBroker) PublishLogs(ctx context.Context, subject string, payload []byte) error {
-	ack, err := nb.js.Publish(ctx, subject, payload)
+func (nb *NatsBroker) PublishLogs(ctx context.Context, subject string, payload []byte, headers map[string][]string) error {
+	msg := &nats.Msg{
+		Subject: subject,
+		Data:    payload,
+		Header:  nats.Header(headers),
+	}
+
+	ack, err := nb.js.PublishMsg(ctx, msg)
 	if err != nil {
 		return fmt.Errorf("published failed: %w, subject: %v", err, subject)
 	}
@@ -176,12 +178,6 @@ func (nb *NatsBroker) NewDurableConsumer(ctx context.Context, stream jetstream.S
 	return &NatsJSConsumer{cons, nb.logger, uint64(maxDeliver)}, nil
 }
 
-// TODO modify to support OTEL data unmarshalling
-// For now assumes all payloads are protojson
-// filter by service name + flatten //DONE
-// join flattened slice and pass to clickhouse //DONE
-// other flattened slice publish to tail.* stream for live tail
-// live tail contains raw []FlatLogRecord encoded bytes
 func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, logHandler ProcessLogFunc, dlqHandler DLQFunc, delayHandler DelayCalcFunc,
 	maxBatch int, maxWait time.Duration) error {
 

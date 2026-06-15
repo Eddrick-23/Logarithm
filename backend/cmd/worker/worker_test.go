@@ -301,7 +301,7 @@ type MockProducer struct {
 	PublishCh        chan struct{}
 }
 
-func (m *MockProducer) PublishLogs(ctx context.Context, subject string, payload []byte) error {
+func (m *MockProducer) PublishLogs(ctx context.Context, subject string, payload []byte, headers map[string][]string) error {
 	return nil // not used
 }
 

@@ -82,7 +82,7 @@ func DLQCallback(producer transport.Producer, subject string) func([]byte) error
 	return func(payload []byte) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		return producer.PublishLogs(ctx, subject, payload)
+		return producer.PublishLogs(ctx, subject, payload, nil)
 	}
 }
 

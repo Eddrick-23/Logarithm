@@ -22,7 +22,7 @@ type MockProducer struct {
 	Err error
 }
 
-func (m *MockProducer) PublishLogs(context.Context, string, []byte) error {
+func (m *MockProducer) PublishLogs(context.Context, string, []byte, map[string][]string) error {
 	return m.Err
 }
 

@@ -125,9 +125,18 @@ func handleOTLPLogs(logger *slog.Logger, producer transport.Producer, natsSubjec
 		// TODO add routing based on content-type in the future
 		// now we assume all is json payload
 
+		headers := map[string][]string{}
+		if ct := r.Header.Get("Content-Type"); ct != "" {
+			headers["Content-Type"] = []string{ct}
+		}
+
+		if ce := r.Header.Get("Content-Encoding"); ce != "" {
+			headers["Content-Type"] = []string{ce}
+		}
+
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if err := producer.PublishLogs(ctx, natsSubjectTemplate+"raw", bodyBytes); err != nil {
+		if err := producer.PublishLogs(ctx, natsSubjectTemplate+"raw", bodyBytes, headers); err != nil {
 			logger.Error("failed to publish to nats", "err", err)
 			http.Error(w, "Message broker unavailable", http.StatusServiceUnavailable)
 			return
