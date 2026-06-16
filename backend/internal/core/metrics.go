@@ -27,6 +27,17 @@ type ErrorMetricsResponse struct {
 	Data []ErrorMetrics `json:"data"`
 }
 
+type LogRateStatistics struct {
+	CurrentRate float64 `ch:"CurrentRate" json:"currentRate"`
+	AvgRate     float64 `ch:"AvgRate" json:"avgRate"`
+	Ratio       float64 `ch:"Ratio" json:"ratio"`
+}
+
+type IngestionMetricsEvent struct {
+	Graph    IngestionMetricsResponse `ch:"Graph" json:"graph"`
+	LogStats LogRateStatistics        `ch:"LogStats" json:"logStats"`
+}
+
 func NewIngestionMetricsMap(rows []IngestionMetrics) IngestionMetricsMap {
 	result := make(IngestionMetricsMap)
 	for _, row := range rows {
