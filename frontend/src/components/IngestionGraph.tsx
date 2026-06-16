@@ -11,8 +11,9 @@ const CHART_HEIGHT = 400;
 const generateColour = (index: number) => `hsl(${(index * 137.5) % 360}, 70%, 50%)`;
 
 export default function IngestionGraph() {
-    const { data, isLoading, isError, refetch } = useIngestionMetrics();
+    const { data: response, isLoading, isError, refetch } = useIngestionMetrics();
     const [hiddenServices, setHiddenServices] = useState<Set<string>>(new Set());
+    const data = response?.graph;
 
     // use to store the service names in ascending order
     const servicesKey = useMemo(
