@@ -48,11 +48,12 @@ func run(ctx context.Context, configPath string, interval int, duration time.Dur
 	if showConfig {
 		printJson(*cfg)
 	}
-	fmt.Printf("Test configs: RPS: %v, BatchSize:%v, Duration: %v, Warmup: %v, encoding: %v\n",
+	fmt.Printf("Test configs: RPS: %v, BatchSize:%v, Duration: %v, Warmup: %v, contentType: %v, Encoding: %v\n",
 		cfg.Rps,
 		cfg.BatchSize,
 		duration,
 		warmupDuration,
+		cfg.ContentType,
 		cfg.Encoding,
 	)
 
