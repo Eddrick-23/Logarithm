@@ -28,6 +28,7 @@ type RawConfig struct {
 	HealthUrl            string          `json:"healthUrl"`
 	TargetUrl            string          `json:"targetUrl"`
 	Method               string          `json:"method"`
+	ContentType          string          `json:"contentType"`
 	Encoding             string          `json:"encoding"`
 	Rps                  int             `json:"rps"`
 	BatchSize            int             `json:"batchSize"`
@@ -43,6 +44,7 @@ type CleanConfig struct {
 	PoolSize             int             `json:"poolSize"`
 	HealthUrl            string          `json:"healthUrl"`
 	TargetUrl            string          `json:"targetUrl"`
+	ContentType          string          `json:"contentType"`
 	Method               string          `json:"method"`
 	Encoding             string          `json:"encoding"`
 	Rps                  int             `json:"rps"`
@@ -94,7 +96,7 @@ func cleanEncoding(rawCfg *RawConfig) string {
 
 	switch encoding {
 	case "":
-		return "none"
+		return "identity"
 	case "none":
 		return encoding
 	case "gzip":
@@ -103,7 +105,21 @@ func cleanEncoding(rawCfg *RawConfig) string {
 		return encoding
 	default:
 		fmt.Printf("encoding %v not supported, defaulting to no encoding.\n", encoding)
-		return "none"
+		return "identity"
+	}
+}
+
+func cleanContentType(rawCfg *RawConfig) string {
+	ct := strings.ToLower(rawCfg.ContentType)
+
+	switch ct {
+	case "json":
+		return ct
+	case "proto":
+		return ct
+	default:
+		fmt.Printf("content type %v not supported, defaulting to proto.\n", ct)
+		return "proto"
 	}
 }
 
@@ -111,11 +127,13 @@ func validateAndCleanConfig(rawCfg RawConfig) CleanConfig {
 	dist := cleanSeverityDistribution(&rawCfg)
 	poolSize := cleanPoolSize(&rawCfg)
 	encoding := cleanEncoding(&rawCfg)
+	contentType := cleanContentType(&rawCfg)
 	return CleanConfig{
 		Seed:                 rawCfg.Seed,
 		PoolSize:             poolSize,
 		HealthUrl:            rawCfg.HealthUrl,
 		TargetUrl:            rawCfg.TargetUrl,
+		ContentType:          contentType,
 		Method:               rawCfg.Method,
 		Encoding:             encoding,
 		Rps:                  rawCfg.Rps,

@@ -83,7 +83,7 @@ func NewAttack(cfg *config.CleanConfig, duration time.Duration) (*Attack, error)
 }
 
 // helper to gzip compress and set tgt body and header
-func (a *Attack) writeGzip(tgt *vegeta.Target, payload []byte) error {
+func (a *Attack) encodeGzip(payload []byte) ([]byte, error) {
 	buf := a.bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer a.bufferPool.Put(buf)
@@ -93,28 +93,68 @@ func (a *Attack) writeGzip(tgt *vegeta.Target, payload []byte) error {
 	defer a.gzipPool.Put(gz)
 
 	if _, err := gz.Write(payload); err != nil {
-		return fmt.Errorf("gzip write error: %w", err)
+		return nil, fmt.Errorf("gzip write error: %w", err)
 	}
 	if err := gz.Close(); err != nil {
-		return fmt.Errorf("gzip close error: %w", err)
+		return nil, fmt.Errorf("gzip close error: %w", err)
 	}
 
-	tgt.Body = bytes.Clone(buf.Bytes())
-	tgt.Header = http.Header{
-		"Content-Type":     []string{"application/json"},
-		"Content-Encoding": []string{"gzip"},
-	}
-	return nil
+	return bytes.Clone(buf.Bytes()), nil
 }
 
-func (a *Attack) writeZstd(tgt *vegeta.Target, payload []byte) {
+func (a *Attack) encodeZstd(payload []byte) []byte {
 	buf := make([]byte, 0, len(payload))
 	compressed := a.zstdEncoder.EncodeAll(payload, buf)
 
-	tgt.Body = compressed
-	tgt.Header = http.Header{
-		"Content-Type":     []string{"application/json"},
-		"Content-Encoding": []string{"zstd"},
+	return compressed
+}
+
+func (a *Attack) generatePayload() ([]byte, error) {
+	r := a.randPool.Get().(*rand.Rand)
+	defer a.randPool.Put(r)
+	req := plogotlp.NewExportRequestFromLogs(generator.GenerateRequest(r, a.cfg, a.pool))
+	switch a.cfg.ContentType {
+	case "proto":
+		return req.MarshalProto()
+	case "json":
+		return req.MarshalJSON()
+	default:
+		return nil, fmt.Errorf("unsupported content type %s", a.cfg.ContentType)
+	}
+}
+
+func (a *Attack) encodePayload(payload []byte) ([]byte, error) {
+	switch a.cfg.Encoding {
+	case "zstd":
+		return a.encodeZstd(payload), nil
+	case "gzip":
+		return a.encodeGzip(payload)
+	default:
+		return payload, nil
+	}
+}
+
+func (a *Attack) writeHeaders(tgt *vegeta.Target) {
+	if tgt.Header == nil {
+		tgt.Header = make(http.Header)
+	}
+
+	switch a.cfg.ContentType {
+	case "proto":
+		tgt.Header.Set("Content-Type", "application/x-protobuf")
+	case "json":
+		tgt.Header.Set("Content-Type", "application/json")
+	default:
+		// don't set
+	}
+
+	switch a.cfg.Encoding {
+	case "zstd":
+		tgt.Header.Set("Content-Encoding", "zstd")
+	case "gzip":
+		tgt.Header.Set("Content-Encoding", "gzip")
+	default:
+		tgt.Header.Set("Content-Encoding", "identity")
 	}
 }
 
@@ -125,30 +165,22 @@ func (a *Attack) Start() <-chan *vegeta.Result {
 		if tgt == nil {
 			return vegeta.ErrNilTarget
 		}
-		r := a.randPool.Get().(*rand.Rand)
-		defer a.randPool.Put(r)
 
-		req := plogotlp.NewExportRequestFromLogs(generator.GenerateRequest(r, a.cfg, a.pool))
-		payload, err := req.MarshalJSON()
+		payload, err := a.generatePayload()
 
 		if err != nil {
-			return fmt.Errorf("error marshaling json: %w", err)
+			return fmt.Errorf("error marshaling payload: %w", err)
 		}
 
-		switch a.cfg.Encoding {
-		case "zstd":
-			a.writeZstd(tgt, payload)
-		case "gzip":
-			if err := a.writeGzip(tgt, payload); err != nil {
-				return fmt.Errorf("failed to encode gzip: %w", err)
-			}
-		default:
-			tgt.Body = payload
-			tgt.Header = http.Header{
-				"Content-Type": []string{"application/json"},
-			}
+		encoded, err := a.encodePayload(payload)
+
+		if err != nil {
+			return fmt.Errorf("error encoding payload: %w", err)
 		}
 
+		a.writeHeaders(tgt)
+
+		tgt.Body = encoded
 		tgt.Method = a.cfg.Method
 		tgt.URL = a.cfg.TargetUrl
 		return nil
