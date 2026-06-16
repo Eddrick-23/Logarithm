@@ -22,7 +22,7 @@ func AddRoutes(
 	mux.HandleFunc("GET /", handleRoot(logger))
 	mux.HandleFunc("GET /health", handleHealth(logger))
 	mux.Handle("POST /v1/logs",
-		newContentTypeMiddleware("application/json")(
+		newContentTypeMiddleware("application/json", "application/x-protobuf")(
 			newContentEncodingMiddleware("gzip", "zstd")(
 				handleOTLPLogs(logger, producer, natsSubjectPrefix),
 			),
@@ -31,7 +31,11 @@ func AddRoutes(
 }
 
 // TODO allow protobuf bytes in the future, now assume all json bytes only
-func newContentTypeMiddleware(targetMediaType string) func(http.Handler) http.Handler {
+func newContentTypeMiddleware(supportedTypes ...string) func(http.Handler) http.Handler {
+	supported := make(map[string]struct{}, len(supportedTypes))
+	for _, s := range supportedTypes {
+		supported[s] = struct{}{}
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			contentType := r.Header.Get("Content-Type")
@@ -41,8 +45,8 @@ func newContentTypeMiddleware(targetMediaType string) func(http.Handler) http.Ha
 				return
 			}
 
-			if mediaType != targetMediaType {
-				http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+			if _, ok := supported[mediaType]; !ok {
+				http.Error(w, fmt.Sprintf("Unsupported Content-Type: %s", mediaType), http.StatusUnsupportedMediaType)
 				return
 			}
 			next.ServeHTTP(w, r)
