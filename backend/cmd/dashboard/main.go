@@ -78,6 +78,10 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 
+		headers := map[string][]string{
+			"Content-Type": {"application/json"},
+		}
+
 		for {
 			select {
 			case <-ticker.C:
@@ -141,7 +145,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 					continue
 				}
 
-				if err := broker.PublishLogs(ctx, "logs.auth-service", authPayload, nil); err != nil {
+				if err := broker.PublishLogs(ctx, "logs.auth-service", authPayload, headers); err != nil {
 					natsLogger.Error("publish error:", "err", err)
 				}
 
@@ -204,7 +208,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 					continue
 				}
 
-				if err := broker.PublishLogs(ctx, "logs.logging-service", logPayload, nil); err != nil {
+				if err := broker.PublishLogs(ctx, "logs.logging-service", logPayload, headers); err != nil {
 					natsLogger.Error("publish error:", "err", err)
 				}
 
