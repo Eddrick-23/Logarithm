@@ -1,19 +1,24 @@
 import { LineChart } from "@mui/x-charts/LineChart";
 import { useMemo, useState } from "react";
-import { useIngestionMetrics } from "../hooks/useMetrics";
 import { Alert, Box, Checkbox, Chip, FormControlLabel, FormGroup, Skeleton, Stack, Typography } from "@mui/material";
 import { card, sectionLabel } from "../theme/tokens";
 import ErrorBanner from "./ErrorBanner";
+import type { IngestionGraphData } from "../types/Metric";
+
+interface IngestionGraphProps {
+    data?: IngestionGraphData;
+    isLoading: boolean;
+    isError: boolean;
+    refetch: () => void;
+}
 
 const CHART_HEIGHT = 400;
 
 // automatically generates the colour based on golden angle formula
 const generateColour = (index: number) => `hsl(${(index * 137.5) % 360}, 70%, 50%)`;
 
-export default function IngestionGraph() {
-    const { data: response, isLoading, isError, refetch } = useIngestionMetrics();
+export default function IngestionGraph({ data, isLoading, isError, refetch }: IngestionGraphProps) {
     const [hiddenServices, setHiddenServices] = useState<Set<string>>(new Set());
-    const data = response?.graph;
 
     // use to store the service names in ascending order
     const servicesKey = useMemo(

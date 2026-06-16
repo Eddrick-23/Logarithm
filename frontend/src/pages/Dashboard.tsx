@@ -4,8 +4,11 @@ import ServiceOverview from "../components/ServiceOverview";
 import ServiceError from "../components/ServiceError";
 import LiveTailLogs from "../components/LiveTailLogs";
 import { pulseSx } from "../theme/tokens";
+import { useIngestionMetrics } from "../hooks/useMetrics";
 
 export default function Dashboard() {
+    const { data, isLoading, isError, refetch } = useIngestionMetrics();
+
     return (
         <Box sx={{ bgcolor: "background.default", minHeight: "100vh", p: 2 }}>
             {/* Header */}
@@ -30,13 +33,13 @@ export default function Dashboard() {
 
             {/* Stat cards */}
             <Box sx={{ mb: 2 }}>
-                <ServiceOverview logsPerSecond={4200} errorRate={0.3} numOfLiveServices={7} />
+                <ServiceOverview data={data?.logStats} isLoading={isLoading} errorRate={0.3} numOfLiveServices={7} />
             </Box>
 
             {/* Chart + Latency */}
             <Grid container spacing={2} sx={{ mb: 2, alignItems: "stretch" }}>
                 <Grid size="grow">
-                    <IngestionGraph />
+                    <IngestionGraph data={data?.graph} isLoading={isLoading} isError={isError} refetch={refetch} />
                 </Grid>
                 {/* for 1200px <= size < 1536px, size assigned is larger to fit the ServiceError without overflowing
                     for size >= 1536px, size assigned is smaller since there is sufficient space to fit ServiceError without overflowing */}

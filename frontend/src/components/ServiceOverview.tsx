@@ -1,9 +1,11 @@
 import { Box, Typography, Grid, Skeleton } from "@mui/material";
 import { card, sectionLabel, statValue } from "../theme/tokens";
-import { useIngestionMetrics } from "../hooks/useMetrics";
 import { formatNumber } from "../utils/utils";
+import type { LogRateStatistics } from "../types/Metric";
 
 interface ServiceOverviewProps {
+    data?: LogRateStatistics;
+    isLoading: boolean;
     errorRate: number;
     numOfLiveServices: number;
 }
@@ -37,19 +39,16 @@ function StatCard({
     );
 }
 
-export default function ServiceOverview({ errorRate, numOfLiveServices }: ServiceOverviewProps) {
-    const { data, isLoading } = useIngestionMetrics();
-
-    const stats = data?.logStats;
+export default function ServiceOverview({ data, isLoading, errorRate, numOfLiveServices }: ServiceOverviewProps) {
     let logRate: string | number = 0;
-    if (stats?.currentRate !== undefined) {
-        logRate = formatNumber(stats.currentRate);
+    if (data?.currentRate !== undefined) {
+        logRate = formatNumber(data.currentRate);
     }
 
     let logDeltaText = "";
     let logDeltaColour = "text.secondary";
-    if (stats?.ratio !== undefined) {
-        const percentChange = (stats.ratio - 1) * 100;
+    if (data?.ratio !== undefined) {
+        const percentChange = (data.ratio - 1) * 100;
         const absChange = Math.abs(percentChange).toFixed(0);
 
         if (percentChange > 0) {
