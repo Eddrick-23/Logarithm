@@ -4,6 +4,7 @@
   "healthUrl": "http://localhost:8090/health",
   "targetUrl": "http://localhost:8090/v1/logs",
   "method": "POST",
+  "contentType": "proto",
   "encoding": "zstd",
   "rps": 10,
   "batchSize": 10,

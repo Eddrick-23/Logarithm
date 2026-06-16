@@ -139,7 +139,7 @@ consumer, polled at 1-second intervals.
 
 ## Baseline Configuration
 
-All cross-milestone comparisons use a single fixed baseline config. **RPS is fixed between milestone runs** — the same config is used for M1, M2, and M3 so that latency deltas are attributable solely to code changes.
+All cross-milestone comparisons use a single fixed baseline config. **RPS is fixed between milestone runs** — the same config is used for M1, M2, and M3 so that latency deltas are attributable solely to code changes. `contentType` can be swapped between `proto` or `json` to marshal the payloads accordingly.
 
 ```json
 {
@@ -148,6 +148,7 @@ All cross-milestone comparisons use a single fixed baseline config. **RPS is fix
   "healthUrl": "http://HOST_IP:8090/health",
   "targetUrl": "http://HOST_IP:8090/ingest",
   "method": "POST",
+  "contentType":"proto",
   "encoding": "zstd",
   "rps": 1000,
   "duration": "60s",
