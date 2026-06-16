@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/core"
@@ -93,22 +94,21 @@ func makeDecoder() func([]byte, map[string][]string) (*plogotlp.ExportRequest, e
 			contentType = vals[0]
 		}
 
-		switch contentType {
-		case "application/json":
-			if err := req.UnmarshalJSON(payload); err != nil {
-				return nil, err
-			}
-
-			return &req, nil
-		case "application/x-protobuf":
+		if strings.HasPrefix(contentType, "application/x-protobuf") {
 			if err := req.UnmarshalProto(payload); err != nil {
 				return nil, err
 			}
-
 			return &req, nil
-		default:
-			return nil, fmt.Errorf("no Content-Type provided")
 		}
+
+		if strings.HasPrefix(contentType, "application/json") {
+			if err := req.UnmarshalJSON(payload); err != nil {
+				return nil, err
+			}
+			return &req, nil
+		}
+
+		return nil, fmt.Errorf("unsupported or missing content type: %s", contentType)
 	}
 }
 

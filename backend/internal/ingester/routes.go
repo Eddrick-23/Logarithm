@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"mime"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/transport"
@@ -22,57 +22,44 @@ func AddRoutes(
 	mux.HandleFunc("GET /", handleRoot(logger))
 	mux.HandleFunc("GET /health", handleHealth(logger))
 	mux.Handle("POST /v1/logs",
-		newContentTypeMiddleware("application/json", "application/x-protobuf")(
-			newContentEncodingMiddleware("gzip", "zstd")(
+		newContentTypeMiddleware()(
+			newContentEncodingMiddleware()(
 				handleOTLPLogs(logger, producer, natsSubjectPrefix),
 			),
 		),
 	)
 }
 
-// TODO allow protobuf bytes in the future, now assume all json bytes only
-func newContentTypeMiddleware(supportedTypes ...string) func(http.Handler) http.Handler {
-	supported := make(map[string]struct{}, len(supportedTypes))
-	for _, s := range supportedTypes {
-		supported[s] = struct{}{}
-	}
+func newContentTypeMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			contentType := r.Header.Get("Content-Type")
-			mediaType, _, err := mime.ParseMediaType(contentType)
-			if err != nil {
-				http.Error(w, "Malformed/Missing Content-Type", http.StatusBadRequest)
-				return
-			}
 
-			if _, ok := supported[mediaType]; !ok {
-				http.Error(w, fmt.Sprintf("Unsupported Content-Type: %s", mediaType), http.StatusUnsupportedMediaType)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
-func newContentEncodingMiddleware(supportedEncodings ...string) func(http.Handler) http.Handler {
-	supported := make(map[string]struct{}, len(supportedEncodings))
-
-	for _, s := range supportedEncodings {
-		supported[s] = struct{}{}
-	}
-
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			contentEncoding := r.Header.Get("Content-Encoding")
-			if contentEncoding == "" {
+			if strings.HasPrefix(contentType, "application/x-protobuf") || strings.HasPrefix(contentType, "application/json") {
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			if _, ok := supported[contentEncoding]; !ok {
-				http.Error(w, fmt.Sprintf("Unsupported Content-Encoding: %s", contentEncoding), http.StatusUnsupportedMediaType)
+			http.Error(w, fmt.Sprintf("Unsupported or Missing Content-Type: %s", contentType), http.StatusUnsupportedMediaType)
+		})
+	}
+}
+
+func newContentEncodingMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			contentEncoding := r.Header.Get("Content-Encoding")
+			if contentEncoding == "" || contentEncoding == "identity" {
+				next.ServeHTTP(w, r)
+				return
 			}
-			next.ServeHTTP(w, r)
+
+			if contentEncoding == "zstd" || contentEncoding == "gzip" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			http.Error(w, fmt.Sprintf("Unsupported Content-Encoding: %s", contentEncoding), http.StatusUnsupportedMediaType)
 		})
 	}
 }
