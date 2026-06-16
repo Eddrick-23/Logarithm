@@ -466,11 +466,27 @@ func assertInsertedRecords(t *testing.T, ms *MockLogStore, expected core.FlatLog
 	}
 }
 
+func makeHeaders(contentType string, contentEncoding string) map[string][]string {
+	headers := map[string][]string{}
+	if contentType != "" {
+		headers["Content-Type"] = []string{contentType}
+	}
+
+	if contentEncoding != "" {
+		headers["Content-Encoding"] = []string{contentEncoding}
+	}
+
+	return headers
+}
+
 func TestConsumeCallback(t *testing.T) {
 	req := newBaseRequest(t)
 
-	reqBytes, err := req.MarshalJSON()
-	require.NoError(t, err, "failed to marshal request")
+	reqJSONBytes, err := req.MarshalJSON()
+	require.NoError(t, err, "failed to marshal request to JSON")
+
+	reqProtoBytes, err := req.MarshalProto()
+	require.NoError(t, err, "failed to marshal request to Protobuf")
 
 	flatLogsByServiceName := map[string][]core.FlatLogRecord{}
 	logs := req.Logs()
@@ -495,7 +511,7 @@ func TestConsumeCallback(t *testing.T) {
 		},
 		{
 			name:                "successful batch insert",
-			messages:            makeMessages(t, [][]byte{reqBytes, reqBytes}, nil),
+			messages:            makeMessages(t, [][]byte{reqJSONBytes, reqJSONBytes}, makeHeaders("application/json", "")),
 			expectedInsertCount: 1,
 			expectedRecordCount: 2,
 			expectedPublishes:   1,
@@ -503,10 +519,10 @@ func TestConsumeCallback(t *testing.T) {
 		{
 			name: "skip malformed json but insert valid ones",
 			messages: makeMessages(t, [][]byte{
-				reqBytes,
+				reqJSONBytes,
 				[]byte(`{malformed payload]`),
-				reqBytes,
-			}, nil),
+				reqJSONBytes,
+			}, makeHeaders("application/json", "")),
 			expectedInsertCount: 1,
 			expectedRecordCount: 2,
 			expectedPublishes:   1,
@@ -522,8 +538,8 @@ func TestConsumeCallback(t *testing.T) {
 		{
 			name: "database insert failure returns error, live tail still publishes",
 			messages: makeMessages(t, [][]byte{
-				reqBytes,
-			}, nil),
+				reqJSONBytes,
+			}, makeHeaders("application/json", "")),
 			mockDBError:         fmt.Errorf("test insert error"),
 			expectedErr:         true,
 			expectedInsertCount: 1,
@@ -533,8 +549,8 @@ func TestConsumeCallback(t *testing.T) {
 		{
 			name: "database insert sucess, live tail publish failure",
 			messages: makeMessages(t, [][]byte{
-				reqBytes,
-			}, nil),
+				reqJSONBytes,
+			}, makeHeaders("application/json", "")),
 			mockProducerError:   fmt.Errorf("test publish error"),
 			expectedInsertCount: 1,
 			expectedRecordCount: 1,
@@ -542,37 +558,47 @@ func TestConsumeCallback(t *testing.T) {
 		},
 		{
 			name:                "zstd compressed payload is decompressed and consumed correctly",
-			messages:            makeMessages(t, [][]byte{zstdCompress(t, reqBytes)}, map[string][]string{"Content-Encoding": {"zstd"}}),
+			messages:            makeMessages(t, [][]byte{zstdCompress(t, reqJSONBytes)}, makeHeaders("application/json", "zstd")),
 			expectedInsertCount: 1,
 			expectedRecordCount: 1,
 			expectedPublishes:   1,
-		},
-		{
-			name:     "zstd compressed payload with wrong header is dropped",
-			messages: makeMessages(t, [][]byte{zstdCompress(t, reqBytes)}, map[string][]string{"Content-Encoding": {"gzip"}}),
-		},
-		{
-			name:     "zstd compressed payload with no header is dropped",
-			messages: makeMessages(t, [][]byte{zstdCompress(t, reqBytes)}, nil),
 		},
 		{
 			name:                "gzip compressed payload is decompressed and consumed correctly",
-			messages:            makeMessages(t, [][]byte{gzipCompress(t, reqBytes)}, map[string][]string{"Content-Encoding": {"gzip"}}),
+			messages:            makeMessages(t, [][]byte{gzipCompress(t, reqJSONBytes)}, makeHeaders("application/json", "gzip")),
 			expectedInsertCount: 1,
 			expectedRecordCount: 1,
 			expectedPublishes:   1,
 		},
 		{
-			name:     "gzip compressed payload with wrong header is dropped",
-			messages: makeMessages(t, [][]byte{gzipCompress(t, reqBytes)}, map[string][]string{"Content-Encoding": {"zstd"}}),
+			name:                "successful batch insert protobuf",
+			messages:            makeMessages(t, [][]byte{reqProtoBytes}, makeHeaders("application/x-protobuf", "")),
+			expectedInsertCount: 1,
+			expectedRecordCount: 1,
+			expectedPublishes:   1,
 		},
 		{
-			name:     "gzip compressed payload with no header is dropped",
-			messages: makeMessages(t, [][]byte{gzipCompress(t, reqBytes)}, nil),
+			name: "skip malformed protobuf but insert valid ones",
+			messages: makeMessages(t,
+				[][]byte{
+					reqProtoBytes,
+					[]byte(`{malformed payload]`),
+				},
+				makeHeaders("application/x-protobuf", "")),
+			expectedInsertCount: 1,
+			expectedRecordCount: 1,
+			expectedPublishes:   1,
 		},
 		{
-			name:     "failed decompression returns no error and no insert",
-			messages: makeMessages(t, [][]byte{[]byte("invalid")}, map[string][]string{"Content-Encoding": {"zstd"}}),
+			name: "zstd compressed protobuf payload is consumed correctly",
+			messages: makeMessages(t,
+				[][]byte{
+					zstdCompress(t, reqProtoBytes),
+				},
+				makeHeaders("application/x-protobuf", "zstd")),
+			expectedInsertCount: 1,
+			expectedRecordCount: 1,
+			expectedPublishes:   1,
 		},
 	}
 

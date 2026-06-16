@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/core"
@@ -19,6 +20,7 @@ import (
 )
 
 type decompressFunc func([]byte, map[string][]string) ([]byte, error)
+type decoderFunc func([]byte, map[string][]string) (*plogotlp.ExportRequest, error)
 
 func ConsumeCallback(logger *slog.Logger, store storage.LogStore, producer transport.Producer) (func([]transport.Message) error, error) {
 	// ConsumeCallback returns the message handler used by the log consumer.
@@ -27,17 +29,19 @@ func ConsumeCallback(logger *slog.Logger, store storage.LogStore, producer trans
 	// live-tail stream on a file and forget basis, and bulk inserted into storage.
 	// Storage insertion failures are returned; live-tail publish failures are
 	// logged and ignored.
-	decompress, err := makeDecompressor()
+	decompressor, err := makeDecompressor()
 	if err != nil {
 		return nil, err
 	}
+
+	decoder := makeDecoder()
 	return func(messages []transport.Message) error {
 		if len(messages) == 0 {
 			return nil
 		}
 
 		flatLogsByServiceName := map[string][]core.FlatLogRecord{}
-		numRecords := processMessages(logger, decompress, messages, flatLogsByServiceName)
+		numRecords := processMessages(logger, decompressor, decoder, messages, flatLogsByServiceName)
 
 		if len(flatLogsByServiceName) == 0 { // no valid payloads to insert
 			return nil
@@ -56,19 +60,19 @@ func ConsumeCallback(logger *slog.Logger, store storage.LogStore, producer trans
 	}, nil
 }
 
-func processMessages(logger *slog.Logger, decompress decompressFunc, messages []transport.Message,
+func processMessages(logger *slog.Logger, decompressor decompressFunc, decoder decoderFunc, messages []transport.Message,
 	flatLogsByServiceName map[string][]core.FlatLogRecord) int {
 	numRecords := 0
 
 	for _, msg := range messages {
-		decompressedPayload, err := decompress(msg.Payload, msg.Headers)
+		decompressedPayload, err := decompressor(msg.Payload, msg.Headers)
 		if err != nil {
 			logger.Error("dropped log payload due to decompress error", "err", err)
 			continue
 		}
 
-		req := plogotlp.NewExportRequest()
-		if err := req.UnmarshalJSON(decompressedPayload); err != nil {
+		req, err := decoder(decompressedPayload, msg.Headers)
+		if err != nil {
 			logger.Error("dropped malformed log payload", "err", err)
 			continue
 		}
@@ -79,6 +83,33 @@ func processMessages(logger *slog.Logger, decompress decompressFunc, messages []
 		}
 	}
 	return numRecords
+}
+
+func makeDecoder() func([]byte, map[string][]string) (*plogotlp.ExportRequest, error) {
+	return func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
+		req := plogotlp.NewExportRequest()
+
+		contentType := ""
+		if vals, ok := headers["Content-Type"]; ok && len(vals) > 0 {
+			contentType = vals[0]
+		}
+
+		if strings.HasPrefix(contentType, "application/x-protobuf") {
+			if err := req.UnmarshalProto(payload); err != nil {
+				return nil, err
+			}
+			return &req, nil
+		}
+
+		if strings.HasPrefix(contentType, "application/json") {
+			if err := req.UnmarshalJSON(payload); err != nil {
+				return nil, err
+			}
+			return &req, nil
+		}
+
+		return nil, fmt.Errorf("unsupported or missing content type: %s", contentType)
+	}
 }
 
 func makeDecompressor() (func([]byte, map[string][]string) ([]byte, error), error) {

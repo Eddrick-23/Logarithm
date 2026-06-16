@@ -47,10 +47,15 @@ func TestIngestEndpoint(t *testing.T) {
 		{"json no encoding", "application/json", "", nil, http.StatusAccepted, "Log ingested successfully"},
 		{"json gzip encoding", "application/json", "gzip", nil, http.StatusAccepted, "Log ingested successfully"},
 		{"json with zstd encoding", "application/json", "zstd", nil, http.StatusAccepted, "Log ingested successfully"},
-		{"unsupported content type", "text/plain", "", nil, http.StatusUnsupportedMediaType, "Content-Type must be application/json"},
-		{"missing content type", "", "", nil, http.StatusBadRequest, "Malformed/Missing Content-Type"},
-		{"publish failed", "application/json", "", fmt.Errorf("publish to nats failed"), http.StatusServiceUnavailable, "Message broker unavailable"},
-		{"unknown encoding", "application/json", "br", nil, http.StatusUnsupportedMediaType, "Unsupported Content-Encoding: br"},
+		{"protobuf no encoding", "application/x-protobuf", "", nil, http.StatusAccepted, "Log ingested successfully"},
+		{"protobuf gzip encoding", "application/x-protobuf", "gzip", nil, http.StatusAccepted, "Log ingested successfully"},
+		{"protobuf with zstd encoding", "application/x-protobuf", "zstd", nil, http.StatusAccepted, "Log ingested successfully"},
+		{"unsupported content type", "text/plain", "", nil, http.StatusUnsupportedMediaType, "Unsupported or Missing Content-Type: text/plain"},
+		{"missing content type", "", "", nil, http.StatusUnsupportedMediaType, "Unsupported or Missing Content-Type:"},
+		{"json publish failed", "application/json", "", fmt.Errorf("publish to nats failed"), http.StatusServiceUnavailable, "Message broker unavailable"},
+		{"json unknown encoding", "application/json", "br", nil, http.StatusUnsupportedMediaType, "Unsupported Content-Encoding: br"},
+		{"protobuf publish failed", "application/x-protobuf", "", fmt.Errorf("publish to nats failed"), http.StatusServiceUnavailable, "Message broker unavailable"},
+		{"protobuf unknown encoding", "application/x-protobuf", "br", nil, http.StatusUnsupportedMediaType, "Unsupported Content-Encoding: br"},
 	}
 
 	for _, tc := range tests {
