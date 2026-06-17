@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -271,6 +272,7 @@ func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, logHandler ProcessLog
 
 func (nb *NatsBroker) TailLiveLogs(ctx context.Context, streamName string, subject string, maxBatch int) (<-chan []byte, func(), error) {
 	// Buffer the channel to handle slight backpressure from the websocket
+	nb.logger.Info("setting up live tail subscription")
 	logCh := make(chan []byte, maxBatch)
 
 	sub, err := nb.conn.Subscribe(subject, func(msg *nats.Msg) {
@@ -288,12 +290,15 @@ func (nb *NatsBroker) TailLiveLogs(ctx context.Context, streamName string, subje
 	}
 
 	// Provide a cleanup function to stop the NATS consumer and close the channel
+	var once sync.Once
 	cleanup := func() {
-		if err := sub.Unsubscribe(); err != nil {
-			nb.logger.Error("failed to unsubscribe core nats sub", "err", err)
-		}
-		close(logCh)
-		nb.logger.Info("stopped live tail consumer", "subject", subject)
+		once.Do(func() {
+			if err := sub.Unsubscribe(); err != nil {
+				nb.logger.Error("failed to unsubscribe core nats sub", "err", err)
+			}
+			close(logCh)
+			nb.logger.Info("stopped live tail consumer", "subject", subject)
+		})
 	}
 
 	// in case context dies before caller cleans up
