@@ -103,10 +103,6 @@ func run(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("failed to ensure dlq stream: %w", err)
 	}
 
-	_, err = natsBroker.EnsureLiveTailStream(ctx, transport.LiveTailStreamName, transport.LiveTailSubject, int64(config.NatsLiveTailMaxBytes))
-	if err != nil {
-		return fmt.Errorf("failed to ensure live tail stream: %w", err)
-	}
 	consumeCallback, err := worker.ConsumeCallback(workerLogger, store, natsBroker)
 	if err != nil {
 		return err
