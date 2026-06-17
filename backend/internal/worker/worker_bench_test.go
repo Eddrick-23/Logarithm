@@ -2,13 +2,11 @@ package worker
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/core"
-	"github.com/Eddrick-23/Logarithm/internal/transport"
 )
 
 var testRecord1 core.FlatLogRecord = core.FlatLogRecord{
@@ -73,35 +71,7 @@ func (n *noOpProducer) PublishLiveTail(_ string, _ []byte) error {
 	return nil
 }
 
-func publishLiveTailJSON(logger *slog.Logger, producer transport.Producer, serviceName string, logs []core.FlatLogRecord) {
-	subject := transport.LiveTailSubjectPrefix + serviceName
-
-	for _, record := range logs {
-		data, err := json.Marshal(record)
-		if err != nil {
-			logger.Error("json marshal failed for live tail record", "err", err)
-		}
-
-		if err := producer.PublishLiveTail(subject, data); err != nil {
-			logger.Error("failed to publish to live tail stream", "err", err)
-		}
-	}
-}
-
-func BenchmarkPublishLiveTail_JSON(b *testing.B) {
-	testLogs := []core.FlatLogRecord{
-		testRecord1,
-		testRecord2,
-		testRecord3,
-	}
-	producer := noOpProducer{}
-	b.ResetTimer()
-	for b.Loop() {
-		publishLiveTailJSON(slog.Default(), &producer, "", testLogs)
-	}
-}
-
-func BenchmarkPublishLiveTail_MsgPack(b *testing.B) {
+func BenchmarkPublishLiveTail(b *testing.B) {
 	testLogs := []core.FlatLogRecord{
 		testRecord1,
 		testRecord2,
