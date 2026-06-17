@@ -362,7 +362,7 @@ func handleLiveTail(logger *slog.Logger, broker *transport.NatsBroker, config *c
 		}()
 
 		// start tailing NATS
-		liveTailCh, cleanup, err := broker.TailLiveLogs(ctx, transport.LiveTailStreamName, transport.LiveTailSubject, config.LiveTailMaxBatch)
+		liveTailCh, cleanup, err := broker.TailLiveLogs(ctx, transport.LiveTailSubject, config.LiveTailMaxBatch)
 		if err != nil {
 			logger.Error("Failed to start NATS tail", "error", err)
 			ws.WriteMessage(websocket.CloseMessage, []byte("Internal Server Error"))

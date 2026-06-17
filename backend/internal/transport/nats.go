@@ -17,7 +17,6 @@ const ( // infra constants
 	LogStreamSubjectPrefix = "logs."
 	DLQStreamName          = "LOGS_DLQ"
 	DLQSubject             = "dlq.logs"
-	LiveTailStreamName     = "TAIL"
 	LiveTailSubject        = "tail.>"
 	LiveTailSubjectPrefix  = "tail."
 )
@@ -270,17 +269,40 @@ func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, logHandler ProcessLog
 	}
 }
 
-func (nb *NatsBroker) TailLiveLogs(ctx context.Context, streamName string, subject string, maxBatch int) (<-chan []byte, func(), error) {
+// TailLiveLogs subscribes to a core NATS subject and pipes incoming log data into a channel.
+// It utilizes an ephemeral, pure pub-sub connection with no underlying persistence.
+//
+// To protect the NATS connection from slow consumers (like a lagging WebSocket),
+// the returned channel acts as a ring buffer of capacity maxBatch. If the caller
+// falls behind, the oldest unread logs are dropped to make room for live data.
+//
+// The caller receives a channel for the data and a cleanup closure. The caller MUST
+// either execute the cleanup closure when finished, or cancel the provided context
+// to unsubscribe from NATS and safely close the channel.
+func (nb *NatsBroker) TailLiveLogs(ctx context.Context, subject string, maxBatch int) (<-chan []byte, func(), error) {
 	// Buffer the channel to handle slight backpressure from the websocket
 	nb.logger.Info("setting up live tail subscription")
 	logCh := make(chan []byte, maxBatch)
 
 	sub, err := nb.conn.Subscribe(subject, func(msg *nats.Msg) {
+		// handle closed connection
 		select {
-		case logCh <- msg.Data:
 		case <-ctx.Done():
-			// context cancelled, drop message
+			return
 		default:
+		}
+
+		// use channel as ring buffer
+		select {
+		case logCh <- msg.Data: // successful insert
+			return
+		default: // drop oldest and insert
+			select {
+			case <-logCh:
+			default:
+			}
+
+			logCh <- msg.Data
 		}
 
 	})
