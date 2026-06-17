@@ -45,7 +45,6 @@ type Config struct {
 	NatsBackoff               []time.Duration `env:"NATS_BACKOFF, default=5s,30s,60s,300s,3600s"`
 	NatsLogStreamMaxBytes     ByteSize        `env:"NATS_LOG_STREAM_MAX_BYTES, default=50GB"`
 	NatsDLQMaxBytes           ByteSize        `env:"NATS_DLQ_MAX_BYTES, default=10GB"`
-	NatsLiveTailMaxBytes      ByteSize        `env:"NATS_LIVE_TAIL_MAX_BYTES, default=50MB"`
 	NatsConsumerMaxAckPending int             `env:"NATS_CONSUMER_MAX_ACK_PENDING, default=1000"`
 	WorkerLogLevel            string          `env:"WORKER_LOG_LEVEL, default=INFO"`
 	WorkerMaxBatch            int             `env:"WORKER_MAX_BATCH, default=10"`

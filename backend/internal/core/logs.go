@@ -10,28 +10,6 @@ type KeyValue struct {
 }
 
 /*
-FlatLogRecord is optimized for storage in ClickHouse
-*/
-type FlatLogRecord struct {
-	Timestamp         time.Time `ch:"Timestamp" json:"timestamp"`
-	ObservedTimestamp time.Time `ch:"ObservedTimestamp" json:"observedTimestamp"`
-	InsertedAt        time.Time `ch:"InsertedAt" json:"insertedAt"` // not mapped when unflattening, for now no need to expose to frontend
-	TraceId           string    `ch:"TraceId" json:"traceId"`
-	SpanId            string    `ch:"SpanId" json:"spanId"`
-	SeverityText      string    `ch:"SeverityText" json:"severityText"`
-	SeverityNumber    uint8     `ch:"SeverityNumber" json:"severityNumber"`
-	ServiceName       string    `ch:"ServiceName" json:"serviceName"`
-	Body              string    `ch:"Body" json:"body"`
-	BodyType          string    `ch:"BodyType" json:"bodyType"` // can be "string"|"json"|"int"|"bool", but for now we convert to string
-	ScopeName         string    `ch:"ScopeName" json:"scopeNmae"`
-	ScopeVersion      string    `ch:"ScopeVersion" json:"scopeVersion"`
-	LogAttrKeys       []string  `ch:"LogAttrKeys" json:"logAttrKeys"`
-	LogAttrValues     []string  `ch:"LogAttrValues" json:"logAttrValues"`
-	ResAttrKeys       []string  `ch:"ResAttrKeys" json:"resAttrKeys"`
-	ResAttrValues     []string  `ch:"ResAttrValues" json:"resAttrValues"`
-}
-
-/*
 LogRecord represents the complete structure when reading back
 from ClickHouse to display on the frontend.
 */

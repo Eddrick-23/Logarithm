@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -16,7 +17,6 @@ const ( // infra constants
 	LogStreamSubjectPrefix = "logs."
 	DLQStreamName          = "LOGS_DLQ"
 	DLQSubject             = "dlq.logs"
-	LiveTailStreamName     = "TAIL"
 	LiveTailSubject        = "tail.>"
 	LiveTailSubjectPrefix  = "tail."
 )
@@ -111,21 +111,6 @@ func (nb *NatsBroker) EnsureDLQStream(ctx context.Context, streamName string, su
 		Storage:     jetstream.FileStorage,
 		Discard:     jetstream.DiscardOld,
 		MaxAge:      maxAge,
-		MaxBytes:    maxBytes,
-	}
-
-	return nb.ensureStream(ctx, &streamConfig)
-}
-
-func (nb *NatsBroker) EnsureLiveTailStream(ctx context.Context, streamName string, subject string, maxBytes int64) (jetstream.Stream, error) {
-	// acts as a small circular buffer, no max age, small storage limits, memory storage only
-	nb.logger.Info("Ensuring stream exists", "subject", subject)
-	streamConfig := jetstream.StreamConfig{
-		Name:        streamName,
-		Description: "live tail stream for flattened logs",
-		Subjects:    []string{subject},
-		Storage:     jetstream.MemoryStorage,
-		Discard:     jetstream.DiscardOld,
 		MaxBytes:    maxBytes,
 	}
 
@@ -284,44 +269,67 @@ func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, logHandler ProcessLog
 	}
 }
 
-func (nb *NatsBroker) TailLiveLogs(ctx context.Context, streamName string, subject string, maxBatch int) (<-chan []byte, func(), error) {
-	// Retrieve the stream
-	stream, err := nb.js.Stream(ctx, streamName)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get stream for tailing: %w", err)
-	}
-
-	cons, err := stream.OrderedConsumer(ctx, jetstream.OrderedConsumerConfig{
-		FilterSubjects: []string{subject},
-		DeliverPolicy:  jetstream.DeliverNewPolicy, // Start tailing from "now"
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create ordered consumer: %w", err)
-	}
-
+// TailLiveLogs subscribes to a core NATS subject and pipes incoming log data into a channel.
+// It utilizes an ephemeral, pure pub-sub connection with no underlying persistence.
+//
+// To protect the NATS connection from slow consumers (like a lagging WebSocket),
+// the returned channel acts as a ring buffer of capacity maxBatch. If the caller
+// falls behind, the oldest unread logs are dropped to make room for live data.
+//
+// The caller receives a channel for the data and a cleanup closure. The caller MUST
+// either execute the cleanup closure when finished, or cancel the provided context
+// to unsubscribe from NATS and safely close the channel.
+func (nb *NatsBroker) TailLiveLogs(ctx context.Context, subject string, maxBatch int) (<-chan []byte, func(), error) {
 	// Buffer the channel to handle slight backpressure from the websocket
+	nb.logger.Info("setting up live tail subscription")
 	logCh := make(chan []byte, maxBatch)
 
-	// Start consuming asynchronously
-	cc, err := cons.Consume(func(msg jetstream.Msg) {
+	sub, err := nb.conn.Subscribe(subject, func(msg *nats.Msg) {
+		// handle closed connection
 		select {
-		case logCh <- msg.Data():
-			// For a live tail, we don't necessarily need to Ack() since it's an ordered
-			// consumer and we don't care about redelivery if the websocket drops.
 		case <-ctx.Done():
-			// Context cancelled, stop processing
+			return
+		default:
 		}
+
+		// use channel as ring buffer
+		select {
+		case logCh <- msg.Data: // successful insert
+			return
+		default: // drop oldest and insert
+			select {
+			case <-logCh:
+			default:
+			}
+
+			logCh <- msg.Data
+		}
+
 	})
+
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to start consuming for tail: %w", err)
+		return nil, nil, fmt.Errorf("failed to start live tail subscription")
 	}
 
 	// Provide a cleanup function to stop the NATS consumer and close the channel
+	var once sync.Once
 	cleanup := func() {
-		cc.Stop()
-		close(logCh)
-		nb.logger.Debug("stopped live tail consumer", "subject", subject)
+		once.Do(func() {
+			if err := sub.Unsubscribe(); err != nil {
+				nb.logger.Error("failed to unsubscribe core nats sub", "err", err)
+			}
+			close(logCh)
+			nb.logger.Info("stopped live tail consumer", "subject", subject)
+		})
 	}
+
+	// in case context dies before caller cleans up
+	go func() {
+		<-ctx.Done()
+		if sub.IsValid() {
+			cleanup()
+		}
+	}()
 
 	return logCh, cleanup, nil
 }

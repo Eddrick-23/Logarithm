@@ -60,7 +60,6 @@ func TestValidate(t *testing.T) {
 		NatsBackoff:               []time.Duration{1 * time.Second},
 		NatsLogStreamMaxBytes:     100,
 		NatsDLQMaxBytes:           100,
-		NatsLiveTailMaxBytes:      100,
 		NatsConsumerMaxAckPending: 1000,
 		WorkerLogLevel:            "INFO",
 		WorkerMaxBatch:            1000,
