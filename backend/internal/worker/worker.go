@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -141,11 +140,12 @@ func makeDecompressor() (func([]byte, map[string][]string) ([]byte, error), erro
 
 func publishLiveTail(logger *slog.Logger, producer transport.Producer, serviceName string, logs []core.FlatLogRecord) {
 	subject := transport.LiveTailSubjectPrefix + serviceName
-
+	buf := make([]byte, 0, 1024) // prealloc reusable buffer
 	for _, record := range logs {
-		data, err := json.Marshal(record)
+		buf = buf[0:]
+		data, err := record.MarshalMsg(buf)
 		if err != nil {
-			logger.Error("json marshal failed for live tail record", "err", err)
+			logger.Error("msgpack marshal failed for live tail record", "err", err)
 		}
 
 		if err := producer.PublishLiveTail(subject, data); err != nil {
