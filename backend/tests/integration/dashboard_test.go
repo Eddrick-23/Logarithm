@@ -256,11 +256,13 @@ func TestDashboardHandleLiveTail(t *testing.T) {
 	defer ws.Close()
 	time.Sleep(100 * time.Millisecond) // wait for server to establish Jetstream consumer
 
-	testPayload := LogMessage{
-		Message: "hello from testcaes!",
+	testRecord := core.FlatLogRecord{
+		TraceId:     "test-trace",
+		ServiceName: "test.app",
+		Body:        "test case",
 	}
 
-	testData, err := json.Marshal(testPayload)
+	testData, err := testRecord.MarshalMsg(nil)
 	if err != nil {
 		t.Fatalf("Failed to marshal test data: %v", err)
 	}
@@ -278,7 +280,7 @@ func TestDashboardHandleLiveTail(t *testing.T) {
 		t.Fatalf("Failed to read from websocket (timed out?): %v", err)
 	}
 
-	var batch []json.RawMessage
+	var batch []core.FlatLogRecord
 	if err := json.Unmarshal(message, &batch); err != nil {
 		t.Fatalf("Failed to unmarshal websocket payload: %v", err)
 	}
@@ -286,11 +288,10 @@ func TestDashboardHandleLiveTail(t *testing.T) {
 	if len(batch) != 1 {
 		t.Fatalf("Expected 1 log in batch, got %d", len(batch))
 	}
+	receivedRecord := batch[0]
+	receivedRecord.Timestamp = time.Time{}
+	receivedRecord.ObservedTimestamp = time.Time{}
+	receivedRecord.InsertedAt = time.Time{}
 
-	// check that the payload we sent matches the one we received
-	var receivedPayload LogMessage
-	if err := json.Unmarshal(batch[0], &receivedPayload); err != nil {
-		t.Fatalf("Failed to unmarshal received payload: %v", err)
-	}
-	assert.Equal(t, testPayload, receivedPayload)
+	assert.Equal(t, testRecord, receivedRecord)
 }
