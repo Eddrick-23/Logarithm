@@ -9,11 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
-	"github.com/Eddrick-23/Logarithm/internal/transport"
-	"github.com/nats-io/nats.go"
-	"github.com/nats-io/nats.go/jetstream"
 	"github.com/testcontainers/testcontainers-go"
 	chmodule "github.com/testcontainers/testcontainers-go/modules/clickhouse" // alias to avoid naming conflict
 	natsmodule "github.com/testcontainers/testcontainers-go/modules/nats"     // alias to avoid naming conflict
@@ -54,24 +50,6 @@ func TestMain(m *testing.M) {
 	}
 
 	natsUrl = fmt.Sprintf("nats://%s:%s", natsHost, natsPort.Port())
-
-	nc, err := nats.Connect(natsUrl, nats.DrainTimeout(5*time.Second))
-	if err != nil {
-		log.Fatalf("failed to connect to raw NATS client: %s", err)
-	}
-
-	js, err := jetstream.New(nc)
-	if err != nil {
-		log.Fatalf("failed to create to jetstream interface: %s", err)
-	}
-
-	_, err = js.CreateStream(ctx, jetstream.StreamConfig{
-		Name:     transport.LiveTailStreamName,
-		Subjects: []string{transport.LiveTailSubject},
-	})
-	if err != nil {
-		log.Fatalf("failed to create JetStream stream: %s", err)
-	}
 
 	user = "clickhouse"
 	password = "password"
