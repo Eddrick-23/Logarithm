@@ -226,12 +226,12 @@ func TestDashboardHandleMetrics(t *testing.T) {
 
 	body, _ := io.ReadAll(resp.Body)
 
-	var result core.IngestionMetricsResponse
+	var result core.IngestionMetricsEvent
 	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&result); err != nil {
 		t.Fatalf("failed to decode JSON: %v", err)
 	}
 
-	metrics := result.Metrics["payment-service"]
+	metrics := result.Graph.Metrics["payment-service"]
 	// 60 records due to the backfill of null timings
 	if len(metrics) != 60 {
 		t.Fatalf("expected 60 log metrics, got %v", len(metrics))

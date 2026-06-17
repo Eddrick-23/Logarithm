@@ -7,5 +7,6 @@ export function formatNumber(n: number): string {
     // round off the numbers into 3sf and append number suffixes at the end
     if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toPrecision(3)}B`;
     if (n >= 1_000_000) return `${(n / 1_000_000).toPrecision(3)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toPrecision(3)}k`;
     return n.toString();
 }

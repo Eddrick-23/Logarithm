@@ -7,9 +7,20 @@ export type IngestionMetrics = {
 // serviceName: IngestionMetrics[]
 export type IngestionMetricsMap = Record<string, IngestionMetrics[]>;
 
-export type GetIngestionMetricsResponse = {
+export type IngestionGraphData = {
     metrics: IngestionMetricsMap;
     timestamps: number[]; // API returns ISO time numbers
+};
+
+export type LogRateStatistics = {
+    currentRate: number;
+    avgRate: number;
+    ratio: number;
+};
+
+export type GetIngestionMetricsResponse = {
+    graph: IngestionGraphData;
+    logStats: LogRateStatistics;
 };
 
 export type ErrorMetrics = {

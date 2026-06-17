@@ -214,7 +214,7 @@ func handleIngestionMetrics(logger *slog.Logger, logStore *storage.ClickHouseSto
 		var err error
 		ctx := context.Background()
 
-		ingestionMetrics, err := logStore.GetIngestionMetrics(ctx)
+		ingestionMetrics, err := logStore.GetAllIngestionMetrics(ctx)
 		if err != nil {
 			logger.Error("failed to get logging metrics", "err", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -239,7 +239,7 @@ func writeIngestionMetricsEvent(
 	logger *slog.Logger,
 	logStore *storage.ClickHouseStore,
 ) error {
-	ingestionMetrics, err := logStore.GetIngestionMetrics(ctx)
+	ingestionMetrics, err := logStore.GetAllIngestionMetrics(ctx)
 	if err != nil {
 		logger.Error("failed to get ingestion metrics", "err", err)
 		return err
