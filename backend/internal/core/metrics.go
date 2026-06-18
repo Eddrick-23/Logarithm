@@ -17,14 +17,14 @@ type IngestionMetricsResponse struct {
 	Metrics    IngestionMetricsMap `json:"metrics"`
 }
 
-type ErrorMetrics struct {
+type TopServiceErrorsStats struct {
 	ServiceName string  `ch:"ServiceName" json:"serviceName"`
 	TotalErrors uint64  `ch:"TotalErrors" json:"totalErrors"`
 	ErrorRate   float64 `ch:"ErrorRate" json:"errorRate"`
 }
 
-type ErrorMetricsResponse struct {
-	Data []ErrorMetrics `json:"data"`
+type TopServiceErrorsStatsResponse struct {
+	Data []TopServiceErrorsStats `json:"data"`
 }
 
 type LogRateStatistics struct {

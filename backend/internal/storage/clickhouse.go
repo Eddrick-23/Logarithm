@@ -390,8 +390,8 @@ func (s *ClickHouseStore) GetAllIngestionMetrics(ctx context.Context) (core.Inge
 
 }
 
-func (s *ClickHouseStore) GetErrorMetrics(ctx context.Context) ([]core.ErrorMetrics, error) {
-	// error metrics will return error rates within the past 1 hour
+func (s *ClickHouseStore) GetTopServiceErrorsStats(ctx context.Context) ([]core.TopServiceErrorsStats, error) {
+	// top service errors stats will return error rates within the past 1 hour
 	tbl, err := s.table(TableMetrics1m)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get table: %v", err)
@@ -409,7 +409,7 @@ func (s *ClickHouseStore) GetErrorMetrics(ctx context.Context) ([]core.ErrorMetr
         LIMIT 5
     `, tbl)
 
-	var result []core.ErrorMetrics
+	var result []core.TopServiceErrorsStats
 	if err := s.conn.Select(ctx, &result, queryString, clickhouse.Named("hour", 1)); err != nil {
 		return nil, err
 	}

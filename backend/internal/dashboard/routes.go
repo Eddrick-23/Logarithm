@@ -28,7 +28,7 @@ func AddRoutes(
 	mux.HandleFunc("GET /health", handleHealth(logger))
 	mux.Handle("GET /api/search", handleLogs(logger, logStore))
 	mux.Handle("GET /api/services", handleDistinctServices(logger, logStore))
-	mux.Handle("GET /api/error-metrics", handleErrorMetrics(logger, logStore))
+	mux.Handle("GET /api/top-service-errors", handleTopServiceErrors(logger, logStore))
 	mux.Handle("GET /api/ingestion-metrics", handleIngestionMetrics(logger, logStore))
 	mux.Handle("GET /api/ingestion-metrics/stream", handleIngestionMetricsStream(logger, logStore, appCtx))
 	mux.Handle("GET /ws/logs/tail", handleLiveTail(logger, broker, config))
@@ -261,20 +261,20 @@ func writeIngestionMetricsEvent(
 	return nil
 }
 
-func writeTopServiceErrorsEvent(
+func writeTopServiceErrorsStatsEvent(
 	ctx context.Context,
 	w http.ResponseWriter,
 	flusher http.Flusher,
 	logger *slog.Logger,
 	logStore *storage.ClickHouseStore,
 ) error {
-	errorMetrics, err := logStore.GetErrorMetrics(ctx)
+	topServiceErrorsStats, err := logStore.GetTopServiceErrorsStats(ctx)
 	if err != nil {
 		logger.Error("failed to get ingestion metrics", "err", err)
 		return err
 	}
 
-	data, err := json.Marshal(errorMetrics)
+	data, err := json.Marshal(topServiceErrorsStats)
 	if err != nil {
 		logger.Error("failed to marshal ingestion metrics", "err", err)
 		return err
@@ -329,7 +329,7 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 
 			case <-ticker30s.C:
 				// top service errors refreshes every 30s
-				if err := writeTopServiceErrorsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
+				if err := writeTopServiceErrorsStatsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
 					return
 				}
 			}
@@ -337,20 +337,20 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 	}
 }
 
-func handleErrorMetrics(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
+func handleTopServiceErrors(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 		ctx := context.Background()
 
-		errorMetrics, err := logStore.GetErrorMetrics(ctx)
+		topServiceErrorsStats, err := logStore.GetTopServiceErrorsStats(ctx)
 		if err != nil {
-			logger.Error("failed to get error metrics", "err", err)
+			logger.Error("failed to get top service errors stats", "err", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
-		response := core.ErrorMetricsResponse{
-			Data: errorMetrics,
+		response := core.TopServiceErrorsStatsResponse{
+			Data: topServiceErrorsStats,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
