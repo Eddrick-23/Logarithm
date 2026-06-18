@@ -24,6 +24,10 @@ interface ServiceErrorRowProps {
     errorRate: number;
 }
 
+interface ServiceErrorProps {
+    refetch: () => void;
+}
+
 function ServiceErrorRow({ serviceName, totalErrors, errorRate }: ServiceErrorRowProps) {
     return (
         <Box sx={{ display: "flex", alignItems: "center", py: 1.5 }}>
@@ -62,9 +66,8 @@ function ServiceErrorRow({ serviceName, totalErrors, errorRate }: ServiceErrorRo
     );
 }
 
-export default function ServiceError() {
-    const { data, isLoading, isError, refetch } = useErrorMetrics();
-
+export default function ServiceError({ refetch }: ServiceErrorProps) {
+    const { data, isLoading, isError } = useErrorMetrics();
     return (
         <Box sx={{ ...card, height: "100%" }}>
             {/* header */}

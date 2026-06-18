@@ -30,12 +30,19 @@ export const useIngestionMetrics = () => {
 
         const eventSource = new EventSource("/api/ingestion-metrics/stream");
 
-        eventSource.onmessage = (e) => {
+        eventSource.addEventListener("ingestion", (e) => {
             const data = JSON.parse(e.data);
             queryClient.setQueryData(["ingestionMetrics"], data);
             queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
-            lastMessageRef.current = Date.now(); // update watchdog clock
-        };
+            lastMessageRef.current = Date.now();
+        });
+
+        eventSource.addEventListener("top-service-errors", (e) => {
+            const data = JSON.parse(e.data);
+            queryClient.setQueryData(["errorMetrics"], data);
+            queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
+            lastMessageRef.current = Date.now();
+        });
 
         eventSource.onerror = () => {
             if (eventSourceRef.current?.readyState !== EventSource.OPEN) {
@@ -91,7 +98,7 @@ export const useErrorMetrics = () => {
     return useQuery({
         queryKey: ["errorMetrics"],
         queryFn: fetchErrorMetrics,
-        staleTime: 1000 * 60, // 1 minute
-        refetchInterval: 1000 * 60, // refetch every 1 minute
+        staleTime: Infinity,
+        refetchInterval: false,
     });
 };

@@ -252,7 +252,36 @@ func writeIngestionMetricsEvent(
 	}
 
 	// data: <payload>\n\n is the SSE wire protocol
-	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+	if _, err := fmt.Fprintf(w, "event: ingestion\ndata: %s\n\n", data); err != nil {
+		// client likely disconnected
+		return err
+	}
+
+	flusher.Flush()
+	return nil
+}
+
+func writeTopServiceErrorsEvent(
+	ctx context.Context,
+	w http.ResponseWriter,
+	flusher http.Flusher,
+	logger *slog.Logger,
+	logStore *storage.ClickHouseStore,
+) error {
+	errorMetrics, err := logStore.GetErrorMetrics(ctx)
+	if err != nil {
+		logger.Error("failed to get ingestion metrics", "err", err)
+		return err
+	}
+
+	data, err := json.Marshal(errorMetrics)
+	if err != nil {
+		logger.Error("failed to marshal ingestion metrics", "err", err)
+		return err
+	}
+
+	// data: <payload>\n\n is the SSE wire protocol
+	if _, err := fmt.Fprintf(w, "event: top-service-errors\ndata: %s\n\n", data); err != nil {
 		// client likely disconnected
 		return err
 	}
@@ -274,13 +303,11 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 
-		ticker := time.NewTicker(5 * time.Second)
-		defer ticker.Stop()
+		ticker5s := time.NewTicker(5 * time.Second)
+		ticker30s := time.NewTicker(3 * time.Second)
 
-		// send an initial payload immediately, don't wait for first tick
-		if err := writeIngestionMetricsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
-			return
-		}
+		defer ticker5s.Stop()
+		defer ticker30s.Stop()
 
 		for {
 			select {
@@ -294,8 +321,15 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 				logger.Debug("server is shutting down, closing SSE stream gracefully")
 				return
 
-			case <-ticker.C:
+			case <-ticker5s.C:
+				// ingestion graph and logs / second refreshes every 5s
 				if err := writeIngestionMetricsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
+					return
+				}
+
+			case <-ticker30s.C:
+				// top service errors refreshes every 30s
+				if err := writeTopServiceErrorsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
 					return
 				}
 			}
