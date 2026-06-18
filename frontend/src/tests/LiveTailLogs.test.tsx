@@ -5,6 +5,7 @@ import { setupServer } from "msw/node";
 import { ws } from "msw";
 import LiveTailLogs from "../components/LiveTailLogs";
 import type { FlatLogRecord } from "../types/Log";
+import { encode } from "@msgpack/msgpack";
 
 const connectingMessage = "Connecting to live tail server...";
 const pauseMessage = "Tail paused — new logs buffering";
@@ -20,7 +21,7 @@ vi.mock("../hooks/useDistinctServices", () => ({
 // mock websocket handler
 const tailWs = ws.link("ws://localhost:8091/ws/logs/tail");
 
-let sendToClient: ((data: string) => void) | null = null;
+let sendToClient: ((data: Uint8Array | string) => void) | null = null;
 let serverCloseConnection: ((code?: number) => void) | null = null;
 
 const server = setupServer(
@@ -50,8 +51,22 @@ const makeRecord = (overrides: Partial<FlatLogRecord> = {}): FlatLogRecord => ({
     ...overrides,
 });
 
+// encodes multiple objects into MessagePack and concatenates their bytes into a single stream
+const encodeBatch = (records: FlatLogRecord[]): Uint8Array => {
+    const buffers = records.map((r) => encode(r));
+    const totalLength = buffers.reduce((acc, curr) => acc + curr.length, 0);
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const buf of buffers) {
+        result.set(buf, offset);
+        offset += buf.length;
+    }
+    return result;
+};
+
 const emitLogs = async (overrides: Partial<FlatLogRecord> = {}) => {
-    await act(async () => sendToClient?.(JSON.stringify([makeRecord(overrides)])));
+    // encode record as binary MessagePack payload
+    await act(async () => sendToClient?.(encodeBatch([makeRecord(overrides)])));
 };
 
 /** Renders the component and waits for the WebSocket connection to be established */
@@ -177,7 +192,7 @@ describe("LiveTailLogs — receiving logs", () => {
 
         await act(async () =>
             sendToClient?.(
-                JSON.stringify([
+                encodeBatch([
                     makeRecord({ body: "Older log", timestamp: "2024-01-01T10:00:00Z" }),
                     makeRecord({ body: "Newer log", timestamp: "2024-01-01T11:00:00Z" }),
                 ]),
@@ -235,7 +250,7 @@ describe("LiveTailLogs — filters", () => {
 
         await act(async () =>
             sendToClient?.(
-                JSON.stringify([
+                encodeBatch([
                     makeRecord({ serviceName: "auth-service", body: "Auth info log", severityText: "INFO" }),
                     makeRecord({ serviceName: "payment-service", body: "Payment error log", severityText: "ERROR" }),
                 ]),

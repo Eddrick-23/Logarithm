@@ -23,6 +23,25 @@ import type { FlatLogRecord, LogType } from "../types/Log";
 import { useDistinctServices } from "../hooks/useDistinctServices";
 import TailLogRow, { columnWidths } from "./TailLogRow";
 import ErrorBanner from "./ErrorBanner";
+import { decodeMulti, ExtensionCodec } from "@msgpack/msgpack";
+
+// Create a custom extension codec to handle Go's msgp time.Time (type 5)
+const extensionCodec = new ExtensionCodec();
+extensionCodec.register({
+    type: 5,
+    encode: () => null,
+    decode: (data: Uint8Array) => {
+        const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+
+        // Bytes 0-7: 64-bit Big-Endian Unix seconds
+        const seconds = Number(view.getBigInt64(0, false));
+        // Bytes 8-11: 32-bit Big-Endian nanoseconds
+        const nanos = view.getUint32(8, false);
+
+        // Convert to a JS Date and immediately return as an ISO string
+        return new Date(seconds * 1000 + Math.floor(nanos / 1_000_000)).toISOString();
+    },
+});
 
 type ConnectionStatus = "connecting" | "connected" | "error";
 
@@ -90,12 +109,16 @@ export default function LiveTailLogs() {
             setConnectionStatus("connected");
         };
 
-        ws.onmessage = (e) => {
+        ws.onmessage = async (e) => {
             if (!e.data) return; // ignore empty messages
+            const batch: FlatLogRecord[] = [];
 
-            let batch: FlatLogRecord[];
             try {
-                batch = JSON.parse(e.data);
+                const buf = e.data instanceof Blob ? await e.data.arrayBuffer() : e.data;
+                // decodeMulti parses the concatenated byte stream into individual objects
+                for (const record of decodeMulti(buf, { extensionCodec })) {
+                    batch.push(record as FlatLogRecord);
+                }
             } catch {
                 console.error("failed to parse websocket message", e.data);
                 return;

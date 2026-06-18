@@ -275,14 +275,30 @@ func TestDashboardHandleLiveTail(t *testing.T) {
 	// message should come within 2 seconds, otherwise websocket is down
 	ws.SetReadDeadline(time.Now().Add(2 * time.Second))
 
-	_, message, err := ws.ReadMessage()
+	msgType, message, err := ws.ReadMessage()
 	if err != nil {
 		t.Fatalf("Failed to read from websocket (timed out?): %v", err)
 	}
 
+	// server should be sending over binary frames
+	if msgType != websocket.BinaryMessage {
+		t.Fatalf("Expected binary websocket message, got %v", msgType)
+	}
+
+	// decode concatenated MessagePack stream
 	var batch []core.FlatLogRecord
-	if err := json.Unmarshal(message, &batch); err != nil {
-		t.Fatalf("Failed to unmarshal websocket payload: %v", err)
+	remainingBytes := message
+
+	for len(remainingBytes) > 0 {
+		var record core.FlatLogRecord
+
+		// unmarshalMsg parses the first object and returns the leftover bytes
+		remainingBytes, err = record.UnmarshalMsg(remainingBytes)
+		if err != nil {
+			t.Fatalf("Failed to unmarshal websocket msgpack payload: %v", err)
+		}
+
+		batch = append(batch, record)
 	}
 
 	if len(batch) != 1 {

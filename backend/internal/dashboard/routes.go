@@ -373,7 +373,7 @@ func handleLiveTail(logger *slog.Logger, broker *transport.NatsBroker, config *c
 		ticker := time.NewTicker(time.Duration(config.LiveTailRefreshInterval) * time.Millisecond) // default flush interval: 500ms
 		defer ticker.Stop()
 
-		var batch []core.FlatLogRecord // accumulate payloads between ticks
+		var batch []byte // accumulate payloads between ticks
 
 		// pump NATS messages to the WebSocket
 		for {
@@ -387,28 +387,16 @@ func handleLiveTail(logger *slog.Logger, broker *transport.NatsBroker, config *c
 					return
 				}
 
-				// decode binary MessagePack payload back to struct
-				var record core.FlatLogRecord
-				_, err := record.UnmarshalMsg(payload)
-				if err != nil {
-					logger.Error("Failed to decode msgpack from NATS", "err", err)
-					continue
-				}
-
-				batch = append(batch, record)
+				// append raw messagePack bytes directly
+				batch = append(batch, payload...)
 
 			case <-ticker.C:
 				if len(batch) == 0 {
 					continue
 				}
-				// encode to json to maintain compatibility with frontend
-				out, err := json.Marshal(batch)
-				if err != nil {
-					logger.Error("Failed to marshal batch", "error", err)
-					return
-				}
-				// write the log payload directly to the WebSocket
-				err = ws.WriteMessage(websocket.TextMessage, out)
+
+				// write the binary payload directly to the WebSocket
+				err = ws.WriteMessage(websocket.BinaryMessage, batch)
 				if err != nil {
 					logger.Error("Failed to write to websocket", "error", err)
 					return // exiting the loop triggers defer cleanup() and cancel()
