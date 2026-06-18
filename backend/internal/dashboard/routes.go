@@ -304,7 +304,7 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 		w.Header().Set("Connection", "keep-alive")
 
 		ticker5s := time.NewTicker(5 * time.Second)
-		ticker30s := time.NewTicker(3 * time.Second)
+		ticker30s := time.NewTicker(30 * time.Second)
 
 		defer ticker5s.Stop()
 		defer ticker30s.Stop()
