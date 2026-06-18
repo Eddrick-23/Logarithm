@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"reflect"
 	"sync"
 	"time"
 
@@ -23,66 +22,6 @@ type ClickHouseStore struct {
 	conn   driver.Conn
 	tables map[string]string
 	logger *slog.Logger
-}
-
-const maxBatchSize = 10000
-
-type ColumnBatch struct {
-	Timestamps         []time.Time
-	ScopeNames         []string
-	ScopeVersions      []string
-	TraceIds           []string
-	SpanIds            []string
-	ObservedTimestamps []time.Time
-	SeverityTexts      []string
-	SeverityNumbers    []uint8
-	ServiceNames       []string
-	Bodies             []string
-	BodyTypes          []string
-	LogAttrKeys        [][]string
-	LogAttrValues      [][]string
-	ResAttrKeys        [][]string
-	ResAttrValues      [][]string
-}
-
-func (c *ColumnBatch) Reset() {
-	c.Timestamps = c.Timestamps[:0]
-	c.ScopeNames = c.ScopeNames[:0]
-	c.ScopeVersions = c.ScopeVersions[:0]
-	c.TraceIds = c.TraceIds[:0]
-	c.SpanIds = c.SpanIds[:0]
-	c.ObservedTimestamps = c.ObservedTimestamps[:0]
-	c.SeverityTexts = c.SeverityTexts[:0]
-	c.SeverityNumbers = c.SeverityNumbers[:0]
-	c.ServiceNames = c.ServiceNames[:0]
-	c.Bodies = c.Bodies[:0]
-	c.BodyTypes = c.BodyTypes[:0]
-	c.LogAttrKeys = c.LogAttrKeys[:0]
-	c.LogAttrValues = c.LogAttrValues[:0]
-	c.ResAttrKeys = c.ResAttrKeys[:0]
-	c.ResAttrValues = c.ResAttrValues[:0]
-}
-
-var batchPool = sync.Pool{
-	New: func() any {
-		return &ColumnBatch{
-			Timestamps:         make([]time.Time, 0, maxBatchSize),
-			ScopeNames:         make([]string, 0, maxBatchSize),
-			ScopeVersions:      make([]string, 0, maxBatchSize),
-			TraceIds:           make([]string, 0, maxBatchSize),
-			SpanIds:            make([]string, 0, maxBatchSize),
-			ObservedTimestamps: make([]time.Time, 0, maxBatchSize),
-			SeverityTexts:      make([]string, 0, maxBatchSize),
-			SeverityNumbers:    make([]uint8, 0, maxBatchSize),
-			ServiceNames:       make([]string, 0, maxBatchSize),
-			Bodies:             make([]string, 0, maxBatchSize),
-			BodyTypes:          make([]string, 0, maxBatchSize),
-			LogAttrKeys:        make([][]string, 0, maxBatchSize),
-			LogAttrValues:      make([][]string, 0, maxBatchSize),
-			ResAttrKeys:        make([][]string, 0, maxBatchSize),
-			ResAttrValues:      make([][]string, 0, maxBatchSize),
-		}
-	},
 }
 
 var _ LogStore = (*ClickHouseStore)(nil)
@@ -165,68 +104,6 @@ func (s *ClickHouseStore) InitDB(ctx context.Context) error {
 func (s *ClickHouseStore) Close() error {
 	s.logger.Info("Closing clickhouse connection")
 	return s.conn.Close()
-}
-
-func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLogRecord) error {
-	if len(records) == 0 {
-		return nil
-	}
-
-	colBatch := batchPool.Get().(*ColumnBatch)
-	defer batchPool.Put(colBatch)
-	colBatch.Reset()
-
-	for _, record := range records {
-		colBatch.Timestamps = append(colBatch.Timestamps, record.Timestamp)
-		colBatch.ScopeNames = append(colBatch.ScopeNames, record.ScopeName)
-		colBatch.ScopeVersions = append(colBatch.ScopeVersions, record.ScopeVersion)
-		colBatch.TraceIds = append(colBatch.TraceIds, record.TraceId)
-		colBatch.SpanIds = append(colBatch.SpanIds, record.SpanId)
-		colBatch.ObservedTimestamps = append(colBatch.ObservedTimestamps, record.ObservedTimestamp)
-		colBatch.SeverityTexts = append(colBatch.SeverityTexts, record.SeverityText)
-		colBatch.SeverityNumbers = append(colBatch.SeverityNumbers, record.SeverityNumber)
-		colBatch.ServiceNames = append(colBatch.ServiceNames, record.ServiceName)
-		colBatch.Bodies = append(colBatch.Bodies, record.Body)
-		colBatch.BodyTypes = append(colBatch.BodyTypes, record.BodyType)
-		colBatch.LogAttrKeys = append(colBatch.LogAttrKeys, record.LogAttrKeys)
-		colBatch.LogAttrValues = append(colBatch.LogAttrValues, record.LogAttrValues)
-		colBatch.ResAttrKeys = append(colBatch.ResAttrKeys, record.ResAttrKeys)
-		colBatch.ResAttrValues = append(colBatch.ResAttrValues, record.ResAttrValues)
-	}
-
-	tbl, err := s.table(TableLogs)
-	if err != nil {
-		return fmt.Errorf("failed to get table: %v", err)
-	}
-
-	// must explicitly state all cols since we have an extra insertAt column
-	// that clickhouse will fill in itself
-	insertStatement := "INSERT INTO " + tbl +
-		` (Timestamp, ScopeName, ScopeVersion, TraceId, SpanId, ObservedTimestamp, SeverityText, SeverityNumber,
-         ServiceName, Body, BodyType, LogAttrKeys, LogAttrValues, ResAttrKeys, ResAttrValues)`
-	batch, err := s.conn.PrepareBatch(ctx, insertStatement)
-
-	if err != nil {
-		s.logger.Error("Failed to prepare batch: %v", "err", err)
-		return err
-	}
-
-	val := reflect.ValueOf(*colBatch)
-	typ := reflect.TypeOf(*colBatch)
-
-	for i := 0; i < val.NumField(); i++ {
-		field := typ.Field(i) // metadata: name, tag type
-		value := val.Field(i) // actual value
-		if err := batch.Column(i).Append(value.Interface()); err != nil {
-			return fmt.Errorf("failed to append column %v: %w", field.Name, err)
-		}
-	}
-
-	if err := batch.Send(); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (s *ClickHouseStore) buildFilterQueryString(filter core.LogQueryFilter) (string, []any) {
@@ -474,9 +351,9 @@ func (s *ClickHouseStore) GetErrorMetrics(ctx context.Context) ([]core.ErrorMetr
 	}
 
 	queryString := fmt.Sprintf(`
-        SELECT 
-            ServiceName, 
-            sum(ErrorsCount) AS TotalErrors, 
+        SELECT
+            ServiceName,
+            sum(ErrorsCount) AS TotalErrors,
             round(sum(ErrorsCount) / sum(LogsCount) * 100, 2) AS ErrorRate
         FROM %v
         WHERE Timestamp >= now() - toIntervalHour(@hour)
