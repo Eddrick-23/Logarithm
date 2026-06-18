@@ -107,8 +107,45 @@ func (s *ClickHouseStore) Close() error {
 }
 
 func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLogRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
 	// must explicitly state all cols since we have an extra insertAt column
 	// that clickhouse will fill in itself
+	timestamps := make([]time.Time, 0, len(records))
+	scopeNames := make([]string, 0, len(records))
+	scopeVersions := make([]string, 0, len(records))
+	traceIds := make([]string, 0, len(records))
+	spanIds := make([]string, 0, len(records))
+	observedTimestamps := make([]time.Time, 0, len(records))
+	severityTexts := make([]string, 0, len(records))
+	severityNumbers := make([]uint8, 0, len(records))
+	serviceNames := make([]string, 0, len(records))
+	bodies := make([]string, 0, len(records))
+	bodyTypes := make([]string, 0, len(records))
+	logAttrKeys := make([][]string, 0, len(records))
+	logAttrValues := make([][]string, 0, len(records))
+	resAttrKeys := make([][]string, 0, len(records))
+	resAttrValues := make([][]string, 0, len(records))
+
+	for _, record := range records {
+		timestamps = append(timestamps, record.Timestamp)
+		scopeNames = append(scopeNames, record.ScopeName)
+		scopeVersions = append(scopeVersions, record.ScopeVersion)
+		traceIds = append(traceIds, record.TraceId)
+		spanIds = append(spanIds, record.SpanId)
+		observedTimestamps = append(observedTimestamps, record.ObservedTimestamp)
+		severityTexts = append(severityTexts, record.SeverityText)
+		severityNumbers = append(severityNumbers, record.SeverityNumber)
+		serviceNames = append(serviceNames, record.ServiceName)
+		bodies = append(bodies, record.Body)
+		bodyTypes = append(bodyTypes, record.BodyType)
+		logAttrKeys = append(logAttrKeys, record.LogAttrKeys)
+		logAttrValues = append(logAttrValues, record.LogAttrValues)
+		resAttrKeys = append(resAttrKeys, record.ResAttrKeys)
+		resAttrValues = append(resAttrValues, record.ResAttrValues)
+	}
+
 	tbl, err := s.table(TableLogs)
 	if err != nil {
 		return fmt.Errorf("failed to get table: %v", err)
@@ -124,32 +161,34 @@ func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLo
 		return err
 	}
 
-	for _, record := range records {
-		err = batch.Append(
-			record.Timestamp,
-			record.ScopeName,
-			record.ScopeVersion,
-			record.TraceId,
-			record.SpanId,
-			record.ObservedTimestamp,
-			record.SeverityText,
-			record.SeverityNumber,
-			record.ServiceName,
-			record.Body,
-			record.BodyType,
-			record.LogAttrKeys,
-			record.LogAttrValues,
-			record.ResAttrKeys,
-			record.ResAttrValues,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to append row: %v", err)
+	columns := []any{
+		timestamps,
+		scopeNames,
+		scopeVersions,
+		traceIds,
+		spanIds,
+		observedTimestamps,
+		severityTexts,
+		severityNumbers,
+		serviceNames,
+		bodies,
+		bodyTypes,
+		logAttrKeys,
+		logAttrValues,
+		resAttrKeys,
+		resAttrValues,
+	}
+
+	for i, col := range columns {
+		if err := batch.Column(i).Append(col); err != nil {
+			return fmt.Errorf("failed to append column %d: %w", i, err)
 		}
 	}
 
 	if err := batch.Send(); err != nil {
 		return err
 	}
+
 	return nil
 }
 
