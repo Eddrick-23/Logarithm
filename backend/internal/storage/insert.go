@@ -6,152 +6,129 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ClickHouse/ch-go"
+	"github.com/ClickHouse/ch-go/proto"
 	"github.com/Eddrick-23/Logarithm/internal/core"
 )
 
-const (
-	small      = 100
-	medium     = 10000
-	large      = 100_000
-	superLarge = 1_000_000
-)
-
-var (
-	smallPool = sync.Pool{
-		New: func() any {
-			return newColumnBatch(small)
-		},
-	}
-	mediumPool = sync.Pool{
-		New: func() any {
-			return newColumnBatch(medium)
-		},
-	}
-	largePool = sync.Pool{
-		New: func() any {
-			return newColumnBatch(large)
-		},
-	}
-	superLargePool = sync.Pool{
-		New: func() any {
-			return newColumnBatch(superLarge)
-		},
-	}
-)
-
-type columnBatch struct {
-	Timestamps         []time.Time
-	ScopeNames         []string
-	ScopeVersions      []string
-	TraceIds           []string
-	SpanIds            []string
-	ObservedTimestamps []time.Time
-	SeverityTexts      []string
-	SeverityNumbers    []uint8
-	ServiceNames       []string
-	Bodies             []string
-	BodyTypes          []string
-	LogAttrKeys        [][]string
-	LogAttrValues      [][]string
-	ResAttrKeys        [][]string
-	ResAttrValues      [][]string
+var pool = sync.Pool{
+	New: func() any {
+		return newColumnBatchNew()
+	},
 }
 
-func newColumnBatch(n int) *columnBatch {
+type columnBatch struct {
+	Timestamps         proto.ColDateTime64
+	ScopeNames         *proto.ColLowCardinality[string]
+	ScopeVersions      *proto.ColLowCardinality[string]
+	TraceIds           proto.ColFixedStr32
+	SpanIds            proto.ColFixedStr16
+	ObservedTimestamps proto.ColDateTime64
+	SeverityTexts      *proto.ColLowCardinality[string]
+	SeverityNumbers    proto.ColUInt8
+	ServiceNames       *proto.ColLowCardinality[string]
+	Bodies             proto.ColStr
+	BodyTypes          *proto.ColLowCardinality[string]
+	LogAttrKeys        *proto.ColArr[string]
+	LogAttrValues      *proto.ColArr[string]
+	ResAttrKeys        *proto.ColArr[string]
+	ResAttrValues      *proto.ColArr[string]
+}
+
+func newColumnBatchNew() *columnBatch {
 	return &columnBatch{
-		Timestamps:         make([]time.Time, 0, n),
-		ScopeNames:         make([]string, 0, n),
-		ScopeVersions:      make([]string, 0, n),
-		TraceIds:           make([]string, 0, n),
-		SpanIds:            make([]string, 0, n),
-		ObservedTimestamps: make([]time.Time, 0, n),
-		SeverityTexts:      make([]string, 0, n),
-		SeverityNumbers:    make([]uint8, 0, n),
-		ServiceNames:       make([]string, 0, n),
-		Bodies:             make([]string, 0, n),
-		BodyTypes:          make([]string, 0, n),
-		LogAttrKeys:        make([][]string, 0, n),
-		LogAttrValues:      make([][]string, 0, n),
-		ResAttrKeys:        make([][]string, 0, n),
-		ResAttrValues:      make([][]string, 0, n),
+		Timestamps:         *new(proto.ColDateTime64).WithLocation(time.UTC).WithPrecision(proto.PrecisionNano),
+		ScopeNames:         new(proto.ColStr).LowCardinality(),
+		ScopeVersions:      new(proto.ColStr).LowCardinality(),
+		TraceIds:           *new(proto.ColFixedStr32),
+		SpanIds:            *new(proto.ColFixedStr16),
+		ObservedTimestamps: *new(proto.ColDateTime64).WithLocation(time.UTC).WithPrecision(proto.PrecisionNano),
+		SeverityTexts:      new(proto.ColStr).LowCardinality(),
+		SeverityNumbers:    *new(proto.ColUInt8),
+		ServiceNames:       new(proto.ColStr).LowCardinality(),
+		Bodies:             *new(proto.ColStr),
+		BodyTypes:          new(proto.ColStr).LowCardinality(),
+		LogAttrKeys:        new(proto.ColStr).Array(),
+		LogAttrValues:      new(proto.ColStr).Array(),
+		ResAttrKeys:        new(proto.ColStr).Array(),
+		ResAttrValues:      new(proto.ColStr).Array(),
 	}
 }
 
 func (c *columnBatch) Reset() {
-	c.Timestamps = c.Timestamps[:0]
-	c.ScopeNames = c.ScopeNames[:0]
-	c.ScopeVersions = c.ScopeVersions[:0]
-	c.TraceIds = c.TraceIds[:0]
-	c.SpanIds = c.SpanIds[:0]
-	c.ObservedTimestamps = c.ObservedTimestamps[:0]
-	c.SeverityTexts = c.SeverityTexts[:0]
-	c.SeverityNumbers = c.SeverityNumbers[:0]
-	c.ServiceNames = c.ServiceNames[:0]
-	c.Bodies = c.Bodies[:0]
-	c.BodyTypes = c.BodyTypes[:0]
-	c.LogAttrKeys = c.LogAttrKeys[:0]
-	c.LogAttrValues = c.LogAttrValues[:0]
-	c.ResAttrKeys = c.ResAttrKeys[:0]
-	c.ResAttrValues = c.ResAttrValues[:0]
+	c.Timestamps.Reset()
+	c.ScopeNames.Reset()
+	c.ScopeVersions.Reset()
+	c.TraceIds.Reset()
+	c.SpanIds.Reset()
+	c.ObservedTimestamps.Reset()
+	c.SeverityTexts.Reset()
+	c.SeverityNumbers.Reset()
+	c.ServiceNames.Reset()
+	c.Bodies.Reset()
+	c.BodyTypes.Reset()
+	c.LogAttrKeys.Reset()
+	c.LogAttrValues.Reset()
+	c.ResAttrKeys.Reset()
+	c.ResAttrValues.Reset()
 }
 
-// takes a size n and returns a pointer to a columnBatch with size of appropriate range
-//
-// Internally, the function decides which sync pool to get the batch from.
-// n that is too large is created upfront and given an empty callback to avoid holding on to massive structs.
-// Returns a pointer to the columnBatch and a callback which puts the struct back into the pool
-// It is the caller's responsibility to put the struct back for reuse
-func getBatch(n int) (*columnBatch, func()) {
-	var pool *sync.Pool
-	var batch *columnBatch
-
-	switch {
-	case n <= small:
-		pool = &smallPool
-	case n <= medium:
-		pool = &mediumPool
-	case n <= large:
-		pool = &largePool
-	case n <= superLarge:
-		pool = &largePool
-	default:
-		// anyting larger than super large init once only then let gc cleanup
-		b := newColumnBatch(n)
-		return b, func() {}
+func traceIdToBytes(s string) ([32]byte, error) {
+	var v [32]byte
+	if len(s) != 32 {
+		return v, fmt.Errorf("invalid traceId")
 	}
+	copy(v[:], s)
+	return v, nil
+}
 
-	batch = pool.Get().(*columnBatch)
-	batch.Reset()
-
-	return batch, func() {
-		pool.Put(batch)
+func spanIdToBytes(s string) ([16]byte, error) {
+	var v [16]byte
+	if len(s) != 16 {
+		return v, fmt.Errorf("invalid spanId")
 	}
+	copy(v[:], s)
+	return v, nil
 }
 
 func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLogRecord) error {
+	s.ingestMu.Lock()
+	defer s.ingestMu.Unlock()
+
 	if len(records) == 0 {
 		return nil
 	}
 
-	colBatch, release := getBatch(len(records))
-	defer release()
+	colBatch := pool.Get().(*columnBatch)
+	colBatch.Reset()
+	defer pool.Put(colBatch)
 
 	for _, record := range records {
-		colBatch.Timestamps = append(colBatch.Timestamps, record.Timestamp)
-		colBatch.ScopeNames = append(colBatch.ScopeNames, record.ScopeName)
-		colBatch.ScopeVersions = append(colBatch.ScopeVersions, record.ScopeVersion)
-		colBatch.TraceIds = append(colBatch.TraceIds, record.TraceId)
-		colBatch.SpanIds = append(colBatch.SpanIds, record.SpanId)
-		colBatch.ObservedTimestamps = append(colBatch.ObservedTimestamps, record.ObservedTimestamp)
-		colBatch.SeverityTexts = append(colBatch.SeverityTexts, record.SeverityText)
-		colBatch.SeverityNumbers = append(colBatch.SeverityNumbers, record.SeverityNumber)
-		colBatch.ServiceNames = append(colBatch.ServiceNames, record.ServiceName)
-		colBatch.Bodies = append(colBatch.Bodies, record.Body)
-		colBatch.BodyTypes = append(colBatch.BodyTypes, record.BodyType)
-		colBatch.LogAttrKeys = append(colBatch.LogAttrKeys, record.LogAttrKeys)
-		colBatch.LogAttrValues = append(colBatch.LogAttrValues, record.LogAttrValues)
-		colBatch.ResAttrKeys = append(colBatch.ResAttrKeys, record.ResAttrKeys)
-		colBatch.ResAttrValues = append(colBatch.ResAttrValues, record.ResAttrValues)
+		traceIdBytes, err := traceIdToBytes(record.TraceId)
+		if err != nil {
+			return err
+		}
+		colBatch.TraceIds.Append(traceIdBytes)
+
+		spanIdBytes, err := spanIdToBytes(record.SpanId)
+		if err != nil {
+			return err
+		}
+		colBatch.SpanIds.Append(spanIdBytes)
+
+		colBatch.Timestamps.Append(record.Timestamp)
+		colBatch.ScopeNames.Append(record.ScopeName)
+		colBatch.ScopeVersions.Append(record.ScopeVersion)
+		colBatch.ObservedTimestamps.Append(record.ObservedTimestamp)
+		colBatch.SeverityTexts.Append(record.SeverityText)
+		colBatch.SeverityNumbers.Append(record.SeverityNumber)
+		colBatch.ServiceNames.Append(record.ServiceName)
+		colBatch.Bodies.Append(record.Body)
+		colBatch.BodyTypes.Append(record.BodyType)
+		colBatch.LogAttrKeys.Append(record.LogAttrKeys)
+		colBatch.LogAttrValues.Append(record.LogAttrValues)
+		colBatch.ResAttrKeys.Append(record.ResAttrKeys)
+		colBatch.ResAttrValues.Append(record.ResAttrValues)
 	}
 
 	tbl, err := s.table(TableLogs)
@@ -163,62 +140,30 @@ func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLo
 	// that clickhouse will fill in itself
 	insertStatement := "INSERT INTO " + tbl +
 		` (Timestamp, ScopeName, ScopeVersion, TraceId, SpanId, ObservedTimestamp, SeverityText, SeverityNumber,
-         ServiceName, Body, BodyType, LogAttrKeys, LogAttrValues, ResAttrKeys, ResAttrValues)`
-	batch, err := s.conn.PrepareBatch(ctx, insertStatement)
+         ServiceName, Body, BodyType, LogAttrKeys, LogAttrValues, ResAttrKeys, ResAttrValues) VALUES`
 
-	if err != nil {
-		s.logger.Error("Failed to prepare batch: %v", "err", err)
-		return err
-	}
-
-	// zero reflection extraction, append fields directly to columns
-	if err := batch.Column(0).Append(colBatch.Timestamps); err != nil {
-		return fmt.Errorf("failed to append Timestamps: %w", err)
-	}
-	if err := batch.Column(1).Append(colBatch.ScopeNames); err != nil {
-		return fmt.Errorf("failed to append ScopeNames: %w", err)
-	}
-	if err := batch.Column(2).Append(colBatch.ScopeVersions); err != nil {
-		return fmt.Errorf("failed to append ScopeVersions: %w", err)
-	}
-	if err := batch.Column(3).Append(colBatch.TraceIds); err != nil {
-		return fmt.Errorf("failed to append TraceIds: %w", err)
-	}
-	if err := batch.Column(4).Append(colBatch.SpanIds); err != nil {
-		return fmt.Errorf("failed to append SpanIds: %w", err)
-	}
-	if err := batch.Column(5).Append(colBatch.ObservedTimestamps); err != nil {
-		return fmt.Errorf("failed to append ObservedTimestamps: %w", err)
-	}
-	if err := batch.Column(6).Append(colBatch.SeverityTexts); err != nil {
-		return fmt.Errorf("failed to append SeverityTexts: %w", err)
-	}
-	if err := batch.Column(7).Append(colBatch.SeverityNumbers); err != nil {
-		return fmt.Errorf("failed to append SeverityNumbers: %w", err)
-	}
-	if err := batch.Column(8).Append(colBatch.ServiceNames); err != nil {
-		return fmt.Errorf("failed to append ServiceNames: %w", err)
-	}
-	if err := batch.Column(9).Append(colBatch.Bodies); err != nil {
-		return fmt.Errorf("failed to append Bodies: %w", err)
-	}
-	if err := batch.Column(10).Append(colBatch.BodyTypes); err != nil {
-		return fmt.Errorf("failed to append BodyTypes: %w", err)
-	}
-	if err := batch.Column(11).Append(colBatch.LogAttrKeys); err != nil {
-		return fmt.Errorf("failed to append LogAttrKeys: %w", err)
-	}
-	if err := batch.Column(12).Append(colBatch.LogAttrValues); err != nil {
-		return fmt.Errorf("failed to append LogAttrValues: %w", err)
-	}
-	if err := batch.Column(13).Append(colBatch.ResAttrKeys); err != nil {
-		return fmt.Errorf("failed to append ResAttrKeys: %w", err)
-	}
-	if err := batch.Column(14).Append(colBatch.ResAttrValues); err != nil {
-		return fmt.Errorf("failed to append ResAttrValues: %w", err)
+	input := proto.Input{
+		{Name: "Timestamp", Data: colBatch.Timestamps},
+		{Name: "ScopeName", Data: colBatch.ScopeNames},
+		{Name: "ScopeVersion", Data: colBatch.ScopeVersions},
+		{Name: "TraceId", Data: colBatch.TraceIds},
+		{Name: "SpanId", Data: colBatch.SpanIds},
+		{Name: "ObservedTimestamp", Data: colBatch.ObservedTimestamps},
+		{Name: "SeverityText", Data: colBatch.SeverityTexts},
+		{Name: "SeverityNumber", Data: colBatch.SeverityNumbers},
+		{Name: "ServiceName", Data: colBatch.ServiceNames},
+		{Name: "Body", Data: colBatch.Bodies},
+		{Name: "BodyType", Data: colBatch.BodyTypes},
+		{Name: "LogAttrKeys", Data: colBatch.LogAttrKeys},
+		{Name: "LogAttrValues", Data: colBatch.LogAttrValues},
+		{Name: "ResAttrKeys", Data: colBatch.ResAttrKeys},
+		{Name: "ResAttrValues", Data: colBatch.ResAttrValues},
 	}
 
-	if err := batch.Send(); err != nil {
+	if err := s.ingestConn.Do(ctx, ch.Query{
+		Body:  insertStatement,
+		Input: input,
+	}); err != nil {
 		return err
 	}
 

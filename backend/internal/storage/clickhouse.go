@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ClickHouse/ch-go"
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/Eddrick-23/Logarithm/internal/core"
@@ -19,9 +20,11 @@ type LogStore interface {
 }
 
 type ClickHouseStore struct {
-	conn   driver.Conn
-	tables map[string]string
-	logger *slog.Logger
+	conn       driver.Conn
+	tables     map[string]string
+	logger     *slog.Logger
+	ingestMu   sync.Mutex // ch.Client not thread safe
+	ingestConn *ch.Client // low level api for inserting
 }
 
 var _ LogStore = (*ClickHouseStore)(nil)
@@ -29,6 +32,8 @@ var _ LogStore = (*ClickHouseStore)(nil)
 // addr should be full host:port e.g. localhost:9000 or clickhouse:9000
 func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, dbName string, username string, password string) (*ClickHouseStore, error) {
 	logger.Info("Connecting to database...")
+
+	// high level driver
 	conn, err := clickhouse.Open(&clickhouse.Options{
 		Addr: []string{addr},
 		Auth: clickhouse.Auth{
@@ -42,6 +47,18 @@ func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, d
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to configure clickhouse: %v", err)
+	}
+
+	// low level driver
+	ingestConn, err := ch.Dial(ctx, ch.Options{
+		Address:  addr,
+		Database: dbName,
+		User:     username,
+		Password: password,
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to dial ch-go ingest conn: %w", err)
 	}
 
 	tables, err := initTables(dbName)
@@ -58,9 +75,10 @@ func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, d
 	}
 	logger.Info("connection to database established")
 	return &ClickHouseStore{
-		conn:   conn,
-		tables: tables,
-		logger: logger,
+		conn:       conn,
+		ingestConn: ingestConn,
+		tables:     tables,
+		logger:     logger,
 	}, nil
 }
 
@@ -103,6 +121,9 @@ func (s *ClickHouseStore) InitDB(ctx context.Context) error {
 
 func (s *ClickHouseStore) Close() error {
 	s.logger.Info("Closing clickhouse connection")
+	if err := s.ingestConn.Close(); err != nil {
+		return err
+	}
 	return s.conn.Close()
 }
 
