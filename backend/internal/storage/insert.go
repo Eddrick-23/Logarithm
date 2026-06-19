@@ -14,7 +14,7 @@ import (
 
 var pool = sync.Pool{
 	New: func() any {
-		return newColumnBatchNew()
+		return newColumnBatch()
 	},
 }
 
@@ -79,47 +79,7 @@ func (b *batchAppender) Append(
 
 func (b *batchAppender) Flush(ctx context.Context) error {
 	defer pool.Put(b.batch)
-	tbl, err := b.store.table(TableLogs)
-	if err != nil {
-		return fmt.Errorf("failed to get table: %v", err)
-	}
-
-	// must explicitly state all cols since we have an extra insertAt column
-	// that clickhouse will fill in itself
-	insertStatement := "INSERT INTO " + tbl +
-		` (Timestamp, ScopeName, ScopeVersion, TraceId, SpanId, ObservedTimestamp, SeverityText, SeverityNumber,
-         ServiceName, Body, BodyType, LogAttrKeys, LogAttrValues, ResAttrKeys, ResAttrValues) VALUES`
-
-	colBatch := b.batch
-	input := proto.Input{
-		{Name: "Timestamp", Data: colBatch.Timestamps},
-		{Name: "ScopeName", Data: colBatch.ScopeNames},
-		{Name: "ScopeVersion", Data: colBatch.ScopeVersions},
-		{Name: "TraceId", Data: colBatch.TraceIds},
-		{Name: "SpanId", Data: colBatch.SpanIds},
-		{Name: "ObservedTimestamp", Data: colBatch.ObservedTimestamps},
-		{Name: "SeverityText", Data: colBatch.SeverityTexts},
-		{Name: "SeverityNumber", Data: colBatch.SeverityNumbers},
-		{Name: "ServiceName", Data: colBatch.ServiceNames},
-		{Name: "Body", Data: colBatch.Bodies},
-		{Name: "BodyType", Data: colBatch.BodyTypes},
-		{Name: "LogAttrKeys", Data: colBatch.LogAttrKeys},
-		{Name: "LogAttrValues", Data: colBatch.LogAttrValues},
-		{Name: "ResAttrKeys", Data: colBatch.ResAttrKeys},
-		{Name: "ResAttrValues", Data: colBatch.ResAttrValues},
-	}
-
-	b.store.ingestMu.Lock()
-	defer b.store.ingestMu.Unlock()
-
-	if err := b.store.ingestConn.Do(ctx, ch.Query{
-		Body:  insertStatement,
-		Input: input,
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	return b.store.insertRecords(ctx, b.batch)
 }
 
 type columnBatch struct {
@@ -140,7 +100,7 @@ type columnBatch struct {
 	ResAttrValues      *proto.ColArr[string]
 }
 
-func newColumnBatchNew() *columnBatch {
+func newColumnBatch() *columnBatch {
 	return &columnBatch{
 		Timestamps:         *new(proto.ColDateTime64).WithLocation(time.UTC).WithPrecision(proto.PrecisionNano),
 		ScopeNames:         new(proto.ColStr).LowCardinality(),
@@ -178,6 +138,21 @@ func (c *columnBatch) Reset() {
 	c.ResAttrValues.Reset()
 }
 
+// Returns an interface for optimised inserts
+//
+// It is the callers responsibility to append required fields
+// Then call the Flush() interface method to perform the insert
+// This avoids intermediate allocations and fills out ch-go's internal
+// column buffers directly
+func (s *ClickHouseStore) FastInsert() LogAppender {
+	colBatch := pool.Get().(*columnBatch)
+	colBatch.Reset()
+	return &batchAppender{
+		store: s,
+		batch: colBatch,
+	}
+}
+
 func traceIdToBytes(s string) ([32]byte, error) {
 	var v [32]byte
 	if len(s) != 32 {
@@ -196,10 +171,11 @@ func spanIdToBytes(s string) ([16]byte, error) {
 	return v, nil
 }
 
+// Batch Insert by passing in a slice of FlatLogRecords
+//
+// Performs transformation to fill up ch-go column buffers under the hood.
+// If batches are large consider using the FastInsert interface
 func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLogRecord) error {
-	s.ingestMu.Lock()
-	defer s.ingestMu.Unlock()
-
 	if len(records) == 0 {
 		return nil
 	}
@@ -235,6 +211,13 @@ func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLo
 		colBatch.ResAttrKeys.Append(record.ResAttrKeys)
 		colBatch.ResAttrValues.Append(record.ResAttrValues)
 	}
+
+	return s.insertRecords(ctx, colBatch)
+}
+
+func (s *ClickHouseStore) insertRecords(ctx context.Context, colBatch *columnBatch) error {
+	s.ingestMu.Lock()
+	defer s.ingestMu.Unlock()
 
 	tbl, err := s.table(TableLogs)
 	if err != nil {
@@ -273,19 +256,4 @@ func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLo
 	}
 
 	return nil
-}
-
-// Returns an interface for optimised inserts
-//
-// It is the callers responsibility to append required fields
-// Then call the Flush() interface method to perform the insert
-// This avoids intermediate allocations and fills out ch-go's internal
-// column buffers directly
-func (s *ClickHouseStore) FastInsert() LogAppender {
-	colBatch := pool.Get().(*columnBatch)
-	colBatch.Reset()
-	return &batchAppender{
-		store: s,
-		batch: colBatch,
-	}
 }
