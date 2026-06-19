@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"sync"
 	"time"
@@ -15,6 +16,110 @@ var pool = sync.Pool{
 	New: func() any {
 		return newColumnBatchNew()
 	},
+}
+
+type LogFields struct {
+	ScopeName    string
+	ScopeVersion string
+	SeverityText string
+	ServiceName  string
+	Body         string
+	BodyType     string
+}
+
+type LogAppender interface {
+	Append(
+		timestamp, observedTimestamp time.Time,
+		severityNumber uint8,
+		traceId [16]byte,
+		spanId [8]byte,
+		logAttrKeys, logAttrValues, resAttrKeys, resAttrValues []string,
+		logFields LogFields,
+	)
+
+	Flush(context.Context) error // call back to insert + return underlying col batch to sync pool
+}
+
+type batchAppender struct {
+	store *ClickHouseStore
+	batch *columnBatch
+}
+
+func (b *batchAppender) Append(
+	timestamp, observedTimestamp time.Time,
+	severityNumber uint8,
+	traceId [16]byte,
+	spanId [8]byte,
+	logAttrKeys, logAttrValues, resAttrKeys, resAttrValues []string,
+	logFields LogFields,
+) {
+	b.batch.Timestamps.Append(timestamp)
+	b.batch.ObservedTimestamps.Append(observedTimestamp)
+	b.batch.SeverityNumbers.Append(severityNumber)
+	var traceIdHex [32]byte
+	hex.Encode(traceIdHex[:], traceId[:])
+	b.batch.TraceIds.Append(traceIdHex)
+
+	var spanIdHex [16]byte
+	hex.Encode(spanIdHex[:], spanId[:])
+	b.batch.SpanIds.Append(spanIdHex)
+
+	b.batch.LogAttrKeys.Append(logAttrKeys)
+	b.batch.LogAttrValues.Append(logAttrValues)
+	b.batch.ResAttrKeys.Append(resAttrKeys)
+	b.batch.ResAttrValues.Append(resAttrValues)
+
+	b.batch.ScopeNames.Append(logFields.ScopeName)
+	b.batch.ScopeVersions.Append(logFields.ScopeVersion)
+	b.batch.SeverityTexts.Append(logFields.SeverityText)
+	b.batch.ServiceNames.Append(logFields.ServiceName)
+	b.batch.Bodies.Append(logFields.Body)
+	b.batch.BodyTypes.Append(logFields.BodyType)
+}
+
+func (b *batchAppender) Flush(ctx context.Context) error {
+	defer pool.Put(b.batch)
+	tbl, err := b.store.table(TableLogs)
+	if err != nil {
+		return fmt.Errorf("failed to get table: %v", err)
+	}
+
+	// must explicitly state all cols since we have an extra insertAt column
+	// that clickhouse will fill in itself
+	insertStatement := "INSERT INTO " + tbl +
+		` (Timestamp, ScopeName, ScopeVersion, TraceId, SpanId, ObservedTimestamp, SeverityText, SeverityNumber,
+         ServiceName, Body, BodyType, LogAttrKeys, LogAttrValues, ResAttrKeys, ResAttrValues) VALUES`
+
+	colBatch := b.batch
+	input := proto.Input{
+		{Name: "Timestamp", Data: colBatch.Timestamps},
+		{Name: "ScopeName", Data: colBatch.ScopeNames},
+		{Name: "ScopeVersion", Data: colBatch.ScopeVersions},
+		{Name: "TraceId", Data: colBatch.TraceIds},
+		{Name: "SpanId", Data: colBatch.SpanIds},
+		{Name: "ObservedTimestamp", Data: colBatch.ObservedTimestamps},
+		{Name: "SeverityText", Data: colBatch.SeverityTexts},
+		{Name: "SeverityNumber", Data: colBatch.SeverityNumbers},
+		{Name: "ServiceName", Data: colBatch.ServiceNames},
+		{Name: "Body", Data: colBatch.Bodies},
+		{Name: "BodyType", Data: colBatch.BodyTypes},
+		{Name: "LogAttrKeys", Data: colBatch.LogAttrKeys},
+		{Name: "LogAttrValues", Data: colBatch.LogAttrValues},
+		{Name: "ResAttrKeys", Data: colBatch.ResAttrKeys},
+		{Name: "ResAttrValues", Data: colBatch.ResAttrValues},
+	}
+
+	b.store.ingestMu.Lock()
+	defer b.store.ingestMu.Unlock()
+
+	if err := b.store.ingestConn.Do(ctx, ch.Query{
+		Body:  insertStatement,
+		Input: input,
+	}); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 type columnBatch struct {
@@ -168,4 +273,19 @@ func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLo
 	}
 
 	return nil
+}
+
+// Returns an interface for optimised inserts
+//
+// It is the callers responsibility to append required fields
+// Then call the Flush() interface method to perform the insert
+// This avoids intermediate allocations and fills out ch-go's internal
+// column buffers directly
+func (s *ClickHouseStore) FastInsert() LogAppender {
+	colBatch := pool.Get().(*columnBatch)
+	colBatch.Reset()
+	return &batchAppender{
+		store: s,
+		batch: colBatch,
+	}
 }

@@ -4,17 +4,16 @@ import (
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/core"
+	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
-func flattenLogs(resourceLogs plog.ResourceLogs, flatLogsByServiceName map[string][]core.FlatLogRecord) int {
+func flattenLogs(resourceLogs plog.ResourceLogs, flatLogsByServiceName map[string][]core.FlatLogRecord, apppender storage.LogAppender) {
 	serviceName := "unknown"
 	resAttrKeys := []string{}
 	resAttrValues := []string{}
 	nowNano := uint64(time.Now().UnixNano())
-
-	count := 0
 
 	resourceLogs.Resource().Attributes().Range(func(k string, v pcommon.Value) bool {
 		valStr := v.AsString()
@@ -74,9 +73,25 @@ func flattenLogs(resourceLogs plog.ResourceLogs, flatLogsByServiceName map[strin
 			}
 
 			flatLogsByServiceName[serviceName] = append(flatLogsByServiceName[serviceName], flatRecord)
-			count++
+			apppender.Append(
+				time.Unix(0, int64(eventTime)),
+				time.Unix(0, int64(observedTime)),
+				uint8(logRecord.SeverityNumber()),
+				logRecord.TraceID(),
+				logRecord.SpanID(),
+				logAttrKeys,
+				logAttrValues,
+				resAttrKeys,
+				resAttrValues,
+				storage.LogFields{
+					ScopeName:    scopeName,
+					ScopeVersion: scopeVersion,
+					SeverityText: logRecord.SeverityText(),
+					ServiceName:  serviceName,
+					Body:         logRecord.Body().AsString(),
+					BodyType:     "string",
+				},
+			)
 		}
 	}
-
-	return count
 }
