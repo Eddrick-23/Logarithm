@@ -44,7 +44,7 @@ export default function Dashboard() {
                 {/* for 1200px <= size < 1536px, size assigned is larger to fit the ServiceError without overflowing
                     for size >= 1536px, size assigned is smaller since there is sufficient space to fit ServiceError without overflowing */}
                 <Grid size={{ lg: 3.25, xl: 2.75 }}>
-                    <ServiceError />
+                    <ServiceError refetch={refetch} />
                 </Grid>
             </Grid>
 

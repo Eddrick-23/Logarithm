@@ -23,12 +23,12 @@ export type GetIngestionMetricsResponse = {
     logStats: LogRateStatistics;
 };
 
-export type ErrorMetrics = {
+export type TopServiceErrorsStats = {
     serviceName: string;
     totalErrors: number;
     errorRate: number; // the API returns a float
 };
 
-export type GetErrorMetricsResponse = {
-    data: ErrorMetrics[];
+export type GetTopServiceErrorsStatsResponse = {
+    data: TopServiceErrorsStats[];
 };

@@ -1,7 +1,7 @@
 import { Box, LinearProgress, Skeleton, Tooltip, Typography } from "@mui/material";
 import { card, sectionLabel } from "../theme/tokens";
-import { useErrorMetrics } from "../hooks/useMetrics";
-import type { ErrorMetrics } from "../types/Metric";
+import { useTopServiceErrorsStats } from "../hooks/useMetrics";
+import type { TopServiceErrorsStats } from "../types/Metric";
 import ErrorBanner from "./ErrorBanner";
 import { formatNumber } from "../utils/utils";
 
@@ -22,6 +22,10 @@ interface ServiceErrorRowProps {
     serviceName: string;
     totalErrors: number;
     errorRate: number;
+}
+
+interface ServiceErrorProps {
+    refetch: () => void;
 }
 
 function ServiceErrorRow({ serviceName, totalErrors, errorRate }: ServiceErrorRowProps) {
@@ -62,9 +66,8 @@ function ServiceErrorRow({ serviceName, totalErrors, errorRate }: ServiceErrorRo
     );
 }
 
-export default function ServiceError() {
-    const { data, isLoading, isError, refetch } = useErrorMetrics();
-
+export default function ServiceError({ refetch }: ServiceErrorProps) {
+    const { data, isLoading, isError } = useTopServiceErrorsStats();
     return (
         <Box sx={{ ...card, height: "100%" }}>
             {/* header */}
@@ -87,7 +90,7 @@ export default function ServiceError() {
             {/* error handling */}
             {isError && (
                 <Box sx={{ py: 3, textAlign: "center" }}>
-                    <ErrorBanner service="error metrics" handleReconnect={refetch} />
+                    <ErrorBanner service="top service errors" handleReconnect={refetch} />
                 </Box>
             )}
 
@@ -103,7 +106,7 @@ export default function ServiceError() {
             {/* display rows */}
             {!isLoading && !isError && data && data.length > 0 && (
                 <Box>
-                    {data.map((item: ErrorMetrics) => (
+                    {data.map((item: TopServiceErrorsStats) => (
                         <ServiceErrorRow
                             key={item.serviceName}
                             serviceName={item.serviceName}
