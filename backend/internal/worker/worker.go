@@ -21,13 +21,13 @@ import (
 type decompressFunc func([]byte, map[string][]string) ([]byte, error)
 type decoderFunc func([]byte, map[string][]string) (*plogotlp.ExportRequest, error)
 
+// ConsumeCallback returns the message handler used by the log consumer.
+//
+// Incoming OTLP logs are flattened, grouped by service, published to the
+// live-tail stream on a file and forget basis, and bulk inserted into storage.
+// Storage insertion failures are returned; live-tail publish failures are
+// logged and ignored.
 func ConsumeCallback(logger *slog.Logger, store storage.LogStore, producer transport.Producer) (func([]transport.Message) error, error) {
-	// ConsumeCallback returns the message handler used by the log consumer.
-	//
-	// Incoming OTLP logs are flattened, grouped by service, published to the
-	// live-tail stream on a file and forget basis, and bulk inserted into storage.
-	// Storage insertion failures are returned; live-tail publish failures are
-	// logged and ignored.
 	decompressor, err := makeDecompressor()
 	if err != nil {
 		return nil, err
@@ -40,28 +40,22 @@ func ConsumeCallback(logger *slog.Logger, store storage.LogStore, producer trans
 		}
 
 		flatLogsByServiceName := map[string][]core.FlatLogRecord{}
-		numRecords := processMessages(logger, decompressor, decoder, messages, flatLogsByServiceName)
+		appender := store.FastInsert()
+		processMessages(logger, decompressor, decoder, messages, flatLogsByServiceName, appender) // no need num records anymore
 
-		if len(flatLogsByServiceName) == 0 { // no valid payloads to insert
-			return nil
+		for name, slice := range flatLogsByServiceName {
+			go publishLiveTail(logger, producer, name, slice)
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 
-		batch := make([]core.FlatLogRecord, 0, numRecords) // prealloc
-		for name, slice := range flatLogsByServiceName {
-			go publishLiveTail(logger, producer, name, slice)
-			batch = append(batch, slice...)
-		}
-
-		return store.BatchInsert(ctx, batch)
+		return appender.Flush(ctx)
 	}, nil
 }
 
 func processMessages(logger *slog.Logger, decompressor decompressFunc, decoder decoderFunc, messages []transport.Message,
-	flatLogsByServiceName map[string][]core.FlatLogRecord) int {
-	numRecords := 0
+	flatLogsByServiceName map[string][]core.FlatLogRecord, appender storage.LogAppender) {
 
 	for _, msg := range messages {
 		decompressedPayload, err := decompressor(msg.Payload, msg.Headers)
@@ -78,10 +72,9 @@ func processMessages(logger *slog.Logger, decompressor decompressFunc, decoder d
 
 		logs := req.Logs()
 		for i := 0; i < logs.ResourceLogs().Len(); i++ {
-			numRecords += flattenLogs(logs.ResourceLogs().At(i), flatLogsByServiceName)
+			flattenLogs(logs.ResourceLogs().At(i), flatLogsByServiceName, appender)
 		}
 	}
-	return numRecords
 }
 
 func makeDecoder() func([]byte, map[string][]string) (*plogotlp.ExportRequest, error) {

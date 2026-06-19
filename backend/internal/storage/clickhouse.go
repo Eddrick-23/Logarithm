@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ClickHouse/ch-go"
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/Eddrick-23/Logarithm/internal/core"
@@ -14,14 +15,17 @@ import (
 )
 
 type LogStore interface {
+	FastInsert() LogAppender
 	BatchInsert(context.Context, []core.FlatLogRecord) error
 	SearchLogs(context.Context, core.LogQueryFilter) ([]core.FlatLogRecord, error)
 }
 
 type ClickHouseStore struct {
-	conn   driver.Conn
-	tables map[string]string
-	logger *slog.Logger
+	conn       driver.Conn
+	tables     map[string]string
+	logger     *slog.Logger
+	ingestMu   sync.Mutex // ch.Client not thread safe
+	ingestConn *ch.Client // low level api for inserting
 }
 
 var _ LogStore = (*ClickHouseStore)(nil)
@@ -29,6 +33,8 @@ var _ LogStore = (*ClickHouseStore)(nil)
 // addr should be full host:port e.g. localhost:9000 or clickhouse:9000
 func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, dbName string, username string, password string) (*ClickHouseStore, error) {
 	logger.Info("Connecting to database...")
+
+	// high level driver
 	conn, err := clickhouse.Open(&clickhouse.Options{
 		Addr: []string{addr},
 		Auth: clickhouse.Auth{
@@ -42,6 +48,18 @@ func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, d
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to configure clickhouse: %v", err)
+	}
+
+	// low level driver
+	ingestConn, err := ch.Dial(ctx, ch.Options{
+		Address:  addr,
+		Database: dbName,
+		User:     username,
+		Password: password,
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to dial ch-go ingest conn: %w", err)
 	}
 
 	tables, err := initTables(dbName)
@@ -58,9 +76,10 @@ func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, d
 	}
 	logger.Info("connection to database established")
 	return &ClickHouseStore{
-		conn:   conn,
-		tables: tables,
-		logger: logger,
+		conn:       conn,
+		ingestConn: ingestConn,
+		tables:     tables,
+		logger:     logger,
 	}, nil
 }
 
@@ -103,54 +122,10 @@ func (s *ClickHouseStore) InitDB(ctx context.Context) error {
 
 func (s *ClickHouseStore) Close() error {
 	s.logger.Info("Closing clickhouse connection")
+	if err := s.ingestConn.Close(); err != nil {
+		return err
+	}
 	return s.conn.Close()
-}
-
-func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLogRecord) error {
-	// must explicitly state all cols since we have an extra insertAt column
-	// that clickhouse will fill in itself
-	tbl, err := s.table(TableLogs)
-	if err != nil {
-		return fmt.Errorf("failed to get table: %v", err)
-	}
-
-	insertStatement := "INSERT INTO " + tbl +
-		` (Timestamp, ScopeName, ScopeVersion, TraceId, SpanId, ObservedTimestamp, SeverityText, SeverityNumber,
-         ServiceName, Body, BodyType, LogAttrKeys, LogAttrValues, ResAttrKeys, ResAttrValues)`
-	batch, err := s.conn.PrepareBatch(ctx, insertStatement)
-
-	if err != nil {
-		s.logger.Error("Failed to prepare batch: %v", "err", err)
-		return err
-	}
-
-	for _, record := range records {
-		err = batch.Append(
-			record.Timestamp,
-			record.ScopeName,
-			record.ScopeVersion,
-			record.TraceId,
-			record.SpanId,
-			record.ObservedTimestamp,
-			record.SeverityText,
-			record.SeverityNumber,
-			record.ServiceName,
-			record.Body,
-			record.BodyType,
-			record.LogAttrKeys,
-			record.LogAttrValues,
-			record.ResAttrKeys,
-			record.ResAttrValues,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to append row: %v", err)
-		}
-	}
-
-	if err := batch.Send(); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (s *ClickHouseStore) buildFilterQueryString(filter core.LogQueryFilter) (string, []any) {
@@ -398,9 +373,9 @@ func (s *ClickHouseStore) GetTopServiceErrorsStats(ctx context.Context) ([]core.
 	}
 
 	queryString := fmt.Sprintf(`
-        SELECT 
-            ServiceName, 
-            sum(ErrorsCount) AS TotalErrors, 
+        SELECT
+            ServiceName,
+            sum(ErrorsCount) AS TotalErrors,
             round(sum(ErrorsCount) / sum(LogsCount) * 100, 2) AS ErrorRate
         FROM %v
         WHERE Timestamp >= now() - toIntervalHour(@hour)

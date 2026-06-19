@@ -19,10 +19,11 @@ import (
 
 func TestFlattenLogs(t *testing.T) {
 	tests := []struct {
-		name           string
-		inputJSON      string
-		expectedLength int
-		check          func(t *testing.T, actualLogs []core.FlatLogRecord)
+		name            string
+		inputJSON       string
+		expectedLength  int
+		expectedAppends int
+		check           func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender)
 	}{
 		{
 			name: "Single Log",
@@ -40,9 +41,11 @@ func TestFlattenLogs(t *testing.T) {
 					}]
 				}]
 			}`,
-			expectedLength: 1,
-			check: func(t *testing.T, actualLogs []core.FlatLogRecord) {
-				require.Len(t, actualLogs, 1)
+			expectedLength:  1,
+			expectedAppends: 1,
+			check: func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender) {
+				require.Len(t, actualLogs, expectedLength)
+				assert.Equal(t, mockAppender.AppendCount, expectedAppends)
 				assert.Equal(t, time.Unix(0, 1717732530000000000), actualLogs[0].Timestamp)
 				assert.Equal(t, "auth-service", actualLogs[0].ServiceName)
 				assert.Equal(t, "INFO", actualLogs[0].SeverityText)
@@ -72,9 +75,11 @@ func TestFlattenLogs(t *testing.T) {
 					}]
 				}]
 			}`,
-			expectedLength: 1,
-			check: func(t *testing.T, actualLogs []core.FlatLogRecord) {
-				require.Len(t, actualLogs, 1)
+			expectedLength:  1,
+			expectedAppends: 1,
+			check: func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender) {
+				require.Len(t, actualLogs, expectedLength)
+				assert.Equal(t, expectedAppends, mockAppender.AppendCount)
 				assert.Equal(t, []string{"service.name"}, actualLogs[0].ResAttrKeys)
 				assert.Equal(t, []string{"auth-service"}, actualLogs[0].ResAttrValues)
 				assert.Equal(t, []string{"test.environment"}, actualLogs[0].LogAttrKeys)
@@ -110,9 +115,11 @@ func TestFlattenLogs(t *testing.T) {
 				}
 				]
 			}`,
-			expectedLength: 2,
-			check: func(t *testing.T, actualLogs []core.FlatLogRecord) {
-				assert.Len(t, actualLogs, 2)
+			expectedLength:  2,
+			expectedAppends: 2,
+			check: func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender) {
+				require.Len(t, actualLogs, expectedLength)
+				assert.Equal(t, expectedAppends, mockAppender.AppendCount)
 				serviceNames := []string{}
 				for _, record := range actualLogs {
 					serviceNames = append(serviceNames, record.ServiceName)
@@ -145,9 +152,11 @@ func TestFlattenLogs(t *testing.T) {
 					}]
 				}]
 			}`,
-			expectedLength: 2,
-			check: func(t *testing.T, actualLogs []core.FlatLogRecord) {
-				assert.Len(t, actualLogs, 2)
+			expectedLength:  2,
+			expectedAppends: 2,
+			check: func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender) {
+				require.Len(t, actualLogs, expectedLength)
+				assert.Equal(t, expectedAppends, mockAppender.AppendCount)
 				serviceNames := make(map[string]struct{})
 				for _, record := range actualLogs {
 					serviceNames[record.ServiceName] = struct{}{}
@@ -169,9 +178,11 @@ func TestFlattenLogs(t *testing.T) {
 					}]
 				}]
 			}`,
-			expectedLength: 1,
-			check: func(t *testing.T, actualLogs []core.FlatLogRecord) {
-				require.Len(t, actualLogs, 1)
+			expectedLength:  1,
+			expectedAppends: 1,
+			check: func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender) {
+				require.Len(t, actualLogs, expectedLength)
+				assert.Equal(t, expectedAppends, mockAppender.AppendCount)
 				assert.Equal(t, "unknown", actualLogs[0].ServiceName)
 				assert.Equal(t, "ERROR", actualLogs[0].SeverityText)
 			},
@@ -191,9 +202,11 @@ func TestFlattenLogs(t *testing.T) {
 					}]
 				}]
 			}`,
-			expectedLength: 1,
-			check: func(t *testing.T, actualLogs []core.FlatLogRecord) {
-				require.Len(t, actualLogs, 1)
+			expectedLength:  1,
+			expectedAppends: 1,
+			check: func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender) {
+				require.Len(t, actualLogs, expectedLength)
+				assert.Equal(t, expectedAppends, mockAppender.AppendCount)
 				assert.WithinDuration(t, time.Now(), actualLogs[0].Timestamp, 2*time.Second)
 				assert.WithinDuration(t, time.Now(), actualLogs[0].ObservedTimestamp, 2*time.Second)
 			},
@@ -212,12 +225,12 @@ func TestFlattenLogs(t *testing.T) {
 			require.NoError(t, err, "invalid test JSON provided")
 
 			flatLogsByServiceName := make(map[string][]core.FlatLogRecord)
-			totalExtracted := 0
 
 			logs := req.Logs()
 
+			mockAppender := MockLogAppender{}
 			for i := 0; i < logs.ResourceLogs().Len(); i++ {
-				totalExtracted += flattenLogs(logs.ResourceLogs().At(i), flatLogsByServiceName)
+				flattenLogs(logs.ResourceLogs().At(i), flatLogsByServiceName, &mockAppender)
 			}
 
 			var actualLogs []core.FlatLogRecord
@@ -225,11 +238,10 @@ func TestFlattenLogs(t *testing.T) {
 				actualLogs = append(actualLogs, logs...)
 			}
 
-			assert.Equal(t, tc.expectedLength, totalExtracted, "extracted count mismatch")
 			assert.Equal(t, tc.expectedLength, len(actualLogs), "slice length mismatch")
 
 			if tc.expectedLength > 0 {
-				tc.check(t, actualLogs)
+				tc.check(t, tc.expectedLength, tc.expectedAppends, actualLogs, &mockAppender)
 			}
 		})
 	}
@@ -298,20 +310,6 @@ func newBaseRequest(t *testing.T) plogotlp.ExportRequest {
 	err := req.UnmarshalJSON([]byte(inputJSON))
 	require.NoError(t, err, "invalid inputJSON provided")
 	return req
-}
-
-func makeMessages(t *testing.T, payloads [][]byte, headers map[string][]string) []transport.Message {
-	t.Helper()
-	msgs := make([]transport.Message, len(payloads))
-
-	for i, p := range payloads {
-		msgs[i] = transport.Message{
-			Payload: p,
-			Headers: headers,
-		}
-	}
-
-	return msgs
 }
 
 func zstdCompress(t *testing.T, data []byte) []byte {
@@ -391,31 +389,109 @@ func TestDecompress(t *testing.T) {
 	}
 }
 
-func assertPublishes(t *testing.T, mp *MockProducer, expectedCount int) {
-	t.Helper()
-	for i := 0; i < expectedCount; i++ {
-		select {
-		case <-mp.PublishCh:
-		case <-time.After(1 * time.Second):
-			t.Fatalf("timeout waiting for background nats publish (got %d of %d)", i, expectedCount)
-		}
+func TestDecode(t *testing.T) {
+	req := newBaseRequest(t)
+	jsonPayload, err := req.MarshalJSON()
+	require.NoError(t, err)
+
+	protobufPayload, err := req.MarshalProto()
+	require.NoError(t, err)
+
+	emptyHeaders := map[string][]string{}
+	jsonHeaders := map[string][]string{"Content-Type": {"application/json"}}
+	protobufHeaders := map[string][]string{"Content-Type": {"application/x-protobuf"}}
+
+	tests := []struct {
+		name        string
+		payload     []byte
+		headers     map[string][]string
+		expectedErr bool
+	}{
+		{
+			name:        "valid json payload with correct headers",
+			payload:     jsonPayload,
+			headers:     jsonHeaders,
+			expectedErr: false,
+		},
+		{
+			name:        "valid protobuf payload with correct headers",
+			payload:     protobufPayload,
+			headers:     protobufHeaders,
+			expectedErr: false,
+		},
+		{
+			name:        "invalid json correct headers",
+			payload:     []byte("not json"),
+			headers:     jsonHeaders,
+			expectedErr: true,
+		},
+		{
+			name:        "invalid protobuf correct headers",
+			payload:     []byte("not protobuf"),
+			headers:     protobufHeaders,
+			expectedErr: true,
+		},
+		{
+			name:        "valid json wrong headers",
+			payload:     jsonPayload,
+			headers:     protobufHeaders,
+			expectedErr: true,
+		},
+		{
+			name:        "valid protobuf wrong headers",
+			payload:     protobufPayload,
+			headers:     jsonHeaders,
+			expectedErr: true,
+		},
+		{
+			name:        "valid json no headers",
+			payload:     jsonPayload,
+			headers:     emptyHeaders,
+			expectedErr: true,
+		},
+		{
+			name:        "valid protobuf no headers",
+			payload:     protobufPayload,
+			headers:     emptyHeaders,
+			expectedErr: true,
+		},
 	}
-	if expectedCount > 0 {
-		mp.mu.Lock()
-		defer mp.mu.Unlock()
-		subject := transport.LiveTailSubjectPrefix + "auth-service"
-		assert.Contains(t, mp.PublishedRecords, subject)
-		assert.NotEmpty(t, mp.PublishedRecords[subject])
+
+	decoder := makeDecoder()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			decodedReq, err := decoder(tc.payload, tc.headers)
+
+			if tc.expectedErr {
+				require.Error(t, err)
+				require.Nil(t, decodedReq)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, decodedReq)
+
+				assert.Equal(
+					t,
+					1,
+					decodedReq.Logs().ResourceLogs().Len(),
+					"expected 1 resource log in decoded payload",
+				)
+			}
+		})
 	}
 }
 
-func assertInsertedRecords(t *testing.T, ms *MockLogStore, expected core.FlatLogRecord) {
+func makeMessages(t *testing.T, payloads [][]byte, headers map[string][]string) []transport.Message {
 	t.Helper()
-	for _, record := range ms.InsertedRecords {
-		assert.Equal(t, expected.ServiceName, record.ServiceName)
-		assert.Equal(t, expected.Body, record.Body)
-		assert.Equal(t, expected.SeverityText, record.SeverityText)
+	msgs := make([]transport.Message, len(payloads))
+
+	for i, p := range payloads {
+		msgs[i] = transport.Message{
+			Payload: p,
+			Headers: headers,
+		}
 	}
+
+	return msgs
 }
 
 func makeHeaders(contentType string, contentEncoding string) map[string][]string {
@@ -431,156 +507,169 @@ func makeHeaders(contentType string, contentEncoding string) map[string][]string
 	return headers
 }
 
-func TestConsumeCallback(t *testing.T) {
-	req := newBaseRequest(t)
+func TestProcessMessages(t *testing.T) {
+	validReq := newBaseRequest(t)
+	validReqbytes, err := validReq.MarshalProto()
+	require.NoError(t, err)
 
-	reqJSONBytes, err := req.MarshalJSON()
-	require.NoError(t, err, "failed to marshal request to JSON")
-
-	reqProtoBytes, err := req.MarshalProto()
-	require.NoError(t, err, "failed to marshal request to Protobuf")
-
-	flatLogsByServiceName := map[string][]core.FlatLogRecord{}
-	logs := req.Logs()
-	for i := 0; i < logs.ResourceLogs().Len(); i++ {
-		flattenLogs(logs.ResourceLogs().At(i), flatLogsByServiceName)
+	mockDecompressor := func(payload []byte, headers map[string][]string) ([]byte, error) {
+		return payload, nil
 	}
-	expectedRecord := flatLogsByServiceName["auth-service"][0]
 
+	mockDecoder := func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
+		return &validReq, nil
+	}
+
+	mockDecompressorErr := func(payload []byte, headers map[string][]string) ([]byte, error) {
+		return payload, fmt.Errorf("decompress failed")
+	}
+
+	mockDecoderErr := func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
+		return nil, fmt.Errorf("decode failed")
+	}
+
+	headers := makeHeaders("application/x-protobuf", "")
 	tests := []struct {
-		name                string
-		messages            []transport.Message
-		mockDBError         error
-		mockProducerError   error
-		expectedErr         bool
-		expectedInsertCount int
-		expectedRecordCount int
-		expectedPublishes   int
+		name            string
+		messages        []transport.Message
+		decompressor    decompressFunc
+		decoder         decoderFunc
+		expectedAppends int
 	}{
 		{
-			name:     "empty payloads slice",
-			messages: []transport.Message{},
+			name:            "successful process single message",
+			messages:        makeMessages(t, [][]byte{validReqbytes}, headers),
+			decompressor:    mockDecompressor,
+			decoder:         mockDecoder,
+			expectedAppends: 1,
 		},
 		{
-			name:                "successful batch insert",
-			messages:            makeMessages(t, [][]byte{reqJSONBytes, reqJSONBytes}, makeHeaders("application/json", "")),
-			expectedInsertCount: 1,
-			expectedRecordCount: 2,
-			expectedPublishes:   1,
+			name:            "successful process multiple message",
+			messages:        makeMessages(t, [][]byte{validReqbytes, validReqbytes}, headers),
+			decompressor:    mockDecompressor,
+			decoder:         mockDecoder,
+			expectedAppends: 2,
 		},
 		{
-			name: "skip malformed json but insert valid ones",
-			messages: makeMessages(t, [][]byte{
-				reqJSONBytes,
-				[]byte(`{malformed payload]`),
-				reqJSONBytes,
-			}, makeHeaders("application/json", "")),
-			expectedInsertCount: 1,
-			expectedRecordCount: 2,
-			expectedPublishes:   1,
+			name:         "mixed batch one failure one success",
+			messages:     makeMessages(t, [][]byte{validReqbytes, []byte("bad-data")}, headers),
+			decompressor: mockDecompressor,
+			decoder: func(b []byte, m map[string][]string) (*plogotlp.ExportRequest, error) {
+				if string(b) == "bad-data" {
+					return nil, fmt.Errorf("decode failed")
+				}
+				return &validReq, nil
+			},
+			expectedAppends: 1,
 		},
 		{
-			name: "all malformed json returns no error and no insert",
-			messages: makeMessages(t, [][]byte{
-				[]byte(`{malformed payload]`),
-				[]byte(`{malformed payload]`),
-				[]byte(`{malformed payload]`),
-			}, nil),
+			name:            "empty messages",
+			messages:        makeMessages(t, [][]byte{}, headers),
+			decompressor:    mockDecompressor,
+			decoder:         mockDecoder,
+			expectedAppends: 0,
 		},
 		{
-			name: "database insert failure returns error, live tail still publishes",
-			messages: makeMessages(t, [][]byte{
-				reqJSONBytes,
-			}, makeHeaders("application/json", "")),
-			mockDBError:         fmt.Errorf("test insert error"),
-			expectedErr:         true,
-			expectedInsertCount: 1,
-			expectedRecordCount: 1,
-			expectedPublishes:   1,
+			name:            "decompress failure",
+			messages:        makeMessages(t, [][]byte{validReqbytes}, headers),
+			decompressor:    mockDecompressorErr,
+			decoder:         mockDecoder,
+			expectedAppends: 0,
 		},
 		{
-			name: "database insert sucess, live tail publish failure",
-			messages: makeMessages(t, [][]byte{
-				reqJSONBytes,
-			}, makeHeaders("application/json", "")),
-			mockProducerError:   fmt.Errorf("test publish error"),
-			expectedInsertCount: 1,
-			expectedRecordCount: 1,
-			expectedPublishes:   1,
-		},
-		{
-			name:                "zstd compressed payload is decompressed and consumed correctly",
-			messages:            makeMessages(t, [][]byte{zstdCompress(t, reqJSONBytes)}, makeHeaders("application/json", "zstd")),
-			expectedInsertCount: 1,
-			expectedRecordCount: 1,
-			expectedPublishes:   1,
-		},
-		{
-			name:                "gzip compressed payload is decompressed and consumed correctly",
-			messages:            makeMessages(t, [][]byte{gzipCompress(t, reqJSONBytes)}, makeHeaders("application/json", "gzip")),
-			expectedInsertCount: 1,
-			expectedRecordCount: 1,
-			expectedPublishes:   1,
-		},
-		{
-			name:                "successful batch insert protobuf",
-			messages:            makeMessages(t, [][]byte{reqProtoBytes}, makeHeaders("application/x-protobuf", "")),
-			expectedInsertCount: 1,
-			expectedRecordCount: 1,
-			expectedPublishes:   1,
-		},
-		{
-			name: "skip malformed protobuf but insert valid ones",
-			messages: makeMessages(t,
-				[][]byte{
-					reqProtoBytes,
-					[]byte(`{malformed payload]`),
-				},
-				makeHeaders("application/x-protobuf", "")),
-			expectedInsertCount: 1,
-			expectedRecordCount: 1,
-			expectedPublishes:   1,
-		},
-		{
-			name: "zstd compressed protobuf payload is consumed correctly",
-			messages: makeMessages(t,
-				[][]byte{
-					zstdCompress(t, reqProtoBytes),
-				},
-				makeHeaders("application/x-protobuf", "zstd")),
-			expectedInsertCount: 1,
-			expectedRecordCount: 1,
-			expectedPublishes:   1,
+			name:            "decode failure",
+			messages:        makeMessages(t, [][]byte{validReqbytes}, headers),
+			decompressor:    mockDecompressor,
+			decoder:         mockDecoderErr,
+			expectedAppends: 0,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			mockStore := &MockLogStore{
-				InsertErr: tc.mockDBError,
+			flatLogsMap := map[string][]core.FlatLogRecord{}
+			appender := MockLogAppender{}
+			processMessages(slog.Default(), tc.decompressor, tc.decoder, tc.messages, flatLogsMap, &appender)
+
+			assert.Equal(t, tc.expectedAppends, appender.AppendCount)
+		})
+	}
+}
+
+func TestConsumeCallback(t *testing.T) {
+	valiReq := newBaseRequest(t)
+	validReqbytes, err := valiReq.MarshalProto()
+	require.NoError(t, err)
+
+	message := makeMessages(t, [][]byte{validReqbytes}, makeHeaders("application/x-protobuf", ""))
+
+	flushErr := fmt.Errorf("database insert error")
+
+	tests := []struct {
+		name                string
+		message             []transport.Message
+		flushErr            error
+		expectedAppends     int
+		expectedTailSubject string // if empty, skip live tail assertion
+	}{
+		{
+			name:                "Successful Processing and Live Tail Publish",
+			message:             message,
+			flushErr:            nil,
+			expectedAppends:     1,
+			expectedTailSubject: transport.LiveTailSubjectPrefix + "auth-service",
+		},
+		{
+			name:                "Empty messages short circuit",
+			message:             []transport.Message{},
+			flushErr:            nil,
+			expectedAppends:     0,
+			expectedTailSubject: "",
+		},
+		{
+			name:                "Flush error is returned",
+			message:             message,
+			flushErr:            flushErr,
+			expectedAppends:     1,
+			expectedTailSubject: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			appender := MockLogAppender{FlushErr: tc.flushErr}
+			store := &MockLogStore{Appender: &appender}
+			producer := &MockProducer{
+				PublishCh: make(chan struct{}, 1),
 			}
+			callback, err := ConsumeCallback(slog.Default(), store, producer)
 
-			mockProducer := &MockProducer{
-				PublishedRecords: map[string][][]byte{},
-				PublishCh:        make(chan struct{}, 10),
-				PublishErr:       tc.mockProducerError,
-			}
+			require.NoError(t, err, "error creating consume callback")
 
-			callback, err := ConsumeCallback(slog.Default(), mockStore, mockProducer)
-			require.NoError(t, err)
-			err = callback(tc.messages)
+			err = callback(tc.message)
 
-			if tc.expectedErr {
-				assert.Error(t, err)
+			if tc.flushErr != nil {
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 
-			assertPublishes(t, mockProducer, tc.expectedPublishes)
-			assert.Equal(t, tc.expectedInsertCount, mockStore.InsertCount)
-			assert.Len(t, mockStore.InsertedRecords, tc.expectedRecordCount)
-			if tc.expectedInsertCount > 0 && !tc.expectedErr {
-				assertInsertedRecords(t, mockStore, expectedRecord)
+			assert.Equal(t, tc.expectedAppends, appender.AppendCount)
+
+			// assert tail publishing if subject given
+			if tc.expectedTailSubject != "" {
+				select {
+				case <-producer.PublishCh:
+				case <-time.After(2 * time.Second):
+					t.Fatalf("timed out waiting for live tail publish go routine")
+				}
+
+				producer.mu.Lock()
+				defer producer.mu.Unlock()
+
+				published := producer.PublishedRecords[tc.expectedTailSubject]
+				require.Len(t, published, 1, "should have published 1 record to subject: %v", tc.expectedTailSubject)
+				assert.NotEmpty(t, published[0], "published payload should not be empty")
 			}
 
 		})

@@ -78,7 +78,7 @@ func TestBatchInsert(t *testing.T) {
 	}
 
 	if count != 1 {
-		t.Errorf("Expected 1 log got :%v", count)
+		t.Fatalf("Expected 1 log got :%v", count)
 	}
 
 	var records []core.FlatLogRecord
