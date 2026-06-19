@@ -3,20 +3,42 @@ package worker
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/core"
+	"github.com/Eddrick-23/Logarithm/internal/storage"
 )
 
 type MockLogStore struct {
-	InsertedRecords []core.FlatLogRecord
-	InsertErr       error
-	InsertCount     int
+	Appender *MockLogAppender
+}
+
+type MockLogAppender struct {
+	AppendCount int
+	FlushErr    error
+}
+
+func (a *MockLogAppender) Append(
+	timestamp, observedTimestamp time.Time,
+	severityNumber uint8,
+	traceId [16]byte,
+	spanId [8]byte,
+	logAttrKeys, logAttrValues, resAttrKeys, resAttrValues []string,
+	logFields storage.LogFields,
+) {
+	a.AppendCount++
+}
+
+func (a *MockLogAppender) Flush(ctx context.Context) error {
+	return a.FlushErr
+}
+
+func (m *MockLogStore) FastInsert() storage.LogAppender {
+	return m.Appender
 }
 
 func (m *MockLogStore) BatchInsert(ctx context.Context, records []core.FlatLogRecord) error {
-	m.InsertCount++
-	m.InsertedRecords = records
-	return m.InsertErr
+	return nil // not needed for this test
 }
 
 func (m *MockLogStore) SearchLogs(ctx context.Context, filter core.LogQueryFilter) ([]core.FlatLogRecord, error) {
