@@ -362,7 +362,30 @@ func (s *ClickHouseStore) GetAllIngestionMetrics(ctx context.Context) (core.Inge
 	}
 
 	return result, nil
+}
 
+func (s *ClickHouseStore) GetErrorRateMetrics(ctx context.Context) (core.ErrorRateMetrics, error) {
+	tbl, err := s.table(TableMetrics)
+	if err != nil {
+		return core.ErrorRateMetrics{}, fmt.Errorf("failed to get table: %v", err)
+	}
+
+	queryString := fmt.Sprintf(`
+		SELECT 
+			sum(ErrorsCount) / nullIf(sum(LogsCount), 0) AS CurrentRate
+		FROM %v
+		WHERE Timestamp >= now() - toIntervalMinute(@minute)
+	`, tbl)
+
+	// calculate error rate metrics for the past 5 minutes
+	var result core.ErrorRateMetrics
+	if err := s.conn.QueryRow(ctx, queryString, clickhouse.Named("minute", 5)).ScanStruct(&result); err != nil {
+		return core.ErrorRateMetrics{}, err
+	}
+
+	// convert from fraction to percentage to be passed to frontend
+	result.CurrentRate = result.CurrentRate * 100
+	return result, nil
 }
 
 func (s *ClickHouseStore) GetTopServiceErrorsStats(ctx context.Context) ([]core.TopServiceErrorsStats, error) {

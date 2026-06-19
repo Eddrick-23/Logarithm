@@ -31,6 +31,7 @@ func AddRoutes(
 	mux.Handle("GET /api/top-service-errors", handleTopServiceErrors(logger, logStore))
 	mux.Handle("GET /api/ingestion-metrics", handleIngestionMetrics(logger, logStore))
 	mux.Handle("GET /api/ingestion-metrics/stream", handleIngestionMetricsStream(logger, logStore, appCtx))
+	mux.Handle("GET /api/error-rate-metrics", handleErrorRateMetrics(logger, logStore))
 	mux.Handle("GET /ws/logs/tail", handleLiveTail(logger, broker, config))
 }
 
@@ -209,6 +210,30 @@ func handleDistinctServices(logger *slog.Logger, logStore *storage.ClickHouseSto
 	}
 }
 
+func handleErrorRateMetrics(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		ctx := context.Background()
+
+		errorRateMetrics, err := logStore.GetErrorRateMetrics(ctx)
+		if err != nil {
+			logger.Error("failed to get error rate metrics", "err", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		logger.Info("error rate", "err", errorRateMetrics)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		err = json.NewEncoder(w).Encode(errorRateMetrics)
+		if err != nil {
+			logger.Error("failed to write response", "err", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+	}
+}
+
 func handleIngestionMetrics(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
@@ -261,6 +286,36 @@ func writeIngestionMetricsEvent(
 	return nil
 }
 
+func writeErrorRateMetricsEvent(
+	ctx context.Context,
+	w http.ResponseWriter,
+	flusher http.Flusher,
+	logger *slog.Logger,
+	logStore *storage.ClickHouseStore,
+) error {
+	errorRateMetrics, err := logStore.GetErrorRateMetrics(ctx)
+	if err != nil {
+		logger.Error("failed to get error rate metrics", "err", err)
+		return err
+	}
+
+	data, err := json.Marshal(errorRateMetrics)
+	if err != nil {
+		logger.Error("failed to marshal error rate metrics", "err", err)
+		return err
+	}
+
+	// event: error-rate
+	// data: <payload>\n\n is the SSE wire protocol
+	if _, err := fmt.Fprintf(w, "event: error-rate\ndata: %s\n\n", data); err != nil {
+		// client likely disconnected
+		return err
+	}
+
+	flusher.Flush()
+	return nil
+}
+
 func writeTopServiceErrorsStatsEvent(
 	ctx context.Context,
 	w http.ResponseWriter,
@@ -304,9 +359,11 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 		w.Header().Set("Connection", "keep-alive")
 
 		ticker5s := time.NewTicker(5 * time.Second)
+		ticker15s := time.NewTicker(15 * time.Second)
 		ticker30s := time.NewTicker(30 * time.Second)
 
 		defer ticker5s.Stop()
+		defer ticker15s.Stop()
 		defer ticker30s.Stop()
 
 		for {
@@ -324,6 +381,12 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 			case <-ticker5s.C:
 				// ingestion graph and logs / second refreshes every 5s
 				if err := writeIngestionMetricsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
+					return
+				}
+
+			case <-ticker15s.C:
+				// error rate metrics refreshes every 15s
+				if err := writeErrorRateMetricsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
 					return
 				}
 
