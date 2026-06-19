@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchErrorMetrics, fetchIngestionMetrics } from "../api/metricsApi";
+import { fetchTopServiceErrorsStats, fetchIngestionMetrics } from "../api/metricsApi";
 import { useCallback, useEffect, useRef } from "react";
 
 const STALE_THRESHOLD_MS = 15000; // 15s stale time
@@ -30,12 +30,19 @@ export const useIngestionMetrics = () => {
 
         const eventSource = new EventSource("/api/ingestion-metrics/stream");
 
-        eventSource.onmessage = (e) => {
+        eventSource.addEventListener("ingestion", (e) => {
             const data = JSON.parse(e.data);
             queryClient.setQueryData(["ingestionMetrics"], data);
             queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
-            lastMessageRef.current = Date.now(); // update watchdog clock
-        };
+            lastMessageRef.current = Date.now();
+        });
+
+        eventSource.addEventListener("top-service-errors", (e) => {
+            const data = JSON.parse(e.data);
+            queryClient.setQueryData(["topServiceErrorsStats"], data);
+            queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
+            lastMessageRef.current = Date.now();
+        });
 
         eventSource.onerror = () => {
             if (eventSourceRef.current?.readyState !== EventSource.OPEN) {
@@ -87,11 +94,11 @@ export const useIngestionMetrics = () => {
     };
 };
 
-export const useErrorMetrics = () => {
+export const useTopServiceErrorsStats = () => {
     return useQuery({
-        queryKey: ["errorMetrics"],
-        queryFn: fetchErrorMetrics,
-        staleTime: 1000 * 60, // 1 minute
-        refetchInterval: 1000 * 60, // refetch every 1 minute
+        queryKey: ["topServiceErrorsStats"],
+        queryFn: fetchTopServiceErrorsStats,
+        staleTime: Infinity,
+        refetchInterval: false,
     });
 };

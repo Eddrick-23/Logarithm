@@ -1,5 +1,9 @@
 import axios from "axios";
-import type { GetIngestionMetricsResponse, ErrorMetrics, GetErrorMetricsResponse } from "../types/Metric";
+import type {
+    GetIngestionMetricsResponse,
+    TopServiceErrorsStats,
+    GetTopServiceErrorsStatsResponse,
+} from "../types/Metric";
 
 export const fetchIngestionMetrics = async (): Promise<GetIngestionMetricsResponse> => {
     // response is of the type { metrics: IngestionMetricsMap, timestamps: number[] }
@@ -7,8 +11,8 @@ export const fetchIngestionMetrics = async (): Promise<GetIngestionMetricsRespon
     return response.data;
 };
 
-export const fetchErrorMetrics = async (): Promise<ErrorMetrics[]> => {
-    // response is of the type { data: ErrorMetrics[] }
-    const response = await axios.get<GetErrorMetricsResponse>("/api/error-metrics");
+export const fetchTopServiceErrorsStats = async (): Promise<TopServiceErrorsStats[]> => {
+    // response is of the type { data: TopServiceErrorsStats[] }
+    const response = await axios.get<GetTopServiceErrorsStatsResponse>("/api/top-service-errors");
     return response.data.data;
 };
