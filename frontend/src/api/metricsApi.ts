@@ -13,7 +13,6 @@ export const fetchIngestionMetrics = async (): Promise<GetIngestionMetricsRespon
 };
 
 export const fetchErrorRateMetrics = async (): Promise<ErrorRateMetrics> => {
-    // response is of the type { metrics: IngestionMetricsMap, timestamps: number[] }
     const response = await axios.get<ErrorRateMetrics>("/api/error-rate-metrics");
     return response.data;
 };
