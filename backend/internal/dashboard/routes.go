@@ -222,7 +222,6 @@ func handleErrorRateMetrics(logger *slog.Logger, logStore *storage.ClickHouseSto
 			return
 		}
 
-		logger.Info("error rate", "err", errorRateMetrics)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 
