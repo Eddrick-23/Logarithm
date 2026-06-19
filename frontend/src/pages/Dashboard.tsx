@@ -33,7 +33,7 @@ export default function Dashboard() {
 
             {/* Stat cards */}
             <Box sx={{ mb: 2 }}>
-                <ServiceOverview data={data?.logStats} isLoading={isLoading} errorRate={0.3} numOfLiveServices={7} />
+                <ServiceOverview data={data?.logStats} isLoading={isLoading} numOfLiveServices={7} />
             </Box>
 
             {/* Chart + Latency */}

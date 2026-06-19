@@ -18,6 +18,10 @@ export type LogRateStatistics = {
     ratio: number;
 };
 
+export type ErrorRateMetrics = {
+    currentRate: number;
+};
+
 export type GetIngestionMetricsResponse = {
     graph: IngestionGraphData;
     logStats: LogRateStatistics;

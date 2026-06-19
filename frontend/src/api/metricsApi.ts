@@ -1,5 +1,6 @@
 import axios from "axios";
 import type {
+    ErrorRateMetrics,
     GetIngestionMetricsResponse,
     TopServiceErrorsStats,
     GetTopServiceErrorsStatsResponse,
@@ -8,6 +9,12 @@ import type {
 export const fetchIngestionMetrics = async (): Promise<GetIngestionMetricsResponse> => {
     // response is of the type { metrics: IngestionMetricsMap, timestamps: number[] }
     const response = await axios.get<GetIngestionMetricsResponse>("/api/ingestion-metrics");
+    return response.data;
+};
+
+export const fetchErrorRateMetrics = async (): Promise<ErrorRateMetrics> => {
+    // response is of the type { metrics: IngestionMetricsMap, timestamps: number[] }
+    const response = await axios.get<ErrorRateMetrics>("/api/error-rate-metrics");
     return response.data;
 };
 

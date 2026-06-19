@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchTopServiceErrorsStats, fetchIngestionMetrics } from "../api/metricsApi";
+import { fetchTopServiceErrorsStats, fetchIngestionMetrics, fetchErrorRateMetrics } from "../api/metricsApi";
 import { useCallback, useEffect, useRef } from "react";
 
 const STALE_THRESHOLD_MS = 15000; // 15s stale time
@@ -40,6 +40,13 @@ export const useIngestionMetrics = () => {
         eventSource.addEventListener("top-service-errors", (e) => {
             const data = JSON.parse(e.data);
             queryClient.setQueryData(["topServiceErrorsStats"], data);
+            queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
+            lastMessageRef.current = Date.now();
+        });
+
+        eventSource.addEventListener("error-rate", (e) => {
+            const data = JSON.parse(e.data);
+            queryClient.setQueryData(["errorRateMetrics"], data);
             queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
             lastMessageRef.current = Date.now();
         });
@@ -98,6 +105,15 @@ export const useTopServiceErrorsStats = () => {
     return useQuery({
         queryKey: ["topServiceErrorsStats"],
         queryFn: fetchTopServiceErrorsStats,
+        staleTime: Infinity,
+        refetchInterval: false,
+    });
+};
+
+export const useErrorRateMetrics = () => {
+    return useQuery({
+        queryKey: ["errorRateMetrics"],
+        queryFn: fetchErrorRateMetrics,
         staleTime: Infinity,
         refetchInterval: false,
     });
