@@ -26,7 +26,7 @@ type decoderFunc func([]byte, map[string][]string) (*plogotlp.ExportRequest, err
 // live-tail stream on a file and forget basis, and bulk inserted into storage.
 // Storage insertion failures are returned; live-tail publish failures are
 // logged and ignored.
-func ConsumeCallback(logger *slog.Logger, store storage.LogStore, publisher Publisher) (func([]transport.Message) error, error) {
+func ConsumeCallback(logger *slog.Logger, store storage.LogStore, transformer Transformer, publisher Publisher) (func([]transport.Message) error, error) {
 	decompressor, err := makeDecompressor()
 	if err != nil {
 		return nil, err
@@ -39,7 +39,7 @@ func ConsumeCallback(logger *slog.Logger, store storage.LogStore, publisher Publ
 		}
 
 		appender := store.FastInsert()
-		processMessages(logger, decompressor, decoder, messages, publisher, appender)
+		processMessages(logger, decompressor, decoder, messages, transformer, publisher, appender)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
@@ -49,7 +49,7 @@ func ConsumeCallback(logger *slog.Logger, store storage.LogStore, publisher Publ
 }
 
 func processMessages(logger *slog.Logger, decompressor decompressFunc, decoder decoderFunc, messages []transport.Message,
-	publisher Publisher, appender storage.LogAppender) {
+	transformer Transformer, publisher Publisher, appender storage.LogAppender) {
 
 	for _, msg := range messages {
 		decompressedPayload, err := decompressor(msg.Payload, msg.Headers)
@@ -66,7 +66,7 @@ func processMessages(logger *slog.Logger, decompressor decompressFunc, decoder d
 
 		logs := req.Logs()
 		for i := 0; i < logs.ResourceLogs().Len(); i++ {
-			flattenLogs(slog.Default(), logs.ResourceLogs().At(i), publisher, appender)
+			transformer.Flatten(logs.ResourceLogs().At(i), publisher, appender)
 		}
 	}
 }

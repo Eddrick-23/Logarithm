@@ -107,7 +107,9 @@ func run(ctx context.Context, w io.Writer) error {
 	liveTailPublisher := worker.NewLiveTailPublisher(publishLogger, natsBroker, config.WorkerLiveTailCount, config.WorkerLiveTailQueueSize)
 	defer liveTailPublisher.Close()
 
-	consumeCallback, err := worker.ConsumeCallback(workerLogger, store, liveTailPublisher)
+	flattener := worker.NewLogTransformer(logger)
+
+	consumeCallback, err := worker.ConsumeCallback(workerLogger, store, flattener, liveTailPublisher)
 	if err != nil {
 		return err
 	}
