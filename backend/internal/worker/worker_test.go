@@ -224,19 +224,15 @@ func TestFlattenLogs(t *testing.T) {
 			err := req.UnmarshalJSON([]byte(tc.inputJSON))
 			require.NoError(t, err, "invalid test JSON provided")
 
-			flatLogsByServiceName := make(map[string][]core.FlatLogRecord)
-
 			logs := req.Logs()
 
 			mockAppender := MockLogAppender{}
+			mockPublisher := MockPublisher{enqueueSuccess: true}
 			for i := 0; i < logs.ResourceLogs().Len(); i++ {
-				flattenLogs(logs.ResourceLogs().At(i), flatLogsByServiceName, &mockAppender)
+				flattenLogs(slog.Default(), logs.ResourceLogs().At(i), &mockPublisher, &mockAppender)
 			}
 
-			var actualLogs []core.FlatLogRecord
-			for _, logs := range flatLogsByServiceName {
-				actualLogs = append(actualLogs, logs...)
-			}
+			actualLogs := mockPublisher.records
 
 			assert.Equal(t, tc.expectedLength, len(actualLogs), "slice length mismatch")
 
@@ -534,6 +530,7 @@ func TestProcessMessages(t *testing.T) {
 		messages        []transport.Message
 		decompressor    decompressFunc
 		decoder         decoderFunc
+		expectedEnqueue int
 		expectedAppends int
 	}{
 		{
@@ -541,6 +538,7 @@ func TestProcessMessages(t *testing.T) {
 			messages:        makeMessages(t, [][]byte{validReqbytes}, headers),
 			decompressor:    mockDecompressor,
 			decoder:         mockDecoder,
+			expectedEnqueue: 1,
 			expectedAppends: 1,
 		},
 		{
@@ -548,6 +546,7 @@ func TestProcessMessages(t *testing.T) {
 			messages:        makeMessages(t, [][]byte{validReqbytes, validReqbytes}, headers),
 			decompressor:    mockDecompressor,
 			decoder:         mockDecoder,
+			expectedEnqueue: 2,
 			expectedAppends: 2,
 		},
 		{
@@ -560,6 +559,7 @@ func TestProcessMessages(t *testing.T) {
 				}
 				return &validReq, nil
 			},
+			expectedEnqueue: 1,
 			expectedAppends: 1,
 		},
 		{
@@ -567,6 +567,7 @@ func TestProcessMessages(t *testing.T) {
 			messages:        makeMessages(t, [][]byte{}, headers),
 			decompressor:    mockDecompressor,
 			decoder:         mockDecoder,
+			expectedEnqueue: 0,
 			expectedAppends: 0,
 		},
 		{
@@ -574,6 +575,7 @@ func TestProcessMessages(t *testing.T) {
 			messages:        makeMessages(t, [][]byte{validReqbytes}, headers),
 			decompressor:    mockDecompressorErr,
 			decoder:         mockDecoder,
+			expectedEnqueue: 0,
 			expectedAppends: 0,
 		},
 		{
@@ -581,16 +583,17 @@ func TestProcessMessages(t *testing.T) {
 			messages:        makeMessages(t, [][]byte{validReqbytes}, headers),
 			decompressor:    mockDecompressor,
 			decoder:         mockDecoderErr,
+			expectedEnqueue: 0,
 			expectedAppends: 0,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			flatLogsMap := map[string][]core.FlatLogRecord{}
 			appender := MockLogAppender{}
-			processMessages(slog.Default(), tc.decompressor, tc.decoder, tc.messages, flatLogsMap, &appender)
-
+			publisher := MockPublisher{enqueueSuccess: true}
+			processMessages(slog.Default(), tc.decompressor, tc.decoder, tc.messages, &publisher, &appender)
+			assert.Equal(t, tc.expectedEnqueue, publisher.enqueueCount)
 			assert.Equal(t, tc.expectedAppends, appender.AppendCount)
 		})
 	}
@@ -602,7 +605,6 @@ func TestConsumeCallback(t *testing.T) {
 	require.NoError(t, err)
 
 	message := makeMessages(t, [][]byte{validReqbytes}, makeHeaders("application/x-protobuf", ""))
-
 	flushErr := fmt.Errorf("database insert error")
 
 	tests := []struct {
@@ -639,10 +641,7 @@ func TestConsumeCallback(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			appender := MockLogAppender{FlushErr: tc.flushErr}
 			store := &MockLogStore{Appender: &appender}
-			producer := &MockProducer{
-				PublishCh: make(chan struct{}, 1),
-			}
-			callback, err := ConsumeCallback(slog.Default(), store, producer)
+			callback, err := ConsumeCallback(slog.Default(), store, &NoOpPublisher{})
 
 			require.NoError(t, err, "error creating consume callback")
 
@@ -655,22 +654,6 @@ func TestConsumeCallback(t *testing.T) {
 			}
 
 			assert.Equal(t, tc.expectedAppends, appender.AppendCount)
-
-			// assert tail publishing if subject given
-			if tc.expectedTailSubject != "" {
-				select {
-				case <-producer.PublishCh:
-				case <-time.After(2 * time.Second):
-					t.Fatalf("timed out waiting for live tail publish go routine")
-				}
-
-				producer.mu.Lock()
-				defer producer.mu.Unlock()
-
-				published := producer.PublishedRecords[tc.expectedTailSubject]
-				require.Len(t, published, 1, "should have published 1 record to subject: %v", tc.expectedTailSubject)
-				assert.NotEmpty(t, published[0], "published payload should not be empty")
-			}
 
 		})
 	}

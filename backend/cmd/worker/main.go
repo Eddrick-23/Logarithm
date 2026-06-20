@@ -53,6 +53,7 @@ func run(ctx context.Context, w io.Writer) error {
 		slog.NewTextHandler(w, opt),
 	)
 	workerLogger := logger.With("component", "worker")
+	publishLogger := logger.With("component", "publisher")
 	natsLogger := logger.With("component", "nats")
 	pprofLogger := logger.With("component", "pprof")
 	dblogger := logger.With("component", "db")
@@ -103,7 +104,10 @@ func run(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("failed to ensure dlq stream: %w", err)
 	}
 
-	consumeCallback, err := worker.ConsumeCallback(workerLogger, store, natsBroker)
+	liveTailPublisher := worker.NewLiveTailPublisher(publishLogger, natsBroker, 4, 1000) // TODO configurations for workers and queue size?
+	defer liveTailPublisher.Close()
+
+	consumeCallback, err := worker.ConsumeCallback(workerLogger, store, liveTailPublisher)
 	if err != nil {
 		return err
 	}

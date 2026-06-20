@@ -46,31 +46,53 @@ func (m *MockLogStore) SearchLogs(ctx context.Context, filter core.LogQueryFilte
 }
 
 type MockProducer struct {
-	PublishedRecords map[string][][]byte
-	PublishErr       error
-	PublishCount     int
-	mu               sync.Mutex
-	PublishCh        chan struct{}
+	publishCount int
+	mu           sync.Mutex
+	publishCh    chan struct{}
 }
 
 func (m *MockProducer) PublishLogs(ctx context.Context, subject string, payload []byte, headers map[string][]string) error {
-	return nil // not used
+	return nil // Not used here
 }
 
 func (m *MockProducer) PublishLiveTail(subject string, data []byte) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.publishCount++
+	m.mu.Unlock()
 
-	if m.PublishedRecords == nil {
-		m.PublishedRecords = map[string][][]byte{}
-	}
-
-	m.PublishedRecords[subject] = append(m.PublishedRecords[subject], data)
-
+	// Non-blocking send to notify the test runner
 	select {
-	case m.PublishCh <- struct{}{}: // signal test thread a publish occured
+	case m.publishCh <- struct{}{}:
 	default:
 	}
+	return nil
+}
 
-	return m.PublishErr
+type MockMsg struct {
+	data []byte
+}
+
+func (m *MockMsg) MarshalMsg(dst []byte) ([]byte, error) {
+	return append(dst, m.data...), nil
+}
+
+type MockPublisher struct {
+	enqueueCount   int
+	enqueueSuccess bool
+	records        []core.FlatLogRecord
+}
+
+func (m *MockPublisher) Enqueue(subject string, msg MsgMarshaler) bool {
+	m.enqueueCount++
+	if record, ok := msg.(*core.FlatLogRecord); ok {
+		m.records = append(m.records, *record)
+	}
+
+	return m.enqueueSuccess
+}
+
+type NoOpPublisher struct{}
+
+func (n *NoOpPublisher) Enqueue(subject string, msg MsgMarshaler) bool {
+	return true
 }

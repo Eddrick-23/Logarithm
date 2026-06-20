@@ -1,18 +1,22 @@
 package worker
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
+	"github.com/Eddrick-23/Logarithm/internal/transport"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
-func flattenLogs(resourceLogs plog.ResourceLogs, flatLogsByServiceName map[string][]core.FlatLogRecord, apppender storage.LogAppender) {
+func flattenLogs(logger *slog.Logger, resourceLogs plog.ResourceLogs, publisher Publisher, appender storage.LogAppender) {
 	serviceName := "unknown"
 	resAttrKeys := []string{}
 	resAttrValues := []string{}
+	logAttrKeys := []string{}
+	logAttrValues := []string{}
 	nowNano := uint64(time.Now().UnixNano())
 
 	resourceLogs.Resource().Attributes().Range(func(k string, v pcommon.Value) bool {
@@ -33,8 +37,8 @@ func flattenLogs(resourceLogs plog.ResourceLogs, flatLogsByServiceName map[strin
 
 		for j := 0; j < scopeLogs.LogRecords().Len(); j++ {
 			logRecord := scopeLogs.LogRecords().At(j)
-			logAttrKeys := []string{}
-			logAttrValues := []string{}
+			logAttrKeys = logAttrKeys[:0]
+			logAttrValues := logAttrValues[:0]
 
 			logRecord.Attributes().Range(func(k string, v pcommon.Value) bool {
 				logAttrKeys = append(logAttrKeys, k)
@@ -72,8 +76,11 @@ func flattenLogs(resourceLogs plog.ResourceLogs, flatLogsByServiceName map[strin
 				LogAttrValues: logAttrValues,
 			}
 
-			flatLogsByServiceName[serviceName] = append(flatLogsByServiceName[serviceName], flatRecord)
-			apppender.Append(
+			if !publisher.Enqueue(transport.LiveTailSubjectPrefix+serviceName, &flatRecord) {
+				logger.Warn("failed to enqueue log for live tail, queue full")
+			}
+
+			appender.Append(
 				time.Unix(0, int64(eventTime)),
 				time.Unix(0, int64(observedTime)),
 				uint8(logRecord.SeverityNumber()),

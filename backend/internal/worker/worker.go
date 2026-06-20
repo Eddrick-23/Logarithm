@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 	"github.com/klauspost/compress/zstd"
@@ -27,7 +26,7 @@ type decoderFunc func([]byte, map[string][]string) (*plogotlp.ExportRequest, err
 // live-tail stream on a file and forget basis, and bulk inserted into storage.
 // Storage insertion failures are returned; live-tail publish failures are
 // logged and ignored.
-func ConsumeCallback(logger *slog.Logger, store storage.LogStore, producer transport.Producer) (func([]transport.Message) error, error) {
+func ConsumeCallback(logger *slog.Logger, store storage.LogStore, publisher Publisher) (func([]transport.Message) error, error) {
 	decompressor, err := makeDecompressor()
 	if err != nil {
 		return nil, err
@@ -39,13 +38,8 @@ func ConsumeCallback(logger *slog.Logger, store storage.LogStore, producer trans
 			return nil
 		}
 
-		flatLogsByServiceName := map[string][]core.FlatLogRecord{}
 		appender := store.FastInsert()
-		processMessages(logger, decompressor, decoder, messages, flatLogsByServiceName, appender) // no need num records anymore
-
-		for name, slice := range flatLogsByServiceName {
-			go publishLiveTail(logger, producer, name, slice)
-		}
+		processMessages(logger, decompressor, decoder, messages, publisher, appender)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
@@ -55,7 +49,7 @@ func ConsumeCallback(logger *slog.Logger, store storage.LogStore, producer trans
 }
 
 func processMessages(logger *slog.Logger, decompressor decompressFunc, decoder decoderFunc, messages []transport.Message,
-	flatLogsByServiceName map[string][]core.FlatLogRecord, appender storage.LogAppender) {
+	publisher Publisher, appender storage.LogAppender) {
 
 	for _, msg := range messages {
 		decompressedPayload, err := decompressor(msg.Payload, msg.Headers)
@@ -72,7 +66,7 @@ func processMessages(logger *slog.Logger, decompressor decompressFunc, decoder d
 
 		logs := req.Logs()
 		for i := 0; i < logs.ResourceLogs().Len(); i++ {
-			flattenLogs(logs.ResourceLogs().At(i), flatLogsByServiceName, appender)
+			flattenLogs(slog.Default(), logs.ResourceLogs().At(i), publisher, appender)
 		}
 	}
 }
@@ -129,22 +123,6 @@ func makeDecompressor() (func([]byte, map[string][]string) ([]byte, error), erro
 			return payload, nil
 		}
 	}, nil
-}
-
-func publishLiveTail(logger *slog.Logger, producer transport.Producer, serviceName string, logs []core.FlatLogRecord) {
-	subject := transport.LiveTailSubjectPrefix + serviceName
-	buf := make([]byte, 0, 1024) // prealloc reusable buffer
-	for _, record := range logs {
-		buf = buf[0:]
-		data, err := record.MarshalMsg(buf)
-		if err != nil {
-			logger.Error("msgpack marshal failed for live tail record", "err", err)
-		}
-
-		if err := producer.PublishLiveTail(subject, data); err != nil {
-			logger.Error("failed to publish to live tail stream", "err", err)
-		}
-	}
 }
 
 func DLQCallback(producer transport.Producer, subject string) func([]byte, map[string][]string) error {
