@@ -20,6 +20,8 @@ type Publisher interface {
 	Enqueue(string, MsgMarshaler) bool
 }
 
+var _ Publisher = (*LiveTailPublisher)(nil)
+
 type LiveTailPublisher struct {
 	logger   *slog.Logger
 	producer transport.Producer
@@ -48,7 +50,7 @@ func NewLiveTailPublisher(logger *slog.Logger, producer transport.Producer, work
 	for range workers {
 		go p.worker()
 	}
-
+	p.logger.Info("Created live tail worker pool")
 	return p
 }
 

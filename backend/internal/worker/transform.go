@@ -38,7 +38,7 @@ func flattenLogs(logger *slog.Logger, resourceLogs plog.ResourceLogs, publisher 
 		for j := 0; j < scopeLogs.LogRecords().Len(); j++ {
 			logRecord := scopeLogs.LogRecords().At(j)
 			logAttrKeys = logAttrKeys[:0]
-			logAttrValues := logAttrValues[:0]
+			logAttrValues = logAttrValues[:0]
 
 			logRecord.Attributes().Range(func(k string, v pcommon.Value) bool {
 				logAttrKeys = append(logAttrKeys, k)
