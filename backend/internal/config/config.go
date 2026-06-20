@@ -50,6 +50,8 @@ type Config struct {
 	WorkerMaxBatch            int             `env:"WORKER_MAX_BATCH, default=10"`
 	WorkerMaxWait             time.Duration   `env:"WORKER_MAX_WAIT, default=2s"`
 	WorkerBackoff             []time.Duration `env:"WORKER_BACKOFF, default=5s,30s,60s,300s,3600s"`
+	WorkerLiveTailCount       int             `env:"WORKER_LIVE_TAIL_Count, default=3"`
+	WorkerLiveTailQueueSize   int             `env:"WORKER_LIVE_TAIL_QUEUE_SIZE, default=10000"`
 	SeedSystem                bool            `env:"SEED_SYSTEM, default=false"`
 	EnablePprof               bool            `env:"ENABLE_PPROF, default=false"`
 	PprofHost                 string          `env:"PPROF_HOST, default=0.0.0.0"`
@@ -77,6 +79,17 @@ func (c *Config) validate() error {
 		return fmt.Errorf("NATS_CONSUMER_MAX_ACK_PENDING (%d) is dangerously low. To prevent deadlocks between nats and worker, set it to at least (%d)",
 			c.NatsConsumerMaxAckPending,
 			safeLimit,
+		)
+	}
+	if c.WorkerLiveTailCount <= 0 {
+		return fmt.Errorf("WORKER_LIVE_TAIL (%d) must be a positive number for the live tail feature to work. Recommended (3)",
+			c.WorkerLiveTailCount,
+		)
+	}
+
+	if c.WorkerLiveTailQueueSize <= 0 {
+		return fmt.Errorf("WORKER_LIVE_TAIL_QUEUE_SIZE (%d) must be a positive number for the live tail feature to work. Recommended (10000)",
+			c.WorkerLiveTailQueueSize,
 		)
 	}
 	return nil

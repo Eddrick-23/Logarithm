@@ -99,12 +99,12 @@ func run(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("failed to create durable consumer: %w", err)
 	}
 
-	_, err = natsBroker.EnsureDLQStream(ctx, transport.DLQStreamName, transport.DLQSubject, config.NatsDLQMaxAge, int64(config.NatsDLQMaxBytes)) // set longer max age for debugging
+	_, err = natsBroker.EnsureDLQStream(ctx, transport.DLQStreamName, transport.DLQSubject, config.NatsDLQMaxAge, int64(config.NatsDLQMaxBytes))
 	if err != nil {
 		return fmt.Errorf("failed to ensure dlq stream: %w", err)
 	}
 
-	liveTailPublisher := worker.NewLiveTailPublisher(publishLogger, natsBroker, 4, 1000) // TODO configurations for workers and queue size?
+	liveTailPublisher := worker.NewLiveTailPublisher(publishLogger, natsBroker, config.WorkerLiveTailCount, config.WorkerLiveTailQueueSize)
 	defer liveTailPublisher.Close()
 
 	consumeCallback, err := worker.ConsumeCallback(workerLogger, store, liveTailPublisher)
