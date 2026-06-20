@@ -7,15 +7,13 @@ import (
 
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
+	"go.opentelemetry.io/collector/pdata/plog"
 )
 
-type MockLogStore struct {
-	Appender *MockLogAppender
-}
-
+// MockLogAppender
 type MockLogAppender struct {
-	AppendCount int
-	FlushErr    error
+	appendCount int
+	flushErr    error
 }
 
 func (a *MockLogAppender) Append(
@@ -26,11 +24,16 @@ func (a *MockLogAppender) Append(
 	logAttrKeys, logAttrValues, resAttrKeys, resAttrValues []string,
 	logFields storage.LogFields,
 ) {
-	a.AppendCount++
+	a.appendCount++
 }
 
 func (a *MockLogAppender) Flush(ctx context.Context) error {
-	return a.FlushErr
+	return a.flushErr
+}
+
+// MockLogStore
+type MockLogStore struct {
+	Appender *MockLogAppender
 }
 
 func (m *MockLogStore) FastInsert() storage.LogAppender {
@@ -45,6 +48,7 @@ func (m *MockLogStore) SearchLogs(ctx context.Context, filter core.LogQueryFilte
 	return nil, nil // not needed for this test
 }
 
+// MockProducer
 type MockProducer struct {
 	publishCount int
 	mu           sync.Mutex
@@ -68,6 +72,7 @@ func (m *MockProducer) PublishLiveTail(subject string, data []byte) error {
 	return nil
 }
 
+// MockMsg
 type MockMsg struct {
 	data []byte
 }
@@ -76,6 +81,7 @@ func (m *MockMsg) MarshalMsg(dst []byte) ([]byte, error) {
 	return append(dst, m.data...), nil
 }
 
+// MockPublisher
 type MockPublisher struct {
 	enqueueCount   int
 	enqueueSuccess bool
@@ -91,8 +97,42 @@ func (m *MockPublisher) Enqueue(subject string, msg MsgMarshaler) bool {
 	return m.enqueueSuccess
 }
 
+// MockTransformer
+type MockTransformer struct {
+	flattenCount int
+}
+
+func (m *MockTransformer) Flatten(resourceLogs plog.ResourceLogs, publisher Publisher, appender storage.LogAppender) {
+	m.flattenCount++
+}
+
+// NoOp Mocks
+type NoOpAppender struct {
+}
+
+func (n *NoOpAppender) Append(
+	timestamp, observedTimestamp time.Time,
+	severityNumber uint8,
+	traceId [16]byte,
+	spanId [8]byte,
+	logAttrKeys, logAttrValues, resAttrKeys, resAttrValues []string,
+	logFields storage.LogFields) {
+	// do nothing
+}
+
+func (n *NoOpAppender) Flush() error {
+	return nil
+}
+
 type NoOpPublisher struct{}
 
 func (n *NoOpPublisher) Enqueue(subject string, msg MsgMarshaler) bool {
 	return true
+}
+
+type NoOpTransformer struct {
+}
+
+func (n *NoOpTransformer) Flatten(resourceLogs plog.ResourceLogs, publisher Publisher, appender storage.LogAppender) {
+	// do nothing
 }

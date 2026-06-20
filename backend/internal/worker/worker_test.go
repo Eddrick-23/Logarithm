@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
@@ -17,231 +16,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
 
-func TestFlattenLogs(t *testing.T) {
-	tests := []struct {
-		name            string
-		inputJSON       string
-		expectedLength  int
-		expectedAppends int
-		check           func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender)
-	}{
-		{
-			name: "Single Log",
-			inputJSON: `{
-				"resourceLogs": [{
-					"resource": {
-						"attributes": [{"key": "service.name", "value": {"stringValue": "auth-service"}}]
-					},
-					"scopeLogs": [{
-						"logRecords": [{
-							"timeUnixNano": "1717732530000000000",
-							"severityText": "INFO",
-							"body": {"stringValue": "user logged in"}
-						}]
-					}]
-				}]
-			}`,
-			expectedLength:  1,
-			expectedAppends: 1,
-			check: func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender) {
-				require.Len(t, actualLogs, expectedLength)
-				assert.Equal(t, mockAppender.AppendCount, expectedAppends)
-				assert.Equal(t, time.Unix(0, 1717732530000000000), actualLogs[0].Timestamp)
-				assert.Equal(t, "auth-service", actualLogs[0].ServiceName)
-				assert.Equal(t, "INFO", actualLogs[0].SeverityText)
-				assert.Equal(t, "user logged in", actualLogs[0].Body)
-				assert.Equal(t, "string", actualLogs[0].BodyType)
-			},
-		},
-		{
-			name: "Single Log with Log and Resource Attributes",
-			inputJSON: `{
-				"resourceLogs": [{
-					"resource": {
-						"attributes": [{"key": "service.name", "value": {"stringValue": "auth-service"}}]
-					},
-					"scopeLogs": [{
-						"logRecords": [{
-							"timeUnixNano": "1717732530000000000",
-							"severityText": "INFO",
-							"body": {"stringValue": "user logged in"},
-							"attributes": [
-								{
-								"key": "test.environment",
-								"value": { "stringValue": "local" }
-								}
-							]
-						}]
-					}]
-				}]
-			}`,
-			expectedLength:  1,
-			expectedAppends: 1,
-			check: func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender) {
-				require.Len(t, actualLogs, expectedLength)
-				assert.Equal(t, expectedAppends, mockAppender.AppendCount)
-				assert.Equal(t, []string{"service.name"}, actualLogs[0].ResAttrKeys)
-				assert.Equal(t, []string{"auth-service"}, actualLogs[0].ResAttrValues)
-				assert.Equal(t, []string{"test.environment"}, actualLogs[0].LogAttrKeys)
-				assert.Equal(t, []string{"local"}, actualLogs[0].LogAttrValues)
-			},
-		},
-		{
-			name: "Single Log Multiple Services",
-			inputJSON: `{
-				"resourceLogs": [{
-					"resource": {
-						"attributes": [{"key": "service.name", "value": {"stringValue": "auth-service"}}]
-					},
-					"scopeLogs": [{
-						"logRecords": [{
-							"timeUnixNano": "1717732530000000000",
-							"severityText": "INFO",
-							"body": {"stringValue": "user logged in"}
-						}]
-					}]
-				},
-				{
-					"resource": {
-						"attributes": [{"key": "service.name", "value": {"stringValue": "payment-service"}}]
-					},
-					"scopeLogs": [{
-						"logRecords": [{
-							"timeUnixNano": "1717732530000000000",
-							"severityText": "INFO",
-							"body": {"stringValue": "user logged in"}
-						}]
-					}]
-				}
-				]
-			}`,
-			expectedLength:  2,
-			expectedAppends: 2,
-			check: func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender) {
-				require.Len(t, actualLogs, expectedLength)
-				assert.Equal(t, expectedAppends, mockAppender.AppendCount)
-				serviceNames := []string{}
-				for _, record := range actualLogs {
-					serviceNames = append(serviceNames, record.ServiceName)
-				}
-
-				assert.Contains(t, serviceNames, "auth-service")
-				assert.Contains(t, serviceNames, "payment-service")
-			},
-		},
-		{
-			name: "Multiple Logs Single Service",
-			inputJSON: `{
-				"resourceLogs": [{
-					"resource": {
-						"attributes": [{"key": "service.name", "value": {"stringValue": "auth-service"}}]
-					},
-					"scopeLogs": [{
-						"logRecords": [
-						{
-							"timeUnixNano": "1717732530000000000",
-							"severityText": "INFO",
-							"body": {"stringValue": "user logged in"}
-						},
-						{
-							"timeUnixNano": "1717732530000000000",
-							"severityText": "ERROR",
-							"body": {"stringValue": "login timed out"}
-						}
-						]
-					}]
-				}]
-			}`,
-			expectedLength:  2,
-			expectedAppends: 2,
-			check: func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender) {
-				require.Len(t, actualLogs, expectedLength)
-				assert.Equal(t, expectedAppends, mockAppender.AppendCount)
-				serviceNames := make(map[string]struct{})
-				for _, record := range actualLogs {
-					serviceNames[record.ServiceName] = struct{}{}
-				}
-
-				assert.Len(t, serviceNames, 1)
-			},
-		},
-		{
-			name: "Missing Service Name",
-			inputJSON: `{
-				"resourceLogs": [{
-					"resource": {}, 
-					"scopeLogs": [{
-						"logRecords": [{
-							"severityText": "ERROR",
-							"body": {"stringValue": "crash"}
-						}]
-					}]
-				}]
-			}`,
-			expectedLength:  1,
-			expectedAppends: 1,
-			check: func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender) {
-				require.Len(t, actualLogs, expectedLength)
-				assert.Equal(t, expectedAppends, mockAppender.AppendCount)
-				assert.Equal(t, "unknown", actualLogs[0].ServiceName)
-				assert.Equal(t, "ERROR", actualLogs[0].SeverityText)
-			},
-		},
-		{
-			name: "Missing Timestamps",
-			inputJSON: `{
-				"resourceLogs": [{
-					"resource": {
-						"attributes": [{"key": "service.name", "value": {"stringValue": "auth-service"}}]
-					},
-					"scopeLogs": [{
-						"logRecords": [{
-							"severityText": "ERROR",
-							"body": {"stringValue": "crash"}
-						}]
-					}]
-				}]
-			}`,
-			expectedLength:  1,
-			expectedAppends: 1,
-			check: func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender) {
-				require.Len(t, actualLogs, expectedLength)
-				assert.Equal(t, expectedAppends, mockAppender.AppendCount)
-				assert.WithinDuration(t, time.Now(), actualLogs[0].Timestamp, 2*time.Second)
-				assert.WithinDuration(t, time.Now(), actualLogs[0].ObservedTimestamp, 2*time.Second)
-			},
-		},
-		{
-			name:           "Empty Payload",
-			inputJSON:      `{"resourceLogs": []}`,
-			expectedLength: 0,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			req := plogotlp.NewExportRequest()
-			err := req.UnmarshalJSON([]byte(tc.inputJSON))
-			require.NoError(t, err, "invalid test JSON provided")
-
-			logs := req.Logs()
-
-			mockAppender := MockLogAppender{}
-			mockPublisher := MockPublisher{enqueueSuccess: true}
-			for i := 0; i < logs.ResourceLogs().Len(); i++ {
-				flattenLogs(slog.Default(), logs.ResourceLogs().At(i), &mockPublisher, &mockAppender)
-			}
-
-			actualLogs := mockPublisher.records
-
-			assert.Equal(t, tc.expectedLength, len(actualLogs), "slice length mismatch")
-
-			if tc.expectedLength > 0 {
-				tc.check(t, tc.expectedLength, tc.expectedAppends, actualLogs, &mockAppender)
-			}
-		})
-	}
-}
 func TestDelayCalculator(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -526,28 +300,25 @@ func TestProcessMessages(t *testing.T) {
 
 	headers := makeHeaders("application/x-protobuf", "")
 	tests := []struct {
-		name            string
-		messages        []transport.Message
-		decompressor    decompressFunc
-		decoder         decoderFunc
-		expectedEnqueue int
-		expectedAppends int
+		name             string
+		messages         []transport.Message
+		decompressor     decompressFunc
+		decoder          decoderFunc
+		expectedFlattens int
 	}{
 		{
-			name:            "successful process single message",
-			messages:        makeMessages(t, [][]byte{validReqbytes}, headers),
-			decompressor:    mockDecompressor,
-			decoder:         mockDecoder,
-			expectedEnqueue: 1,
-			expectedAppends: 1,
+			name:             "successful process single message",
+			messages:         makeMessages(t, [][]byte{validReqbytes}, headers),
+			decompressor:     mockDecompressor,
+			decoder:          mockDecoder,
+			expectedFlattens: 1,
 		},
 		{
-			name:            "successful process multiple message",
-			messages:        makeMessages(t, [][]byte{validReqbytes, validReqbytes}, headers),
-			decompressor:    mockDecompressor,
-			decoder:         mockDecoder,
-			expectedEnqueue: 2,
-			expectedAppends: 2,
+			name:             "successful process multiple message",
+			messages:         makeMessages(t, [][]byte{validReqbytes, validReqbytes}, headers),
+			decompressor:     mockDecompressor,
+			decoder:          mockDecoder,
+			expectedFlattens: 2,
 		},
 		{
 			name:         "mixed batch one failure one success",
@@ -559,42 +330,38 @@ func TestProcessMessages(t *testing.T) {
 				}
 				return &validReq, nil
 			},
-			expectedEnqueue: 1,
-			expectedAppends: 1,
+			expectedFlattens: 1,
 		},
 		{
-			name:            "empty messages",
-			messages:        makeMessages(t, [][]byte{}, headers),
-			decompressor:    mockDecompressor,
-			decoder:         mockDecoder,
-			expectedEnqueue: 0,
-			expectedAppends: 0,
+			name:             "empty messages",
+			messages:         makeMessages(t, [][]byte{}, headers),
+			decompressor:     mockDecompressor,
+			decoder:          mockDecoder,
+			expectedFlattens: 0,
 		},
 		{
-			name:            "decompress failure",
-			messages:        makeMessages(t, [][]byte{validReqbytes}, headers),
-			decompressor:    mockDecompressorErr,
-			decoder:         mockDecoder,
-			expectedEnqueue: 0,
-			expectedAppends: 0,
+			name:             "decompress failure",
+			messages:         makeMessages(t, [][]byte{validReqbytes}, headers),
+			decompressor:     mockDecompressorErr,
+			decoder:          mockDecoder,
+			expectedFlattens: 0,
 		},
 		{
-			name:            "decode failure",
-			messages:        makeMessages(t, [][]byte{validReqbytes}, headers),
-			decompressor:    mockDecompressor,
-			decoder:         mockDecoderErr,
-			expectedEnqueue: 0,
-			expectedAppends: 0,
+			name:             "decode failure",
+			messages:         makeMessages(t, [][]byte{validReqbytes}, headers),
+			decompressor:     mockDecompressor,
+			decoder:          mockDecoderErr,
+			expectedFlattens: 0,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			appender := MockLogAppender{}
-			publisher := MockPublisher{enqueueSuccess: true}
-			processMessages(slog.Default(), tc.decompressor, tc.decoder, tc.messages, &publisher, &appender)
-			assert.Equal(t, tc.expectedEnqueue, publisher.enqueueCount)
-			assert.Equal(t, tc.expectedAppends, appender.AppendCount)
+			appender := &MockLogAppender{}
+			transformer := &MockTransformer{}
+			processMessages(slog.Default(), tc.decompressor, tc.decoder, tc.messages,
+				transformer, &NoOpPublisher{}, appender)
+			assert.Equal(t, tc.expectedFlattens, transformer.flattenCount)
 		})
 	}
 }
@@ -608,40 +375,32 @@ func TestConsumeCallback(t *testing.T) {
 	flushErr := fmt.Errorf("database insert error")
 
 	tests := []struct {
-		name                string
-		message             []transport.Message
-		flushErr            error
-		expectedAppends     int
-		expectedTailSubject string // if empty, skip live tail assertion
+		name     string
+		message  []transport.Message
+		flushErr error
 	}{
 		{
-			name:                "Successful Processing and Live Tail Publish",
-			message:             message,
-			flushErr:            nil,
-			expectedAppends:     1,
-			expectedTailSubject: transport.LiveTailSubjectPrefix + "auth-service",
+			name:     "Successful Processing and Live Tail Publish",
+			message:  message,
+			flushErr: nil,
 		},
 		{
-			name:                "Empty messages short circuit",
-			message:             []transport.Message{},
-			flushErr:            nil,
-			expectedAppends:     0,
-			expectedTailSubject: "",
+			name:     "Empty messages short circuit",
+			message:  []transport.Message{},
+			flushErr: nil,
 		},
 		{
-			name:                "Flush error is returned",
-			message:             message,
-			flushErr:            flushErr,
-			expectedAppends:     1,
-			expectedTailSubject: "",
+			name:     "Flush error is returned",
+			message:  message,
+			flushErr: flushErr,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			appender := MockLogAppender{FlushErr: tc.flushErr}
+			appender := MockLogAppender{flushErr: tc.flushErr}
 			store := &MockLogStore{Appender: &appender}
-			callback, err := ConsumeCallback(slog.Default(), store, &NoOpPublisher{})
+			callback, err := ConsumeCallback(slog.Default(), store, &NoOpTransformer{}, &NoOpPublisher{})
 
 			require.NoError(t, err, "error creating consume callback")
 
@@ -652,9 +411,6 @@ func TestConsumeCallback(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
-
-			assert.Equal(t, tc.expectedAppends, appender.AppendCount)
-
 		})
 	}
 }
