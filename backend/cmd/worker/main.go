@@ -53,6 +53,7 @@ func run(ctx context.Context, w io.Writer) error {
 		slog.NewTextHandler(w, opt),
 	)
 	workerLogger := logger.With("component", "worker")
+	publishLogger := logger.With("component", "publisher")
 	natsLogger := logger.With("component", "nats")
 	pprofLogger := logger.With("component", "pprof")
 	dblogger := logger.With("component", "db")
@@ -98,12 +99,17 @@ func run(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("failed to create durable consumer: %w", err)
 	}
 
-	_, err = natsBroker.EnsureDLQStream(ctx, transport.DLQStreamName, transport.DLQSubject, config.NatsDLQMaxAge, int64(config.NatsDLQMaxBytes)) // set longer max age for debugging
+	_, err = natsBroker.EnsureDLQStream(ctx, transport.DLQStreamName, transport.DLQSubject, config.NatsDLQMaxAge, int64(config.NatsDLQMaxBytes))
 	if err != nil {
 		return fmt.Errorf("failed to ensure dlq stream: %w", err)
 	}
 
-	consumeCallback, err := worker.ConsumeCallback(workerLogger, store, natsBroker)
+	liveTailPublisher := worker.NewLiveTailPublisher(publishLogger, natsBroker, config.WorkerLiveTailCount, config.WorkerLiveTailQueueSize)
+	defer liveTailPublisher.Close()
+
+	flattener := worker.NewLogTransformer(logger)
+
+	consumeCallback, err := worker.ConsumeCallback(workerLogger, store, flattener, liveTailPublisher)
 	if err != nil {
 		return err
 	}

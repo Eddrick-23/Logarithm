@@ -65,13 +65,21 @@ func TestValidate(t *testing.T) {
 		WorkerMaxBatch:            1000,
 		WorkerMaxWait:             2 * time.Second,
 		WorkerBackoff:             []time.Duration{1 * time.Second},
+		WorkerLiveTailCount:       3,
+		WorkerLiveTailQueueSize:   10000,
 		SeedSystem:                false,
 		EnablePprof:               false,
 		PprofHost:                 "0.0.0.0",
 	}
 
-	invalidConfig := validConfig
-	invalidConfig.NatsConsumerMaxAckPending = 500
+	invalidConfigMaxAckPending := validConfig
+	invalidConfigMaxAckPending.NatsConsumerMaxAckPending = 500
+
+	invalidConfigLiveTailWorkers := validConfig
+	invalidConfigLiveTailWorkers.WorkerLiveTailCount = 0
+
+	invalidConfigLiveTailQueueSize := validConfig
+	invalidConfigLiveTailQueueSize.WorkerLiveTailQueueSize = 0
 	tests := []struct {
 		name          string
 		input         Config
@@ -84,7 +92,17 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			name:          "invalid config max ack pending too low",
-			input:         invalidConfig,
+			input:         invalidConfigMaxAckPending,
+			expectedError: true,
+		},
+		{
+			name:          "invalid config live tail workers",
+			input:         invalidConfigLiveTailWorkers,
+			expectedError: true,
+		},
+		{
+			name:          "invalid config live tail queue size",
+			input:         invalidConfigLiveTailQueueSize,
 			expectedError: true,
 		},
 	}

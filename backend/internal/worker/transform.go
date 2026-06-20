@@ -1,18 +1,53 @@
 package worker
 
 import (
+	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
+	"github.com/Eddrick-23/Logarithm/internal/transport"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
-func flattenLogs(resourceLogs plog.ResourceLogs, flatLogsByServiceName map[string][]core.FlatLogRecord, apppender storage.LogAppender) {
+// create Transformer interface
+type Transformer interface {
+	Flatten(resourceLogs plog.ResourceLogs, publisher Publisher, appender storage.LogAppender)
+}
+
+var _ Transformer = (*logTransformer)(nil)
+
+type logTransformer struct {
+	logger  *slog.Logger
+	bufPool sync.Pool
+}
+
+func NewLogTransformer(logger *slog.Logger) *logTransformer {
+	return &logTransformer{
+		logger: logger,
+		bufPool: sync.Pool{
+			New: newTransformBuffer,
+		},
+	}
+}
+
+// Flatten logs and dispatch to publisher for live tail and fills up appender during decoding
+//
+// Transformer will use its internal buffers to minimise memory usage if Flatten is called many times.
+func (t *logTransformer) Flatten(resourceLogs plog.ResourceLogs, publisher Publisher, appender storage.LogAppender) {
+	transBuf := t.bufPool.Get().(*transformBuffer)
+	defer func() { // prevent bloat if large log comes in
+		if cap(transBuf.logAttrKeys) > 200 || cap(transBuf.resAttrKeys) > 200 {
+			return
+		}
+		t.bufPool.Put(transBuf)
+	}()
+
+	transBuf.Reset()
+
 	serviceName := "unknown"
-	resAttrKeys := []string{}
-	resAttrValues := []string{}
 	nowNano := uint64(time.Now().UnixNano())
 
 	resourceLogs.Resource().Attributes().Range(func(k string, v pcommon.Value) bool {
@@ -21,8 +56,8 @@ func flattenLogs(resourceLogs plog.ResourceLogs, flatLogsByServiceName map[strin
 			serviceName = valStr
 		}
 
-		resAttrKeys = append(resAttrKeys, k)
-		resAttrValues = append(resAttrValues, valStr)
+		transBuf.resAttrKeys = append(transBuf.resAttrKeys, k)
+		transBuf.resAttrValues = append(transBuf.resAttrValues, valStr)
 		return true
 	})
 
@@ -33,12 +68,14 @@ func flattenLogs(resourceLogs plog.ResourceLogs, flatLogsByServiceName map[strin
 
 		for j := 0; j < scopeLogs.LogRecords().Len(); j++ {
 			logRecord := scopeLogs.LogRecords().At(j)
-			logAttrKeys := []string{}
-			logAttrValues := []string{}
+
+			// reset for every log record
+			transBuf.logAttrKeys = transBuf.logAttrKeys[:0]
+			transBuf.logAttrValues = transBuf.logAttrValues[:0]
 
 			logRecord.Attributes().Range(func(k string, v pcommon.Value) bool {
-				logAttrKeys = append(logAttrKeys, k)
-				logAttrValues = append(logAttrValues, v.AsString())
+				transBuf.logAttrKeys = append(transBuf.logAttrKeys, k)
+				transBuf.logAttrValues = append(transBuf.logAttrValues, v.AsString())
 				return true
 			})
 
@@ -47,42 +84,41 @@ func flattenLogs(resourceLogs plog.ResourceLogs, flatLogsByServiceName map[strin
 				observedTime = nowNano
 			}
 
-			eventTime := uint64(logRecord.Timestamp()) // want nanot time
+			eventTime := uint64(logRecord.Timestamp()) // want nano time
 			if eventTime == 0 {
 				eventTime = nowNano
 			}
 
-			flatRecord := core.FlatLogRecord{
-				Timestamp:         time.Unix(0, int64(eventTime)),
-				ObservedTimestamp: time.Unix(0, int64(observedTime)),
-				TraceId:           logRecord.TraceID().String(),
-				SpanId:            logRecord.SpanID().String(),
-				SeverityText:      logRecord.SeverityText(),
-				SeverityNumber:    uint8(logRecord.SeverityNumber()),
-				Body:              logRecord.Body().AsString(),
-				BodyType:          "string", // or find a way to extract the original body type?
+			transBuf.flatLogrecord.Timestamp = time.Unix(0, int64(eventTime))
+			transBuf.flatLogrecord.ObservedTimestamp = time.Unix(0, int64(observedTime))
+			transBuf.flatLogrecord.TraceId = logRecord.TraceID().String()
+			transBuf.flatLogrecord.SpanId = logRecord.SpanID().String()
+			transBuf.flatLogrecord.SeverityText = logRecord.SeverityText()
+			transBuf.flatLogrecord.SeverityNumber = uint8(logRecord.SeverityNumber())
+			transBuf.flatLogrecord.Body = logRecord.Body().AsString()
+			transBuf.flatLogrecord.BodyType = "string" // TODO see if there is need to extract original body type
+			transBuf.flatLogrecord.ServiceName = serviceName
+			transBuf.flatLogrecord.ScopeName = scopeName
+			transBuf.flatLogrecord.ScopeVersion = scopeVersion
+			transBuf.flatLogrecord.ResAttrKeys = transBuf.resAttrKeys
+			transBuf.flatLogrecord.ResAttrValues = transBuf.resAttrValues
+			transBuf.flatLogrecord.LogAttrKeys = transBuf.logAttrKeys
+			transBuf.flatLogrecord.LogAttrValues = transBuf.logAttrValues
 
-				ServiceName:  serviceName,
-				ScopeName:    scopeName,
-				ScopeVersion: scopeVersion,
-
-				ResAttrKeys:   resAttrKeys,
-				ResAttrValues: resAttrValues,
-				LogAttrKeys:   logAttrKeys,
-				LogAttrValues: logAttrValues,
+			if !publisher.Enqueue(transport.LiveTailSubjectPrefix+serviceName, &transBuf.flatLogrecord) {
+				t.logger.Warn("failed to enqueue log for live tail, queue full")
 			}
 
-			flatLogsByServiceName[serviceName] = append(flatLogsByServiceName[serviceName], flatRecord)
-			apppender.Append(
+			appender.Append(
 				time.Unix(0, int64(eventTime)),
 				time.Unix(0, int64(observedTime)),
 				uint8(logRecord.SeverityNumber()),
 				logRecord.TraceID(),
 				logRecord.SpanID(),
-				logAttrKeys,
-				logAttrValues,
-				resAttrKeys,
-				resAttrValues,
+				transBuf.logAttrKeys,
+				transBuf.logAttrValues,
+				transBuf.resAttrKeys,
+				transBuf.resAttrValues,
 				storage.LogFields{
 					ScopeName:    scopeName,
 					ScopeVersion: scopeVersion,
@@ -94,4 +130,30 @@ func flattenLogs(resourceLogs plog.ResourceLogs, flatLogsByServiceName map[strin
 			)
 		}
 	}
+}
+
+type transformBuffer struct {
+	flatLogrecord core.FlatLogRecord
+	resAttrKeys   []string
+	resAttrValues []string
+	logAttrKeys   []string
+	logAttrValues []string
+}
+
+func newTransformBuffer() any {
+	return &transformBuffer{
+		flatLogrecord: core.FlatLogRecord{},
+		resAttrKeys:   make([]string, 0, 10),
+		resAttrValues: make([]string, 0, 10),
+		logAttrKeys:   make([]string, 0, 10),
+		logAttrValues: make([]string, 0, 10),
+	}
+}
+
+func (t *transformBuffer) Reset() {
+	t.flatLogrecord = core.FlatLogRecord{}
+	t.resAttrKeys = t.resAttrKeys[:0]
+	t.resAttrValues = t.resAttrValues[:0]
+	t.logAttrKeys = t.logAttrKeys[:0]
+	t.logAttrValues = t.logAttrValues[:0]
 }
