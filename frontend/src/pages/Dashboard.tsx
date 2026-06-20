@@ -75,12 +75,12 @@ export default function Dashboard() {
             {/* Chart + Latency */}
             <Grid container spacing={2} sx={{ mb: 2, alignItems: "stretch" }}>
                 <Grid size="grow">
-                    <IngestionGraph data={data?.graph} isLoading={isLoading} isError={isError} refetch={refetch} />
+                    <IngestionGraph data={data?.graph} isLoading={isLoading} isError={isError} />
                 </Grid>
                 {/* for 1200px <= size < 1536px, size assigned is larger to fit the ServiceError without overflowing
                     for size >= 1536px, size assigned is smaller since there is sufficient space to fit ServiceError without overflowing */}
                 <Grid size={{ lg: 3.25, xl: 2.75 }}>
-                    <ServiceError refetch={refetch} />
+                    <ServiceError />
                 </Grid>
             </Grid>
 

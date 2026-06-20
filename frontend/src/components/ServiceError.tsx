@@ -2,7 +2,6 @@ import { Box, LinearProgress, Skeleton, Tooltip, Typography } from "@mui/materia
 import { card, sectionLabel } from "../theme/tokens";
 import { useTopServiceErrorsStats } from "../hooks/useMetrics";
 import type { TopServiceErrorsStats } from "../types/Metric";
-import ErrorBanner from "./ErrorBanner";
 import { formatNumber } from "../utils/utils";
 
 const NUM_SERVICES = 5;
@@ -22,10 +21,6 @@ interface ServiceErrorRowProps {
     serviceName: string;
     totalErrors: number;
     errorRate: number;
-}
-
-interface ServiceErrorProps {
-    refetch: () => void;
 }
 
 function ServiceErrorRow({ serviceName, totalErrors, errorRate }: ServiceErrorRowProps) {
@@ -66,7 +61,7 @@ function ServiceErrorRow({ serviceName, totalErrors, errorRate }: ServiceErrorRo
     );
 }
 
-export default function ServiceError({ refetch }: ServiceErrorProps) {
+export default function ServiceError() {
     const { data, isLoading, isError } = useTopServiceErrorsStats();
     return (
         <Box sx={{ ...card, height: "100%" }}>
@@ -84,13 +79,6 @@ export default function ServiceError({ refetch }: ServiceErrorProps) {
                     {Array.from({ length: NUM_SERVICES }).map((_, i) => (
                         <Skeleton key={i} variant="rectangular" height={36} sx={{ borderRadius: 1 }} />
                     ))}
-                </Box>
-            )}
-
-            {/* error handling */}
-            {isError && (
-                <Box sx={{ py: 3, textAlign: "center" }}>
-                    <ErrorBanner service="top service errors" handleReconnect={refetch} />
                 </Box>
             )}
 
