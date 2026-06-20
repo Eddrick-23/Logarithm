@@ -2,11 +2,11 @@ import { Box, Typography, Grid, Skeleton } from "@mui/material";
 import { card, sectionLabel, statValue } from "../theme/tokens";
 import { formatNumber } from "../utils/utils";
 import type { LogRateStatistics } from "../types/Metric";
+import { useErrorRateMetrics } from "../hooks/useMetrics";
 
 interface ServiceOverviewProps {
     data?: LogRateStatistics;
     isLoading: boolean;
-    errorRate: number;
     numOfLiveServices: number;
 }
 
@@ -39,12 +39,15 @@ function StatCard({
     );
 }
 
-export default function ServiceOverview({ data, isLoading, errorRate, numOfLiveServices }: ServiceOverviewProps) {
+export default function ServiceOverview({ data, isLoading, numOfLiveServices }: ServiceOverviewProps) {
+    const { data: errorRateMetrics } = useErrorRateMetrics();
+
     let logRate: string | number = 0;
     if (data?.currentRate !== undefined) {
         logRate = formatNumber(data.currentRate);
     }
 
+    // log rate conditional display
     let logDeltaText = "";
     let logDeltaColour = "text.secondary";
     if (data?.avgRate === 0) {
@@ -66,6 +69,29 @@ export default function ServiceOverview({ data, isLoading, errorRate, numOfLiveS
         }
     }
 
+    // error rate conditional display (convert fraction to percentage, bucket into severity)
+    // < 1%: normal
+    // < 5%: elevated
+    // otherwise: critical
+    let errorRateValue: string | number = "-";
+    let errorDeltaText = "—";
+    let errorDeltaColour = "text.secondary";
+    if (errorRateMetrics?.currentRate !== undefined) {
+        const ratePercent = errorRateMetrics.currentRate;
+        errorRateValue = ratePercent.toFixed(2);
+
+        if (ratePercent < 1) {
+            errorDeltaText = "● Normal";
+            errorDeltaColour = "success.main";
+        } else if (ratePercent < 5) {
+            errorDeltaText = "● Elevated";
+            errorDeltaColour = "warning.main";
+        } else {
+            errorDeltaText = "● Critical";
+            errorDeltaColour = "error.main";
+        }
+    }
+
     if (isLoading) {
         return (
             <Grid container spacing={2}>
@@ -84,7 +110,13 @@ export default function ServiceOverview({ data, isLoading, errorRate, numOfLiveS
                 <StatCard label="Logs / sec" value={logRate} delta={logDeltaText} deltaColor={logDeltaColour} />
             </Grid>
             <Grid size={4}>
-                <StatCard label="Error Rate" value={errorRate} unit="%" delta="● Normal" deltaColor="success.main" />
+                <StatCard
+                    label="Error Rate"
+                    value={errorRateValue}
+                    unit="%"
+                    delta={errorDeltaText}
+                    deltaColor={errorDeltaColour}
+                />
             </Grid>
             <Grid size={4}>
                 <StatCard

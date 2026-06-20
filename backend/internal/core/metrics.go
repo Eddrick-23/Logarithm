@@ -38,6 +38,10 @@ type IngestionMetricsEvent struct {
 	LogStats LogRateStatistics        `ch:"LogStats" json:"logStats"`
 }
 
+type ErrorRateMetrics struct {
+	CurrentRate float64 `ch:"CurrentRate" json:"currentRate"`
+}
+
 func NewIngestionMetricsMap(rows []IngestionMetrics) IngestionMetricsMap {
 	result := make(IngestionMetricsMap)
 	for _, row := range rows {
