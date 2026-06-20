@@ -7,7 +7,7 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 )
 
-type TailJob struct {
+type tailJob struct {
 	Subject string
 	Payload *[]byte
 }
@@ -20,12 +20,12 @@ type Publisher interface {
 	Enqueue(string, MsgMarshaler) bool
 }
 
-var _ Publisher = (*LiveTailPublisher)(nil)
+var _ Publisher = (*liveTailPublisher)(nil)
 
-type LiveTailPublisher struct {
+type liveTailPublisher struct {
 	logger   *slog.Logger
 	producer transport.Producer
-	jobChan  chan TailJob
+	jobChan  chan tailJob
 	bufPool  sync.Pool
 }
 
@@ -33,11 +33,11 @@ type LiveTailPublisher struct {
 //
 // Clients will enqueue subjects and messages that support the MsgMarshaller interface.
 // The publisher will handle efficient publishing to nats using workers and reusable buffers
-func NewLiveTailPublisher(logger *slog.Logger, producer transport.Producer, workers int, queueSize int) *LiveTailPublisher {
-	p := &LiveTailPublisher{
+func NewLiveTailPublisher(logger *slog.Logger, producer transport.Producer, workers int, queueSize int) *liveTailPublisher {
+	p := &liveTailPublisher{
 		logger:   logger,
 		producer: producer,
-		jobChan:  make(chan TailJob, queueSize),
+		jobChan:  make(chan tailJob, queueSize),
 		bufPool: sync.Pool{
 			New: func() any {
 				// prealloc reasonable size
@@ -54,7 +54,7 @@ func NewLiveTailPublisher(logger *slog.Logger, producer transport.Producer, work
 	return p
 }
 
-func (p *LiveTailPublisher) Close() {
+func (p *liveTailPublisher) Close() {
 	p.logger.Info("Stopping live tail workers")
 	close(p.jobChan)
 }
@@ -62,7 +62,7 @@ func (p *LiveTailPublisher) Close() {
 // Enqueue aborts and returns false if queue is full
 //
 // Caller may retry or simply drop the message
-func (p *LiveTailPublisher) Enqueue(subject string, m MsgMarshaler) bool {
+func (p *liveTailPublisher) Enqueue(subject string, m MsgMarshaler) bool {
 	bufPtr := p.bufPool.Get().(*[]byte)
 	buf := (*bufPtr)[:0]
 
@@ -74,7 +74,7 @@ func (p *LiveTailPublisher) Enqueue(subject string, m MsgMarshaler) bool {
 
 	*bufPtr = data // update underlying data incase buffer was reallocated
 
-	job := TailJob{
+	job := tailJob{
 		Subject: subject,
 		Payload: bufPtr,
 	}
@@ -94,7 +94,7 @@ func (p *LiveTailPublisher) Enqueue(subject string, m MsgMarshaler) bool {
 //
 // publish errors simply logged in a fire and forget manner
 // after publishing, buffer cleared and returned to pool for reuse
-func (p *LiveTailPublisher) worker() {
+func (p *liveTailPublisher) worker() {
 	for job := range p.jobChan {
 		if err := p.producer.PublishLiveTail(job.Subject, *job.Payload); err != nil {
 			p.logger.Error("failed to publish live tail", "err", err)
