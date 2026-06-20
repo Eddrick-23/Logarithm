@@ -47,7 +47,10 @@ export default function ServiceOverview({ data, isLoading, errorRate, numOfLiveS
 
     let logDeltaText = "";
     let logDeltaColour = "text.secondary";
-    if (data?.ratio !== undefined) {
+    if (data?.avgRate === 0) {
+        logDeltaText = "No logs in the last 1 min";
+        logDeltaColour = "error.main";
+    } else if (data?.ratio !== undefined) {
         const percentChange = (data.ratio - 1) * 100;
         const absChange = Math.abs(percentChange).toFixed(0);
 
