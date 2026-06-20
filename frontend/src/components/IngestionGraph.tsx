@@ -2,14 +2,12 @@ import { LineChart } from "@mui/x-charts/LineChart";
 import { useMemo, useState } from "react";
 import { Alert, Box, Checkbox, Chip, FormControlLabel, FormGroup, Skeleton, Stack, Typography } from "@mui/material";
 import { card, sectionLabel } from "../theme/tokens";
-import ErrorBanner from "./ErrorBanner";
 import type { IngestionGraphData } from "../types/Metric";
 
 interface IngestionGraphProps {
     data?: IngestionGraphData;
     isLoading: boolean;
     isError: boolean;
-    refetch: () => void;
 }
 
 const CHART_HEIGHT = 400;
@@ -17,7 +15,7 @@ const CHART_HEIGHT = 400;
 // automatically generates the colour based on golden angle formula
 const generateColour = (index: number) => `hsl(${(index * 137.5) % 360}, 70%, 50%)`;
 
-export default function IngestionGraph({ data, isLoading, isError, refetch }: IngestionGraphProps) {
+export default function IngestionGraph({ data, isLoading, isError }: IngestionGraphProps) {
     const [hiddenServices, setHiddenServices] = useState<Set<string>>(new Set());
 
     // use to store the service names in ascending order
@@ -116,9 +114,6 @@ export default function IngestionGraph({ data, isLoading, isError, refetch }: In
             {isLoading && (
                 <Skeleton variant="rectangular" width="100%" height={CHART_HEIGHT} sx={{ borderRadius: 2 }} />
             )}
-
-            {/* error banner */}
-            {!isLoading && isError && <ErrorBanner service="server" handleReconnect={refetch} />}
 
             {/* no logs received from api */}
             {isEmpty && (
