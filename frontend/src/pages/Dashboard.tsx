@@ -83,9 +83,6 @@ export default function Dashboard() {
                     <ServiceError />
                 </Grid>
             </Grid>
-
-            {/* Live logs */}
-            <LiveTailLogs />
         </Box>
     );
 }
