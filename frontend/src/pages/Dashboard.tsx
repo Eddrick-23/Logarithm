@@ -1,13 +1,27 @@
 import IngestionGraph from "../components/IngestionGraph";
-import { Grid, Box, Stack, Typography } from "@mui/material";
+import { Grid, Box, Stack, Typography, Button } from "@mui/material";
 import ServiceOverview from "../components/ServiceOverview";
 import ServiceError from "../components/ServiceError";
 import LiveTailLogs from "../components/LiveTailLogs";
 import { pulseSx } from "../theme/tokens";
 import { useIngestionMetrics } from "../hooks/useMetrics";
+import RefreshIcon from "@mui/icons-material/Refresh";
+
+const STATUS_CONFIG = {
+    live: { label: "LIVE", colour: "success.main" },
+    connecting: { label: "CONNECTING", colour: "warning.main" },
+    error: { label: "OFFLINE", colour: "error.main" },
+};
+
+function getStatus(isLoading: boolean, isError: boolean) {
+    if (isError) return STATUS_CONFIG.error;
+    if (isLoading) return STATUS_CONFIG.connecting;
+    return STATUS_CONFIG.live;
+}
 
 export default function Dashboard() {
     const { data, isLoading, isError, refetch } = useIngestionMetrics();
+    const status = getStatus(isLoading, isError);
 
     return (
         <Box sx={{ bgcolor: "background.default", minHeight: "100vh", p: 2 }}>
@@ -16,18 +30,40 @@ export default function Dashboard() {
                 <Typography sx={{ fontSize: 13, fontWeight: 600, letterSpacing: "0.04em", color: "text.secondary" }}>
                     SYSTEM OVERVIEW
                 </Typography>
-                <Stack direction="row" sx={{ alignItems: "center" }} spacing={1}>
-                    <Box sx={{ ...pulseSx, color: "success.main" }} />
-                    <Typography
-                        sx={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            letterSpacing: "0.1em",
-                            color: "text.disabled",
-                        }}
-                    >
-                        LIVE
-                    </Typography>
+                <Stack direction="row" sx={{ alignItems: "center" }} spacing={1.5}>
+                    {isError && (
+                        <Button
+                            size="small"
+                            onClick={() => refetch()}
+                            startIcon={<RefreshIcon sx={{ fontSize: 14 }} />}
+                            sx={{
+                                fontSize: 10,
+                                fontWeight: 700,
+                                letterSpacing: "0.06em",
+                                color: "error.main",
+                                py: 0.25,
+                                px: 1,
+                                minWidth: "auto",
+                                lineHeight: 1.4,
+                                "&:hover": { bgcolor: "error.main", color: "error.contrastText" },
+                            }}
+                        >
+                            RETRY
+                        </Button>
+                    )}
+                    <Stack direction="row" sx={{ alignItems: "center" }} spacing={1}>
+                        <Box sx={{ ...pulseSx, bgcolor: status.colour, color: status.colour }} />
+                        <Typography
+                            sx={{
+                                fontSize: 10,
+                                fontWeight: 700,
+                                letterSpacing: "0.1em",
+                                color: "text.disabled",
+                            }}
+                        >
+                            {status.label}
+                        </Typography>
+                    </Stack>
                 </Stack>
             </Stack>
 
