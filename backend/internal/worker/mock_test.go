@@ -72,6 +72,15 @@ func (m *MockProducer) PublishLiveTail(subject string, data []byte) error {
 	return nil
 }
 
+// MockDecompressor
+type MockDecompressor struct {
+	decompressError error
+}
+
+func (m *MockDecompressor) decompress(payload []byte, headers map[string][]string) ([]byte, func(), error) {
+	return payload, func() {}, m.decompressError
+}
+
 // MockMsg
 type MockMsg struct {
 	data []byte
@@ -107,6 +116,13 @@ func (m *MockTransformer) Flatten(resourceLogs plog.ResourceLogs, publisher Publ
 }
 
 // NoOp Mocks
+type NoOpDecompressor struct {
+}
+
+func (n *NoOpDecompressor) decompress(payload []byte, headers map[string][]string) ([]byte, func(), error) {
+	return nil, func() {}, nil
+}
+
 type NoOpAppender struct {
 }
 

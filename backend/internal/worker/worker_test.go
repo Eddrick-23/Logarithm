@@ -1,15 +1,12 @@
 package worker
 
 import (
-	"bytes"
-	"compress/gzip"
 	"fmt"
 	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/transport"
-	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -80,83 +77,6 @@ func newBaseRequest(t *testing.T) plogotlp.ExportRequest {
 	err := req.UnmarshalJSON([]byte(inputJSON))
 	require.NoError(t, err, "invalid inputJSON provided")
 	return req
-}
-
-func zstdCompress(t *testing.T, data []byte) []byte {
-	t.Helper()
-	var buf bytes.Buffer
-	w, err := zstd.NewWriter(&buf)
-	require.NoError(t, err)
-	_, err = w.Write(data)
-	require.NoError(t, err)
-	require.NoError(t, w.Close())
-	return buf.Bytes()
-}
-
-func gzipCompress(t *testing.T, data []byte) []byte {
-	t.Helper()
-
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-
-	_, err := gz.Write(data)
-	require.NoError(t, err)
-	require.NoError(t, gz.Close())
-	return buf.Bytes()
-}
-
-func TestDecompress(t *testing.T) {
-	tests := []struct {
-		name           string
-		message        transport.Message
-		expectedErr    bool
-		expectedResult []byte
-	}{
-		{
-			name:           "decompress zstd",
-			message:        makeMessages(t, [][]byte{zstdCompress(t, []byte("data"))}, map[string][]string{"Content-Encoding": {"zstd"}})[0],
-			expectedResult: []byte("data"),
-		},
-		{
-			name:           "decompress gzip",
-			message:        makeMessages(t, [][]byte{gzipCompress(t, []byte("data"))}, map[string][]string{"Content-Encoding": {"gzip"}})[0],
-			expectedResult: []byte("data"),
-		},
-		{
-			name:        "decompress zstd wrong encoding",
-			message:     makeMessages(t, [][]byte{zstdCompress(t, []byte("data"))}, map[string][]string{"Content-Encoding": {"gzip"}})[0],
-			expectedErr: true,
-		},
-		{
-			name:        "decompress gzip wrong encoding",
-			message:     makeMessages(t, [][]byte{gzipCompress(t, []byte("data"))}, map[string][]string{"Content-Encoding": {"zstd"}})[0],
-			expectedErr: true,
-		},
-		{
-			name:           "no header returns raw zstd data",
-			message:        makeMessages(t, [][]byte{zstdCompress(t, []byte("data"))}, nil)[0],
-			expectedResult: zstdCompress(t, []byte("data")),
-		},
-		{
-			name:           "no header returns raw gzip data",
-			message:        makeMessages(t, [][]byte{gzipCompress(t, []byte("data"))}, nil)[0],
-			expectedResult: gzipCompress(t, []byte("data")),
-		},
-	}
-
-	decompress, err := makeDecompressor()
-	require.NoError(t, err)
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			res, err := decompress(tc.message.Payload, tc.message.Headers)
-			if tc.expectedErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tc.expectedResult, res)
-			}
-		})
-	}
 }
 
 func TestDecode(t *testing.T) {
@@ -250,48 +170,13 @@ func TestDecode(t *testing.T) {
 	}
 }
 
-func makeMessages(t *testing.T, payloads [][]byte, headers map[string][]string) []transport.Message {
-	t.Helper()
-	msgs := make([]transport.Message, len(payloads))
-
-	for i, p := range payloads {
-		msgs[i] = transport.Message{
-			Payload: p,
-			Headers: headers,
-		}
-	}
-
-	return msgs
-}
-
-func makeHeaders(contentType string, contentEncoding string) map[string][]string {
-	headers := map[string][]string{}
-	if contentType != "" {
-		headers["Content-Type"] = []string{contentType}
-	}
-
-	if contentEncoding != "" {
-		headers["Content-Encoding"] = []string{contentEncoding}
-	}
-
-	return headers
-}
-
 func TestProcessMessages(t *testing.T) {
 	validReq := newBaseRequest(t)
-	validReqbytes, err := validReq.MarshalProto()
+	validReqBytes, err := validReq.MarshalProto()
 	require.NoError(t, err)
-
-	mockDecompressor := func(payload []byte, headers map[string][]string) ([]byte, error) {
-		return payload, nil
-	}
 
 	mockDecoder := func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
 		return &validReq, nil
-	}
-
-	mockDecompressorErr := func(payload []byte, headers map[string][]string) ([]byte, error) {
-		return payload, fmt.Errorf("decompress failed")
 	}
 
 	mockDecoderErr := func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
@@ -302,28 +187,28 @@ func TestProcessMessages(t *testing.T) {
 	tests := []struct {
 		name             string
 		messages         []transport.Message
-		decompressor     decompressFunc
+		decompressor     Decompressor
 		decoder          decoderFunc
 		expectedFlattens int
 	}{
 		{
 			name:             "successful process single message",
-			messages:         makeMessages(t, [][]byte{validReqbytes}, headers),
-			decompressor:     mockDecompressor,
+			messages:         makeMessages(t, [][]byte{validReqBytes}, headers),
+			decompressor:     &MockDecompressor{decompressError: nil},
 			decoder:          mockDecoder,
 			expectedFlattens: 1,
 		},
 		{
 			name:             "successful process multiple message",
-			messages:         makeMessages(t, [][]byte{validReqbytes, validReqbytes}, headers),
-			decompressor:     mockDecompressor,
+			messages:         makeMessages(t, [][]byte{validReqBytes, validReqBytes}, headers),
+			decompressor:     &MockDecompressor{decompressError: nil},
 			decoder:          mockDecoder,
 			expectedFlattens: 2,
 		},
 		{
 			name:         "mixed batch one failure one success",
-			messages:     makeMessages(t, [][]byte{validReqbytes, []byte("bad-data")}, headers),
-			decompressor: mockDecompressor,
+			messages:     makeMessages(t, [][]byte{validReqBytes, []byte("bad-data")}, headers),
+			decompressor: &MockDecompressor{decompressError: nil},
 			decoder: func(b []byte, m map[string][]string) (*plogotlp.ExportRequest, error) {
 				if string(b) == "bad-data" {
 					return nil, fmt.Errorf("decode failed")
@@ -335,21 +220,21 @@ func TestProcessMessages(t *testing.T) {
 		{
 			name:             "empty messages",
 			messages:         makeMessages(t, [][]byte{}, headers),
-			decompressor:     mockDecompressor,
+			decompressor:     &MockDecompressor{decompressError: nil},
 			decoder:          mockDecoder,
 			expectedFlattens: 0,
 		},
 		{
 			name:             "decompress failure",
-			messages:         makeMessages(t, [][]byte{validReqbytes}, headers),
-			decompressor:     mockDecompressorErr,
+			messages:         makeMessages(t, [][]byte{validReqBytes}, headers),
+			decompressor:     &MockDecompressor{decompressError: fmt.Errorf("decompress error")},
 			decoder:          mockDecoder,
 			expectedFlattens: 0,
 		},
 		{
 			name:             "decode failure",
-			messages:         makeMessages(t, [][]byte{validReqbytes}, headers),
-			decompressor:     mockDecompressor,
+			messages:         makeMessages(t, [][]byte{validReqBytes}, headers),
+			decompressor:     &MockDecompressor{decompressError: nil},
 			decoder:          mockDecoderErr,
 			expectedFlattens: 0,
 		},
@@ -400,7 +285,7 @@ func TestConsumeCallback(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			appender := MockLogAppender{flushErr: tc.flushErr}
 			store := &MockLogStore{Appender: &appender}
-			callback, err := ConsumeCallback(slog.Default(), store, &NoOpTransformer{}, &NoOpPublisher{})
+			callback, err := ConsumeCallback(slog.Default(), store, &NoOpDecompressor{}, &NoOpTransformer{}, &NoOpPublisher{})
 
 			require.NoError(t, err, "error creating consume callback")
 
