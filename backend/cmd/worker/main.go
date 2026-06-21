@@ -104,12 +104,17 @@ func run(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("failed to ensure dlq stream: %w", err)
 	}
 
+	decompressor, err := worker.NewLogDecompressor()
+	if err != nil {
+		return fmt.Errorf("failed to create log decompressor: %w", err)
+	}
+
 	liveTailPublisher := worker.NewLiveTailPublisher(publishLogger, natsBroker, config.WorkerLiveTailCount, config.WorkerLiveTailQueueSize)
 	defer liveTailPublisher.Close()
 
 	flattener := worker.NewLogTransformer(logger)
 
-	consumeCallback, err := worker.ConsumeCallback(workerLogger, store, flattener, liveTailPublisher)
+	consumeCallback, err := worker.ConsumeCallback(workerLogger, store, decompressor, flattener, liveTailPublisher)
 	if err != nil {
 		return err
 	}

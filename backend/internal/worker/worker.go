@@ -26,12 +26,7 @@ type decoderFunc func([]byte, map[string][]string) (*plogotlp.ExportRequest, err
 // live-tail stream on a file and forget basis, and bulk inserted into storage.
 // Storage insertion failures are returned; live-tail publish failures are
 // logged and ignored.
-func ConsumeCallback(logger *slog.Logger, store storage.LogStore, transformer Transformer, publisher Publisher) (func([]transport.Message) error, error) {
-	decompressor, err := makeDecompressor()
-	if err != nil {
-		return nil, err
-	}
-
+func ConsumeCallback(logger *slog.Logger, store storage.LogStore, decompressor Decompressor, transformer Transformer, publisher Publisher) (func([]transport.Message) error, error) {
 	decoder := makeDecoder()
 	return func(messages []transport.Message) error {
 		if len(messages) == 0 {
@@ -48,11 +43,11 @@ func ConsumeCallback(logger *slog.Logger, store storage.LogStore, transformer Tr
 	}, nil
 }
 
-func processMessages(logger *slog.Logger, decompressor decompressFunc, decoder decoderFunc, messages []transport.Message,
+func processMessages(logger *slog.Logger, decompressor Decompressor, decoder decoderFunc, messages []transport.Message,
 	transformer Transformer, publisher Publisher, appender storage.LogAppender) {
 
 	for _, msg := range messages {
-		decompressedPayload, err := decompressor(msg.Payload, msg.Headers)
+		decompressedPayload, cleanup, err := decompressor.decompress(msg.Payload, msg.Headers)
 		if err != nil {
 			logger.Error("dropped log payload due to decompress error", "err", err)
 			continue
@@ -61,8 +56,10 @@ func processMessages(logger *slog.Logger, decompressor decompressFunc, decoder d
 		req, err := decoder(decompressedPayload, msg.Headers)
 		if err != nil {
 			logger.Error("dropped malformed log payload", "err", err)
+			cleanup()
 			continue
 		}
+		cleanup()
 
 		logs := req.Logs()
 		for i := 0; i < logs.ResourceLogs().Len(); i++ {
@@ -71,6 +68,7 @@ func processMessages(logger *slog.Logger, decompressor decompressFunc, decoder d
 	}
 }
 
+// TODO remove after integrating decompressor interface
 func makeDecoder() func([]byte, map[string][]string) (*plogotlp.ExportRequest, error) {
 	return func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
 		req := plogotlp.NewExportRequest()
