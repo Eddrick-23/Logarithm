@@ -2,7 +2,6 @@ import IngestionGraph from "../components/IngestionGraph";
 import { Grid, Box, Stack, Typography, Button } from "@mui/material";
 import ServiceOverview from "../components/ServiceOverview";
 import ServiceError from "../components/ServiceError";
-import LiveTailLogs from "../components/LiveTailLogs";
 import { pulseSx } from "../theme/tokens";
 import { useIngestionMetrics } from "../hooks/useMetrics";
 import RefreshIcon from "@mui/icons-material/Refresh";
