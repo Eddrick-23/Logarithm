@@ -81,7 +81,7 @@ func (d *LogDecompressor) decompress(payload []byte, headers map[string][]string
 	}
 
 	cleanup := func() {
-		*bufPtr = buf // update pointer incase underlying buffer grew
+		*bufPtr = buf // update pointer in case underlying buffer grew
 		d.bufPool.Put(bufPtr)
 
 	}

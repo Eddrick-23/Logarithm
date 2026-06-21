@@ -17,15 +17,15 @@ type Transformer interface {
 	Flatten(resourceLogs plog.ResourceLogs, publisher Publisher, appender storage.LogAppender)
 }
 
-var _ Transformer = (*logTransformer)(nil)
+var _ Transformer = (*LogTransformer)(nil)
 
-type logTransformer struct {
+type LogTransformer struct {
 	logger  *slog.Logger
 	bufPool sync.Pool
 }
 
-func NewLogTransformer(logger *slog.Logger) *logTransformer {
-	return &logTransformer{
+func NewLogTransformer(logger *slog.Logger) *LogTransformer {
+	return &LogTransformer{
 		logger: logger,
 		bufPool: sync.Pool{
 			New: newTransformBuffer,
@@ -36,7 +36,7 @@ func NewLogTransformer(logger *slog.Logger) *logTransformer {
 // Flatten logs and dispatch to publisher for live tail and fills up appender during decoding
 //
 // Transformer will use its internal buffers to minimise memory usage if Flatten is called many times.
-func (t *logTransformer) Flatten(resourceLogs plog.ResourceLogs, publisher Publisher, appender storage.LogAppender) {
+func (t *LogTransformer) Flatten(resourceLogs plog.ResourceLogs, publisher Publisher, appender storage.LogAppender) {
 	transBuf := t.bufPool.Get().(*transformBuffer)
 	defer func() { // prevent bloat if large log comes in
 		if cap(transBuf.logAttrKeys) > 200 || cap(transBuf.resAttrKeys) > 200 {

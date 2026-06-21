@@ -20,9 +20,9 @@ type Publisher interface {
 	Enqueue(string, MsgMarshaler) bool
 }
 
-var _ Publisher = (*liveTailPublisher)(nil)
+var _ Publisher = (*LiveTailPublisher)(nil)
 
-type liveTailPublisher struct {
+type LiveTailPublisher struct {
 	logger   *slog.Logger
 	producer transport.Producer
 	jobChan  chan tailJob
@@ -33,8 +33,8 @@ type liveTailPublisher struct {
 //
 // Clients will enqueue subjects and messages that support the MsgMarshaller interface.
 // The publisher will handle efficient publishing to nats using workers and reusable buffers
-func NewLiveTailPublisher(logger *slog.Logger, producer transport.Producer, workers int, queueSize int) *liveTailPublisher {
-	p := &liveTailPublisher{
+func NewLiveTailPublisher(logger *slog.Logger, producer transport.Producer, workers int, queueSize int) *LiveTailPublisher {
+	p := &LiveTailPublisher{
 		logger:   logger,
 		producer: producer,
 		jobChan:  make(chan tailJob, queueSize),
@@ -54,7 +54,7 @@ func NewLiveTailPublisher(logger *slog.Logger, producer transport.Producer, work
 	return p
 }
 
-func (p *liveTailPublisher) Close() {
+func (p *LiveTailPublisher) Close() {
 	p.logger.Info("Stopping live tail workers")
 	close(p.jobChan)
 }
@@ -62,7 +62,7 @@ func (p *liveTailPublisher) Close() {
 // Enqueue aborts and returns false if queue is full
 //
 // Caller may retry or simply drop the message
-func (p *liveTailPublisher) Enqueue(subject string, m MsgMarshaler) bool {
+func (p *LiveTailPublisher) Enqueue(subject string, m MsgMarshaler) bool {
 	bufPtr := p.bufPool.Get().(*[]byte)
 	buf := (*bufPtr)[:0]
 
@@ -94,7 +94,7 @@ func (p *liveTailPublisher) Enqueue(subject string, m MsgMarshaler) bool {
 //
 // publish errors simply logged in a fire and forget manner
 // after publishing, buffer cleared and returned to pool for reuse
-func (p *liveTailPublisher) worker() {
+func (p *LiveTailPublisher) worker() {
 	for job := range p.jobChan {
 		if err := p.producer.PublishLiveTail(job.Subject, *job.Payload); err != nil {
 			p.logger.Error("failed to publish live tail", "err", err)
