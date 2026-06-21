@@ -79,7 +79,12 @@ export default function Dashboard() {
             {/* Chart + Latency */}
             <Grid container spacing={2} sx={{ mb: 2, alignItems: "stretch" }}>
                 <Grid size="grow">
-                    <IngestionGraph data={data?.graph} isLoading={isLoading} isError={isError} />
+                    <IngestionGraph
+                        data={data?.graph}
+                        isLoading={isLoading}
+                        isError={isError}
+                        lastUpdatedAt={logRateUpdatedAt}
+                    />
                 </Grid>
                 {/* for 1200px <= size < 1536px, size assigned is larger to fit the ServiceError without overflowing
                     for size >= 1536px, size assigned is smaller since there is sufficient space to fit ServiceError without overflowing */}

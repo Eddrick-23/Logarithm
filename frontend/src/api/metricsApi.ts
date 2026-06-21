@@ -7,6 +7,7 @@ import type {
 } from "../types/Metric";
 
 export const LOG_RATE_METRICS_REFETCH_INTERVAL_MS = 5_000;
+export const INGESTION_GRAPH_REFETCH_INTERVAL_MS = 5_000;
 export const ERROR_RATE_METRICS_REFETCH_INTERVAL_MS = 15_000;
 export const TOP_SERVICE_ERRORS_STATS_REFETCH_INTERVAL_MS = 30_000;
 
