@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/core"
+	"github.com/stretchr/testify/require"
 )
 
 var testRecord core.FlatLogRecord = core.FlatLogRecord{
@@ -46,5 +47,37 @@ func BenchmarkLiveTailPublisher(b *testing.B) {
 
 	for b.Loop() {
 		pub.Enqueue("test-subject", &testRecord)
+	}
+}
+
+func BenchmarkDecompressorZstd(b *testing.B) {
+	decompressor, err := NewLogDecompressor()
+	require.NoError(b, err)
+	zstdPayload := zstdCompress(b, []byte("sample payload"))
+	headers := makeHeaders("", "zstd")
+
+	b.ReportAllocs()
+	for b.Loop() {
+		_, cleanup, err := decompressor.decompress(zstdPayload, headers)
+		if err != nil {
+			b.Fatal(err)
+		}
+		cleanup()
+	}
+}
+
+func BenchmarkDecompressorGzip(b *testing.B) {
+	decompressor, err := NewLogDecompressor()
+	require.NoError(b, err)
+	gzipPayload := gzipCompress(b, []byte("sample payload"))
+	headers := makeHeaders("", "gzip")
+
+	b.ReportAllocs()
+	for b.Loop() {
+		_, cleanup, err := decompressor.decompress(gzipPayload, headers)
+		if err != nil {
+			b.Fatal(err)
+		}
+		cleanup()
 	}
 }

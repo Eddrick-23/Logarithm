@@ -10,26 +10,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func zstdCompress(t *testing.T, data []byte) []byte {
-	t.Helper()
+func zstdCompress(tb testing.TB, data []byte) []byte {
+	tb.Helper()
 	var buf bytes.Buffer
 	w, err := zstd.NewWriter(&buf)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	_, err = w.Write(data)
-	require.NoError(t, err)
-	require.NoError(t, w.Close())
+	require.NoError(tb, err)
+	require.NoError(tb, w.Close())
 	return buf.Bytes()
 }
 
-func gzipCompress(t *testing.T, data []byte) []byte {
-	t.Helper()
+func gzipCompress(tb testing.TB, data []byte) []byte {
+	tb.Helper()
 
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 
 	_, err := gz.Write(data)
-	require.NoError(t, err)
-	require.NoError(t, gz.Close())
+	require.NoError(tb, err)
+	require.NoError(tb, gz.Close())
 	return buf.Bytes()
 }
 
