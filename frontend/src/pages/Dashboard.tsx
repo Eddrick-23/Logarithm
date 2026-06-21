@@ -2,7 +2,6 @@ import IngestionGraph from "../components/IngestionGraph";
 import { Grid, Box, Stack, Typography, Button } from "@mui/material";
 import ServiceOverview from "../components/ServiceOverview";
 import ServiceError from "../components/ServiceError";
-import LiveTailLogs from "../components/LiveTailLogs";
 import { pulseSx } from "../theme/tokens";
 import { useIngestionMetrics } from "../hooks/useMetrics";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -20,7 +19,7 @@ function getStatus(isLoading: boolean, isError: boolean) {
 }
 
 export default function Dashboard() {
-    const { data, isLoading, isError, refetch } = useIngestionMetrics();
+    const { data, isLoading, isError, refetch, dataUpdatedAt: logRateUpdatedAt } = useIngestionMetrics();
     const status = getStatus(isLoading, isError);
 
     return (
@@ -69,7 +68,12 @@ export default function Dashboard() {
 
             {/* Stat cards */}
             <Box sx={{ mb: 2 }}>
-                <ServiceOverview data={data?.logStats} isLoading={isLoading} numOfLiveServices={7} />
+                <ServiceOverview
+                    data={data?.logStats}
+                    isLoading={isLoading}
+                    numOfLiveServices={7}
+                    logRateUpdatedAt={logRateUpdatedAt}
+                />
             </Box>
 
             {/* Chart + Latency */}

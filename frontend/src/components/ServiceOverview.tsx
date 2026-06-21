@@ -1,13 +1,16 @@
-import { Box, Typography, Grid, Skeleton } from "@mui/material";
+import { Box, Typography, Grid, Skeleton, Tooltip } from "@mui/material";
 import { card, sectionLabel, statValue } from "../theme/tokens";
-import { formatNumber } from "../utils/utils";
+import { formatInterval, formatNumber } from "../utils/utils";
 import type { LogRateStatistics } from "../types/Metric";
 import { useErrorRateMetrics } from "../hooks/useMetrics";
+import { ERROR_RATE_METRICS_REFETCH_INTERVAL_MS, LOG_RATE_METRICS_REFETCH_INTERVAL_MS } from "../api/metricsApi";
+import { useRelativeTime } from "../hooks/useRelativeTime";
 
 interface ServiceOverviewProps {
     data?: LogRateStatistics;
     isLoading: boolean;
     numOfLiveServices: number;
+    logRateUpdatedAt: number;
 }
 
 function StatCard({
@@ -16,13 +19,20 @@ function StatCard({
     unit,
     delta,
     deltaColor = "text.secondary",
+    lastUpdated,
+    refetchIntervalMs,
 }: {
     label: string;
     value: string | number;
     unit?: string;
     delta: string;
     deltaColor?: string;
+    lastUpdated: number;
+    refetchIntervalMs: number;
 }) {
+    const relativeTime = useRelativeTime(lastUpdated, 2);
+    const intervalLabel = formatInterval(refetchIntervalMs);
+
     return (
         <Box sx={card}>
             <Typography sx={sectionLabel}>{label}</Typography>
@@ -35,12 +45,28 @@ function StatCard({
                 )}
             </Typography>
             <Typography sx={{ fontSize: 13, fontWeight: 500, color: deltaColor }}>{delta}</Typography>
+            {relativeTime && (
+                <Tooltip
+                    title={lastUpdated ? "Last updated at " + new Date(lastUpdated).toLocaleTimeString() : ""}
+                    placement="bottom-start"
+                >
+                    <Typography sx={{ fontSize: 11, color: "text.disabled", mt: 0.5 }}>
+                        Updated {relativeTime}
+                        {intervalLabel && ` · every ${intervalLabel}`}
+                    </Typography>
+                </Tooltip>
+            )}
         </Box>
     );
 }
 
-export default function ServiceOverview({ data, isLoading, numOfLiveServices }: ServiceOverviewProps) {
-    const { data: errorRateMetrics } = useErrorRateMetrics();
+export default function ServiceOverview({
+    data,
+    isLoading,
+    numOfLiveServices,
+    logRateUpdatedAt,
+}: ServiceOverviewProps) {
+    const { data: errorRateMetrics, dataUpdatedAt: errorRateMetricsUpdatedAt } = useErrorRateMetrics();
 
     let logRate: string | number = 0;
     if (data?.currentRate !== undefined) {
@@ -69,7 +95,7 @@ export default function ServiceOverview({ data, isLoading, numOfLiveServices }: 
         }
     }
 
-    // error rate conditional display (convert fraction to percentage, bucket into severity)
+    // error rate conditional display (bucket into severity)
     // < 1%: normal
     // < 5%: elevated
     // otherwise: critical
@@ -107,7 +133,14 @@ export default function ServiceOverview({ data, isLoading, numOfLiveServices }: 
     return (
         <Grid container spacing={2}>
             <Grid size={4}>
-                <StatCard label="Logs / sec" value={logRate} delta={logDeltaText} deltaColor={logDeltaColour} />
+                <StatCard
+                    label="Logs / sec"
+                    value={logRate}
+                    delta={logDeltaText}
+                    deltaColor={logDeltaColour}
+                    lastUpdated={logRateUpdatedAt}
+                    refetchIntervalMs={LOG_RATE_METRICS_REFETCH_INTERVAL_MS}
+                />
             </Grid>
             <Grid size={4}>
                 <StatCard
@@ -116,6 +149,8 @@ export default function ServiceOverview({ data, isLoading, numOfLiveServices }: 
                     unit="%"
                     delta={errorDeltaText}
                     deltaColor={errorDeltaColour}
+                    lastUpdated={errorRateMetricsUpdatedAt}
+                    refetchIntervalMs={ERROR_RATE_METRICS_REFETCH_INTERVAL_MS}
                 />
             </Grid>
             <Grid size={4}>
@@ -125,6 +160,8 @@ export default function ServiceOverview({ data, isLoading, numOfLiveServices }: 
                     unit=" live"
                     delta="All healthy"
                     deltaColor="success.main"
+                    lastUpdated={1} // TODO: update last updated
+                    refetchIntervalMs={1} // TODO: update refetch interval
                 />
             </Grid>
         </Grid>
