@@ -1,18 +1,14 @@
 package worker
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
-	"github.com/klauspost/compress/zstd"
 
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
@@ -68,7 +64,6 @@ func processMessages(logger *slog.Logger, decompressor Decompressor, decoder dec
 	}
 }
 
-// TODO remove after integrating decompressor interface
 func makeDecoder() func([]byte, map[string][]string) (*plogotlp.ExportRequest, error) {
 	return func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
 		req := plogotlp.NewExportRequest()
@@ -94,33 +89,6 @@ func makeDecoder() func([]byte, map[string][]string) (*plogotlp.ExportRequest, e
 
 		return nil, fmt.Errorf("unsupported or missing content type: %s", contentType)
 	}
-}
-
-func makeDecompressor() (func([]byte, map[string][]string) ([]byte, error), error) {
-	zstdDecoder, err := zstd.NewReader(nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to init zstd decoder: %w", err)
-	}
-	return func(payload []byte, headers map[string][]string) ([]byte, error) {
-		encoding := ""
-		if vals, ok := headers["Content-Encoding"]; ok && len(vals) > 0 {
-			encoding = vals[0]
-		}
-
-		switch encoding {
-		case "zstd":
-			return zstdDecoder.DecodeAll(payload, nil)
-		case "gzip":
-			reader, err := gzip.NewReader(bytes.NewReader(payload))
-			if err != nil {
-				return nil, err
-			}
-			defer reader.Close()
-			return io.ReadAll(reader)
-		default:
-			return payload, nil
-		}
-	}, nil
 }
 
 func DLQCallback(producer transport.Producer, subject string) func([]byte, map[string][]string) error {
