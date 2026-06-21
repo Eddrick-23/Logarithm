@@ -13,7 +13,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
 
-type decompressFunc func([]byte, map[string][]string) ([]byte, error)
 type decoderFunc func([]byte, map[string][]string) (*plogotlp.ExportRequest, error)
 
 // ConsumeCallback returns the message handler used by the log consumer.
