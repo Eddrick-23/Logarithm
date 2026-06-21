@@ -1,10 +1,10 @@
-import { Box, Typography, Grid, Skeleton, Tooltip } from "@mui/material";
+import { Box, Typography, Grid, Skeleton } from "@mui/material";
 import { card, sectionLabel, statValue } from "../theme/tokens";
-import { formatInterval, formatNumber } from "../utils/utils";
+import { formatNumber } from "../utils/utils";
 import type { LogRateStatistics } from "../types/Metric";
 import { useErrorRateMetrics } from "../hooks/useMetrics";
 import { ERROR_RATE_METRICS_REFETCH_INTERVAL_MS, LOG_RATE_METRICS_REFETCH_INTERVAL_MS } from "../api/metricsApi";
-import { useRelativeTime } from "../hooks/useRelativeTime";
+import { LastUpdated } from "./LastUpdated";
 
 interface ServiceOverviewProps {
     data?: LogRateStatistics;
@@ -30,9 +30,6 @@ function StatCard({
     lastUpdated: number;
     refetchIntervalMs: number;
 }) {
-    const relativeTime = useRelativeTime(lastUpdated, 2);
-    const intervalLabel = formatInterval(refetchIntervalMs);
-
     return (
         <Box sx={card}>
             <Typography sx={sectionLabel}>{label}</Typography>
@@ -45,17 +42,9 @@ function StatCard({
                 )}
             </Typography>
             <Typography sx={{ fontSize: 13, fontWeight: 500, color: deltaColor }}>{delta}</Typography>
-            {relativeTime && (
-                <Tooltip
-                    title={lastUpdated ? "Last updated at " + new Date(lastUpdated).toLocaleTimeString() : ""}
-                    placement="bottom-start"
-                >
-                    <Typography sx={{ fontSize: 11, color: "text.disabled", mt: 0.5 }}>
-                        Updated {relativeTime}
-                        {intervalLabel && ` · every ${intervalLabel}`}
-                    </Typography>
-                </Tooltip>
-            )}
+
+            {/* last updated display with refetch interval */}
+            <LastUpdated timestamp={lastUpdated} refreshIntervalMs={refetchIntervalMs} />
         </Box>
     );
 }

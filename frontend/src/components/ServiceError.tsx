@@ -2,9 +2,9 @@ import { Box, LinearProgress, Skeleton, Tooltip, Typography } from "@mui/materia
 import { card, sectionLabel } from "../theme/tokens";
 import { useTopServiceErrorsStats } from "../hooks/useMetrics";
 import type { TopServiceErrorsStats } from "../types/Metric";
-import { formatInterval, formatNumber } from "../utils/utils";
-import { useRelativeTime } from "../hooks/useRelativeTime";
+import { formatNumber } from "../utils/utils";
 import { TOP_SERVICE_ERRORS_STATS_REFETCH_INTERVAL_MS } from "../api/metricsApi";
+import { LastUpdated } from "./LastUpdated";
 
 const NUM_SERVICES = 5;
 const SEVERITY_THRESHOLDS = [
@@ -65,8 +65,6 @@ function ServiceErrorRow({ serviceName, totalErrors, errorRate }: ServiceErrorRo
 
 export default function ServiceError() {
     const { data, isLoading, isError, dataUpdatedAt } = useTopServiceErrorsStats();
-    const relativeTime = useRelativeTime(dataUpdatedAt);
-    const intervalLabel = formatInterval(TOP_SERVICE_ERRORS_STATS_REFETCH_INTERVAL_MS);
 
     return (
         <Box sx={{ ...card, height: "100%" }}>
@@ -78,17 +76,8 @@ export default function ServiceError() {
                 </Typography>
             </Box>
 
-            {relativeTime && (
-                <Tooltip
-                    title={dataUpdatedAt ? "Last updated at " + new Date(dataUpdatedAt).toLocaleTimeString() : ""}
-                    placement="bottom-start"
-                >
-                    <Typography sx={{ fontSize: "0.75rem", color: "#8b949e", cursor: "default", mb: 1 }}>
-                        Updated {relativeTime}
-                        {intervalLabel && ` · every ${intervalLabel}`}
-                    </Typography>
-                </Tooltip>
-            )}
+            {/* last updated display with refetch interval */}
+            <LastUpdated timestamp={dataUpdatedAt} refreshIntervalMs={TOP_SERVICE_ERRORS_STATS_REFETCH_INTERVAL_MS} />
 
             {/* create loading skeleton bars to simulate loading service errors */}
             {isLoading && (
