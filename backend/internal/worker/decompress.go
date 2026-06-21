@@ -79,7 +79,7 @@ func (d *LogDecompressor) decompress(payload []byte, headers map[string][]string
 	case "gzip":
 		return d.decompressGzip(payload)
 	default:
-		return payload, func() {}, nil
+		return payload, func() {}, fmt.Errorf("unsupported encoding")
 	}
 }
 

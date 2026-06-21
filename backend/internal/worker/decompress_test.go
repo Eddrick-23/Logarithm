@@ -17,22 +17,22 @@ func TestDecompressor(t *testing.T) {
 	}{
 		{
 			name:           "decompress zstd",
-			message:        makeMessages(t, [][]byte{zstdCompress(t, []byte("data"))}, map[string][]string{"Content-Encoding": {"zstd"}})[0],
+			message:        makeMessages(t, [][]byte{zstdCompress(t, []byte("data"))}, makeHeaders("", "zstd"))[0],
 			expectedResult: []byte("data"),
 		},
 		{
 			name:           "decompress gzip",
-			message:        makeMessages(t, [][]byte{gzipCompress(t, []byte("data"))}, map[string][]string{"Content-Encoding": {"gzip"}})[0],
+			message:        makeMessages(t, [][]byte{gzipCompress(t, []byte("data"))}, makeHeaders("", "gzip"))[0],
 			expectedResult: []byte("data"),
 		},
 		{
 			name:        "decompress zstd wrong encoding",
-			message:     makeMessages(t, [][]byte{zstdCompress(t, []byte("data"))}, map[string][]string{"Content-Encoding": {"gzip"}})[0],
+			message:     makeMessages(t, [][]byte{zstdCompress(t, []byte("data"))}, makeHeaders("", "gzip"))[0],
 			expectedErr: true,
 		},
 		{
 			name:        "decompress gzip wrong encoding",
-			message:     makeMessages(t, [][]byte{gzipCompress(t, []byte("data"))}, map[string][]string{"Content-Encoding": {"zstd"}})[0],
+			message:     makeMessages(t, [][]byte{gzipCompress(t, []byte("data"))}, makeHeaders("", "zstd"))[0],
 			expectedErr: true,
 		},
 		{
@@ -44,6 +44,11 @@ func TestDecompressor(t *testing.T) {
 			name:           "no header returns raw gzip data",
 			message:        makeMessages(t, [][]byte{gzipCompress(t, []byte("data"))}, nil)[0],
 			expectedResult: gzipCompress(t, []byte("data")),
+		},
+		{
+			name:        "unsupported encoding returns error",
+			message:     makeMessages(t, [][]byte{gzipCompress(t, []byte("data"))}, makeHeaders("", "unsupported"))[0],
+			expectedErr: true,
 		},
 	}
 
