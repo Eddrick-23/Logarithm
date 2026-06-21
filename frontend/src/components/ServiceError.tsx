@@ -3,6 +3,8 @@ import { card, sectionLabel } from "../theme/tokens";
 import { useTopServiceErrorsStats } from "../hooks/useMetrics";
 import type { TopServiceErrorsStats } from "../types/Metric";
 import { formatNumber } from "../utils/utils";
+import { TOP_SERVICE_ERRORS_STATS_REFETCH_INTERVAL_MS } from "../api/metricsApi";
+import { LastUpdated } from "./LastUpdated";
 
 const NUM_SERVICES = 5;
 const SEVERITY_THRESHOLDS = [
@@ -62,7 +64,8 @@ function ServiceErrorRow({ serviceName, totalErrors, errorRate }: ServiceErrorRo
 }
 
 export default function ServiceError() {
-    const { data, isLoading, isError } = useTopServiceErrorsStats();
+    const { data, isLoading, isError, dataUpdatedAt } = useTopServiceErrorsStats();
+
     return (
         <Box sx={{ ...card, height: "100%" }}>
             {/* header */}
@@ -72,6 +75,9 @@ export default function ServiceError() {
                     last 1h
                 </Typography>
             </Box>
+
+            {/* last updated display with refetch interval */}
+            <LastUpdated timestamp={dataUpdatedAt} refreshIntervalMs={TOP_SERVICE_ERRORS_STATS_REFETCH_INTERVAL_MS} />
 
             {/* create loading skeleton bars to simulate loading service errors */}
             {isLoading && (
