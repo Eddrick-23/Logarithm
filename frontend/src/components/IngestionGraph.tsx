@@ -79,7 +79,7 @@ export default function IngestionGraph({ data, isLoading, isError, lastUpdatedAt
 
             {/* filters to choose which services to track on ingestion graph */}
             {!isLoading && services.length > 0 && (
-                <Box sx={{ mb: 2 }}>
+                <Box sx={{ my: 2 }}>
                     <Stack direction="row" sx={{ flexWrap: "wrap", gap: 2.5, alignItems: "center" }}>
                         <Chip
                             label="All"
