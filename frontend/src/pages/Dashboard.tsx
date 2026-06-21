@@ -23,7 +23,7 @@ export default function Dashboard() {
     const status = getStatus(isLoading, isError);
 
     return (
-        <Box sx={{ bgcolor: "background.default", minHeight: "100vh", p: 2 }}>
+        <Box sx={{ bgcolor: "background.default", p: 2 }}>
             {/* Header */}
             <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", mb: 2 }}>
                 <Typography sx={{ fontSize: 13, fontWeight: 600, letterSpacing: "0.04em", color: "text.secondary" }}>
