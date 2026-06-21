@@ -10,3 +10,8 @@ export function formatNumber(n: number): string {
     if (n >= 1_000) return `${(n / 1_000).toPrecision(3)}k`;
     return n.toString();
 }
+
+export function formatInterval(ms: number): string {
+    if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+    return `${Math.round(ms / 60_000)}m`;
+}
