@@ -32,6 +32,7 @@ func AddRoutes(
 	mux.Handle("GET /api/ingestion-metrics", handleIngestionMetrics(logger, logStore))
 	mux.Handle("GET /api/ingestion-metrics/stream", handleIngestionMetricsStream(logger, logStore, appCtx))
 	mux.Handle("GET /api/error-rate-metrics", handleErrorRateMetrics(logger, logStore))
+	mux.Handle("GET /api/storage-info", handleStorageInfo(logger, logStore))
 	mux.Handle("GET /ws/logs/tail", handleLiveTail(logger, broker, config))
 }
 
@@ -499,6 +500,64 @@ func handleLiveTail(logger *slog.Logger, broker *transport.NatsBroker, config *c
 				}
 				batch = batch[:0]
 			}
+		}
+	}
+}
+
+func handleStorageInfo(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		stats, err := logStore.GetStorageStats(ctx)
+		if err != nil {
+			logger.Error("failed to get storage stats", "error", err)
+			http.Error(w, "failed to get storage info", http.StatusInternalServerError)
+			return
+		}
+		if len(stats) == 0 {
+			logger.Error("no disk stats found")
+			http.Error(w, "no disk stats found", http.StatusInternalServerError)
+			return
+		}
+
+		disk := stats[0]
+		usedBytes := disk.TotalBytes - disk.FreeBytes
+		usedPercent := float64(usedBytes) / float64(disk.TotalBytes) * 100
+
+		outlook, err := logStore.GetLogsStorageOutlook(ctx)
+		if err != nil {
+			logger.Error("failed to get logs storage outlook", "error", err)
+			http.Error(w, "failed to get storage info", http.StatusInternalServerError)
+			return
+		}
+
+		card := core.StorageCardData{
+			Value: fmt.Sprintf("%.0f", usedPercent),
+			Unit:  "%",
+		}
+
+		projectedTotal := outlook.ProjectedSteadyStateBytes
+		if projectedTotal <= usedBytes {
+			card.Delta = "Stable"
+			card.DeltaColour = "text.secondary"
+		} else {
+			// Steady-state would exceed current capacity — compute a real runway.
+			growthPerDay := float64(projectedTotal-usedBytes) / 30
+			daysRemaining := float64(disk.FreeBytes) / growthPerDay
+
+			switch {
+			case daysRemaining > 30:
+				card.Delta = fmt.Sprintf("~%.0f days at current rate", daysRemaining)
+				card.DeltaColour = "warning.main"
+			default:
+				card.Delta = fmt.Sprintf("~%.0f days — action needed", daysRemaining)
+				card.DeltaColour = "error.main"
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(card); err != nil {
+			logger.Error("failed to encode storage card response", "error", err)
 		}
 	}
 }
