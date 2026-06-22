@@ -178,7 +178,7 @@ func writeStorageInfoEvent(
 		return err
 	}
 	if len(stats) == 0 {
-		logger.Error("no disk stats found", "error", err)
+		logger.Error("no disk stats found")
 		return fmt.Errorf("no disk stats found")
 	}
 
