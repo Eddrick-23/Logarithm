@@ -73,13 +73,11 @@ func (m *MockProducer) PublishLiveTail(subject string, data []byte) error {
 	return nil
 }
 
-// MockDecompressor
-type MockDecompressor struct {
-	decompressError error
-}
+// MockDecompressor: Use a functional adapter since single method interface
+type DecompressFunc func(payload []byte, headers map[string][]string) ([]byte, func(), error)
 
-func (m *MockDecompressor) decompress(payload []byte, headers map[string][]string) ([]byte, func(), error) {
-	return payload, func() {}, m.decompressError
+func (f DecompressFunc) decompress(payload []byte, headers map[string][]string) ([]byte, func(), error) {
+	return f(payload, headers)
 }
 
 // MockDecoder: Use a functional adapter since single method interface

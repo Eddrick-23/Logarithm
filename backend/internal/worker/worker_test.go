@@ -62,6 +62,14 @@ func TestProcessMessages(t *testing.T) {
 	validReqBytes, err := validReq.MarshalProto()
 	require.NoError(t, err)
 
+	decompressSuccess := DecompressFunc(func(payload []byte, headers map[string][]string) ([]byte, func(), error) {
+		return payload, func() {}, nil
+	})
+
+	decompressFail := DecompressFunc(func(payload []byte, headers map[string][]string) ([]byte, func(), error) {
+		return nil, func() {}, fmt.Errorf("decompress failed")
+	})
+
 	decoderSuccess := DecoderFunc(func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
 		return &validReq, nil
 	})
@@ -81,21 +89,21 @@ func TestProcessMessages(t *testing.T) {
 		{
 			name:             "successful process single message",
 			messages:         makeMessages(t, [][]byte{validReqBytes}, headers),
-			decompressor:     &MockDecompressor{decompressError: nil},
+			decompressor:     decompressSuccess,
 			decoder:          decoderSuccess,
 			expectedFlattens: 1,
 		},
 		{
 			name:             "successful process multiple message",
 			messages:         makeMessages(t, [][]byte{validReqBytes, validReqBytes}, headers),
-			decompressor:     &MockDecompressor{decompressError: nil},
+			decompressor:     decompressSuccess,
 			decoder:          decoderSuccess,
 			expectedFlattens: 2,
 		},
 		{
 			name:         "mixed batch one failure one success",
 			messages:     makeMessages(t, [][]byte{validReqBytes, []byte("bad-data")}, headers),
-			decompressor: &MockDecompressor{decompressError: nil},
+			decompressor: decompressSuccess,
 			decoder: DecoderFunc(func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
 				if string(payload) == "bad-data" {
 					return nil, fmt.Errorf("decode failed")
@@ -107,21 +115,21 @@ func TestProcessMessages(t *testing.T) {
 		{
 			name:             "empty messages",
 			messages:         makeMessages(t, [][]byte{}, headers),
-			decompressor:     &MockDecompressor{decompressError: nil},
+			decompressor:     decompressSuccess,
 			decoder:          decoderSuccess,
 			expectedFlattens: 0,
 		},
 		{
 			name:             "decompress failure",
 			messages:         makeMessages(t, [][]byte{validReqBytes}, headers),
-			decompressor:     &MockDecompressor{decompressError: fmt.Errorf("decompress error")},
+			decompressor:     decompressFail,
 			decoder:          decoderSuccess,
 			expectedFlattens: 0,
 		},
 		{
 			name:             "decode failure",
 			messages:         makeMessages(t, [][]byte{validReqBytes}, headers),
-			decompressor:     &MockDecompressor{decompressError: nil},
+			decompressor:     decompressSuccess,
 			decoder:          decoderFail,
 			expectedFlattens: 0,
 		},
