@@ -1,5 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchTopServiceErrorsStats, fetchIngestionMetrics, fetchErrorRateMetrics } from "../api/metricsApi";
+import {
+    fetchTopServiceErrorsStats,
+    fetchIngestionMetrics,
+    fetchErrorRateMetrics,
+    fetchStorageInfoMetrics,
+} from "../api/metricsApi";
 import { useCallback, useEffect, useRef } from "react";
 
 const STALE_THRESHOLD_MS = 15000; // 15s stale time
@@ -47,6 +52,13 @@ export const useIngestionMetrics = () => {
         eventSource.addEventListener("error-rate", (e) => {
             const data = JSON.parse(e.data);
             queryClient.setQueryData(["errorRateMetrics"], data);
+            queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
+            lastMessageRef.current = Date.now();
+        });
+
+        eventSource.addEventListener("storage-info", (e) => {
+            const data = JSON.parse(e.data);
+            queryClient.setQueryData(["storageInfoMetrics"], data);
             queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
             lastMessageRef.current = Date.now();
         });
@@ -114,6 +126,15 @@ export const useErrorRateMetrics = () => {
     return useQuery({
         queryKey: ["errorRateMetrics"],
         queryFn: fetchErrorRateMetrics,
+        staleTime: Infinity,
+        refetchInterval: false,
+    });
+};
+
+export const useStorageInfoMetrics = () => {
+    return useQuery({
+        queryKey: ["storageInfoMetrics"],
+        queryFn: fetchStorageInfoMetrics,
         staleTime: Infinity,
         refetchInterval: false,
     });

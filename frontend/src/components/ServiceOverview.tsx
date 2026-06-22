@@ -2,14 +2,17 @@ import { Box, Typography, Grid, Skeleton } from "@mui/material";
 import { card, sectionLabel, statValue } from "../theme/tokens";
 import { formatNumber } from "../utils/utils";
 import type { LogRateStatistics } from "../types/Metric";
-import { useErrorRateMetrics } from "../hooks/useMetrics";
-import { ERROR_RATE_METRICS_REFETCH_INTERVAL_MS, LOG_RATE_METRICS_REFETCH_INTERVAL_MS } from "../api/metricsApi";
+import { useErrorRateMetrics, useStorageInfoMetrics } from "../hooks/useMetrics";
+import {
+    ERROR_RATE_METRICS_REFETCH_INTERVAL_MS,
+    LOG_RATE_METRICS_REFETCH_INTERVAL_MS,
+    STORAGE_INFO_METRICS_REFETCH_INTERVAL_MS,
+} from "../api/metricsApi";
 import { LastUpdated } from "./LastUpdated";
 
 interface ServiceOverviewProps {
     data?: LogRateStatistics;
     isLoading: boolean;
-    numOfLiveServices: number;
     logRateUpdatedAt: number;
 }
 
@@ -49,13 +52,9 @@ function StatCard({
     );
 }
 
-export default function ServiceOverview({
-    data,
-    isLoading,
-    numOfLiveServices,
-    logRateUpdatedAt,
-}: ServiceOverviewProps) {
+export default function ServiceOverview({ data, isLoading, logRateUpdatedAt }: ServiceOverviewProps) {
     const { data: errorRateMetrics, dataUpdatedAt: errorRateMetricsUpdatedAt } = useErrorRateMetrics();
+    const { data: storageInfoMetrics, dataUpdatedAt: storageInfoMetricsUpdatedAt } = useStorageInfoMetrics();
 
     let logRate: string | number = 0;
     if (data?.currentRate !== undefined) {
@@ -144,13 +143,13 @@ export default function ServiceOverview({
             </Grid>
             <Grid size={4}>
                 <StatCard
-                    label="Services"
-                    value={numOfLiveServices}
-                    unit=" live"
-                    delta="All healthy"
-                    deltaColor="success.main"
-                    lastUpdated={1} // TODO: update last updated
-                    refetchIntervalMs={1} // TODO: update refetch interval
+                    label="Storage"
+                    value={storageInfoMetrics?.value ?? "-"}
+                    unit={storageInfoMetrics?.unit}
+                    delta={storageInfoMetrics?.delta ?? "—"}
+                    deltaColor={storageInfoMetrics?.deltaColour ?? "text.secondary"}
+                    lastUpdated={storageInfoMetricsUpdatedAt}
+                    refetchIntervalMs={STORAGE_INFO_METRICS_REFETCH_INTERVAL_MS}
                 />
             </Grid>
         </Grid>

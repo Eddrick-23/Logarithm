@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 )
 
@@ -27,6 +28,7 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 		ticker5s := time.NewTicker(5 * time.Second)
 		ticker15s := time.NewTicker(15 * time.Second)
 		ticker30s := time.NewTicker(30 * time.Second)
+		ticker15m := time.NewTicker(15 * time.Minute)
 
 		defer ticker5s.Stop()
 		defer ticker15s.Stop()
@@ -61,6 +63,12 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 				if err := writeTopServiceErrorsStatsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
 					return
 				}
+
+			case <-ticker15m.C:
+				// storage info refreshes every 15 minutes
+				if err := writeStorageInfoEvent(r.Context(), w, flusher, logger, logStore); err != nil {
+					return
+				}
 			}
 		}
 	}
@@ -85,6 +93,7 @@ func writeIngestionMetricsEvent(
 		return err
 	}
 
+	// event: ingestion
 	// data: <payload>\n\n is the SSE wire protocol
 	if _, err := fmt.Fprintf(w, "event: ingestion\ndata: %s\n\n", data); err != nil {
 		// client likely disconnected
@@ -134,18 +143,87 @@ func writeTopServiceErrorsStatsEvent(
 ) error {
 	topServiceErrorsStats, err := logStore.GetTopServiceErrorsStats(ctx)
 	if err != nil {
-		logger.Error("failed to get ingestion metrics", "err", err)
+		logger.Error("failed to get top service error metrics", "err", err)
 		return err
 	}
 
 	data, err := json.Marshal(topServiceErrorsStats)
 	if err != nil {
-		logger.Error("failed to marshal ingestion metrics", "err", err)
+		logger.Error("failed to marshal top service error metrics", "err", err)
 		return err
 	}
 
+	// event: top-service-errors
 	// data: <payload>\n\n is the SSE wire protocol
 	if _, err := fmt.Fprintf(w, "event: top-service-errors\ndata: %s\n\n", data); err != nil {
+		// client likely disconnected
+		return err
+	}
+
+	flusher.Flush()
+	return nil
+}
+
+func writeStorageInfoEvent(
+	ctx context.Context,
+	w http.ResponseWriter,
+	flusher http.Flusher,
+	logger *slog.Logger,
+	logStore *storage.ClickHouseStore,
+) error {
+	stats, err := logStore.GetStorageStats(ctx)
+	if err != nil {
+		logger.Error("failed to get storage stats", "error", err)
+		return err
+	}
+	if len(stats) == 0 {
+		logger.Error("no disk stats found", "error", err)
+		return err
+	}
+
+	disk := stats[0]
+	usedBytes := disk.TotalBytes - disk.FreeBytes
+	usedPercent := float64(usedBytes) / float64(disk.TotalBytes) * 100
+
+	outlook, err := logStore.GetLogsStorageOutlook(ctx)
+	if err != nil {
+		logger.Error("failed to get logs storage outlook", "error", err)
+		return err
+	}
+
+	card := core.StorageCardData{
+		Value: fmt.Sprintf("%.0f", usedPercent),
+		Unit:  "%",
+	}
+
+	projectedTotal := outlook.ProjectedSteadyStateBytes
+	if projectedTotal <= usedBytes {
+		card.Delta = "Stable"
+		card.DeltaColour = "text.secondary"
+	} else {
+		// Steady-state would exceed current capacity
+		growthPerDay := float64(projectedTotal-usedBytes) / 30
+		daysRemaining := float64(disk.FreeBytes) / growthPerDay
+
+		switch {
+		case daysRemaining > 30:
+			card.Delta = fmt.Sprintf("~%.0f days at current rate", daysRemaining)
+			card.DeltaColour = "warning.main"
+		default:
+			card.Delta = fmt.Sprintf("~%.0f days — action needed", daysRemaining)
+			card.DeltaColour = "error.main"
+		}
+	}
+
+	data, err := json.Marshal(card)
+	if err != nil {
+		logger.Error("failed to marshal top service error metrics", "err", err)
+		return err
+	}
+
+	// event: storage-info
+	// data: <payload>\n\n is the SSE wire protocol
+	if _, err := fmt.Fprintf(w, "event: storage-info\ndata: %s\n\n", data); err != nil {
 		// client likely disconnected
 		return err
 	}
