@@ -508,17 +508,23 @@ func (s *ClickHouseStore) GetLogsStorageOutlook(ctx context.Context) (*core.Stor
 		return result, nil
 	}
 
-	// Not enough history yet — project forward using recent daily average.
-	// Exclude the most recent (still-filling) partition for a fairer average.
-	usable := partitions
-	if len(usable) > 1 {
-		usable = usable[:len(usable)-1]
+	var avgDailyBytes uint64
+	if len(partitions) == 0 {
+		// if there is currently no history, set average daily bytes to be 0
+		avgDailyBytes = 0
+	} else {
+		// Not enough history yet — project forward using recent daily average.
+		// Exclude the most recent (still-filling) partition for a fairer average.
+		usable := partitions
+		if len(usable) > 1 {
+			usable = usable[:len(usable)-1]
+		}
+		var sum uint64
+		for _, p := range usable {
+			sum += p.PartitionBytes
+		}
+		avgDailyBytes = sum / uint64(len(usable))
 	}
-	var sum uint64
-	for _, p := range usable {
-		sum += p.PartitionBytes
-	}
-	avgDailyBytes := sum / uint64(len(usable))
 
 	result.IsSteadyState = false
 	result.ProjectedSteadyStateBytes = avgDailyBytes * LOGS_TTL_DAYS

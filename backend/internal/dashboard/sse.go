@@ -33,6 +33,7 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 		defer ticker5s.Stop()
 		defer ticker15s.Stop()
 		defer ticker30s.Stop()
+		defer ticker15m.Stop()
 
 		for {
 			select {
@@ -178,7 +179,7 @@ func writeStorageInfoEvent(
 	}
 	if len(stats) == 0 {
 		logger.Error("no disk stats found", "error", err)
-		return err
+		return fmt.Errorf("no disk stats found")
 	}
 
 	disk := stats[0]
@@ -217,7 +218,7 @@ func writeStorageInfoEvent(
 
 	data, err := json.Marshal(card)
 	if err != nil {
-		logger.Error("failed to marshal top service error metrics", "err", err)
+		logger.Error("failed to marshal storage info metrics", "err", err)
 		return err
 	}
 
