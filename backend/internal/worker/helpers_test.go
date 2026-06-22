@@ -8,6 +8,7 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
 
 func zstdCompress(tb testing.TB, data []byte) []byte {
@@ -58,4 +59,26 @@ func makeHeaders(contentType string, contentEncoding string) map[string][]string
 	}
 
 	return headers
+}
+
+func newBaseRequest(t *testing.T) plogotlp.ExportRequest {
+	inputJSON := `{
+				"resourceLogs": [{
+					"resource": {
+						"attributes": [{"key": "service.name", "value": {"stringValue": "auth-service"}}]
+					},
+					"scopeLogs": [{
+						"logRecords": [{
+							"timeUnixNano": "1717732530000000000",
+							"severityText": "INFO",
+							"body": {"stringValue": "user logged in"}
+						}]
+					}]
+				}]
+			}`
+
+	req := plogotlp.NewExportRequest()
+	err := req.UnmarshalJSON([]byte(inputJSON))
+	require.NoError(t, err, "invalid inputJSON provided")
+	return req
 }

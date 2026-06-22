@@ -57,185 +57,80 @@ func TestDelayCalculator(t *testing.T) {
 
 }
 
-func newBaseRequest(t *testing.T) plogotlp.ExportRequest {
-	inputJSON := `{
-				"resourceLogs": [{
-					"resource": {
-						"attributes": [{"key": "service.name", "value": {"stringValue": "auth-service"}}]
-					},
-					"scopeLogs": [{
-						"logRecords": [{
-							"timeUnixNano": "1717732530000000000",
-							"severityText": "INFO",
-							"body": {"stringValue": "user logged in"}
-						}]
-					}]
-				}]
-			}`
-
-	req := plogotlp.NewExportRequest()
-	err := req.UnmarshalJSON([]byte(inputJSON))
-	require.NoError(t, err, "invalid inputJSON provided")
-	return req
-}
-
-func TestDecode(t *testing.T) {
-	req := newBaseRequest(t)
-	jsonPayload, err := req.MarshalJSON()
-	require.NoError(t, err)
-
-	protobufPayload, err := req.MarshalProto()
-	require.NoError(t, err)
-
-	emptyHeaders := map[string][]string{}
-	jsonHeaders := map[string][]string{"Content-Type": {"application/json"}}
-	protobufHeaders := map[string][]string{"Content-Type": {"application/x-protobuf"}}
-
-	tests := []struct {
-		name        string
-		payload     []byte
-		headers     map[string][]string
-		expectedErr bool
-	}{
-		{
-			name:        "valid json payload with correct headers",
-			payload:     jsonPayload,
-			headers:     jsonHeaders,
-			expectedErr: false,
-		},
-		{
-			name:        "valid protobuf payload with correct headers",
-			payload:     protobufPayload,
-			headers:     protobufHeaders,
-			expectedErr: false,
-		},
-		{
-			name:        "invalid json correct headers",
-			payload:     []byte("not json"),
-			headers:     jsonHeaders,
-			expectedErr: true,
-		},
-		{
-			name:        "invalid protobuf correct headers",
-			payload:     []byte("not protobuf"),
-			headers:     protobufHeaders,
-			expectedErr: true,
-		},
-		{
-			name:        "valid json wrong headers",
-			payload:     jsonPayload,
-			headers:     protobufHeaders,
-			expectedErr: true,
-		},
-		{
-			name:        "valid protobuf wrong headers",
-			payload:     protobufPayload,
-			headers:     jsonHeaders,
-			expectedErr: true,
-		},
-		{
-			name:        "valid json no headers",
-			payload:     jsonPayload,
-			headers:     emptyHeaders,
-			expectedErr: true,
-		},
-		{
-			name:        "valid protobuf no headers",
-			payload:     protobufPayload,
-			headers:     emptyHeaders,
-			expectedErr: true,
-		},
-	}
-
-	decoder := makeDecoder()
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			decodedReq, err := decoder(tc.payload, tc.headers)
-
-			if tc.expectedErr {
-				require.Error(t, err)
-				require.Nil(t, decodedReq)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, decodedReq)
-
-				assert.Equal(
-					t,
-					1,
-					decodedReq.Logs().ResourceLogs().Len(),
-					"expected 1 resource log in decoded payload",
-				)
-			}
-		})
-	}
-}
-
 func TestProcessMessages(t *testing.T) {
 	validReq := newBaseRequest(t)
 	validReqBytes, err := validReq.MarshalProto()
 	require.NoError(t, err)
 
-	mockDecoder := func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
-		return &validReq, nil
-	}
+	decompressSuccess := DecompressFunc(func(payload []byte, headers map[string][]string) ([]byte, func(), error) {
+		return payload, func() {}, nil
+	})
 
-	mockDecoderErr := func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
+	decompressFail := DecompressFunc(func(payload []byte, headers map[string][]string) ([]byte, func(), error) {
+		return nil, func() {}, fmt.Errorf("decompress failed")
+	})
+
+	decoderSuccess := DecoderFunc(func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
+		return &validReq, nil
+	})
+
+	decoderFail := DecoderFunc(func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
 		return nil, fmt.Errorf("decode failed")
-	}
+	})
 
 	headers := makeHeaders("application/x-protobuf", "")
 	tests := []struct {
 		name             string
 		messages         []transport.Message
 		decompressor     Decompressor
-		decoder          decoderFunc
+		decoder          Decoder
 		expectedFlattens int
 	}{
 		{
 			name:             "successful process single message",
 			messages:         makeMessages(t, [][]byte{validReqBytes}, headers),
-			decompressor:     &MockDecompressor{decompressError: nil},
-			decoder:          mockDecoder,
+			decompressor:     decompressSuccess,
+			decoder:          decoderSuccess,
 			expectedFlattens: 1,
 		},
 		{
 			name:             "successful process multiple message",
 			messages:         makeMessages(t, [][]byte{validReqBytes, validReqBytes}, headers),
-			decompressor:     &MockDecompressor{decompressError: nil},
-			decoder:          mockDecoder,
+			decompressor:     decompressSuccess,
+			decoder:          decoderSuccess,
 			expectedFlattens: 2,
 		},
 		{
 			name:         "mixed batch one failure one success",
 			messages:     makeMessages(t, [][]byte{validReqBytes, []byte("bad-data")}, headers),
-			decompressor: &MockDecompressor{decompressError: nil},
-			decoder: func(b []byte, m map[string][]string) (*plogotlp.ExportRequest, error) {
-				if string(b) == "bad-data" {
+			decompressor: decompressSuccess,
+			decoder: DecoderFunc(func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
+				if string(payload) == "bad-data" {
 					return nil, fmt.Errorf("decode failed")
 				}
 				return &validReq, nil
-			},
+			}),
 			expectedFlattens: 1,
 		},
 		{
 			name:             "empty messages",
 			messages:         makeMessages(t, [][]byte{}, headers),
-			decompressor:     &MockDecompressor{decompressError: nil},
-			decoder:          mockDecoder,
+			decompressor:     decompressSuccess,
+			decoder:          decoderSuccess,
 			expectedFlattens: 0,
 		},
 		{
 			name:             "decompress failure",
 			messages:         makeMessages(t, [][]byte{validReqBytes}, headers),
-			decompressor:     &MockDecompressor{decompressError: fmt.Errorf("decompress error")},
-			decoder:          mockDecoder,
+			decompressor:     decompressFail,
+			decoder:          decoderSuccess,
 			expectedFlattens: 0,
 		},
 		{
 			name:             "decode failure",
 			messages:         makeMessages(t, [][]byte{validReqBytes}, headers),
-			decompressor:     &MockDecompressor{decompressError: nil},
-			decoder:          mockDecoderErr,
+			decompressor:     decompressSuccess,
+			decoder:          decoderFail,
 			expectedFlattens: 0,
 		},
 	}
@@ -252,8 +147,8 @@ func TestProcessMessages(t *testing.T) {
 }
 
 func TestConsumeCallback(t *testing.T) {
-	valiReq := newBaseRequest(t)
-	validReqbytes, err := valiReq.MarshalProto()
+	validReq := newBaseRequest(t)
+	validReqbytes, err := validReq.MarshalProto()
 	require.NoError(t, err)
 
 	message := makeMessages(t, [][]byte{validReqbytes}, makeHeaders("application/x-protobuf", ""))
@@ -285,7 +180,11 @@ func TestConsumeCallback(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			appender := MockLogAppender{flushErr: tc.flushErr}
 			store := &MockLogStore{Appender: &appender}
-			callback, err := ConsumeCallback(slog.Default(), store, &NoOpDecompressor{}, &NoOpTransformer{}, &NoOpPublisher{})
+			decoder := DecoderFunc(func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
+				return &validReq, nil
+			})
+
+			callback, err := ConsumeCallback(slog.Default(), store, &NoOpDecompressor{}, decoder, &NoOpTransformer{}, &NoOpPublisher{})
 
 			require.NoError(t, err, "error creating consume callback")
 

@@ -8,6 +8,7 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
 
 // MockLogAppender
@@ -72,13 +73,18 @@ func (m *MockProducer) PublishLiveTail(subject string, data []byte) error {
 	return nil
 }
 
-// MockDecompressor
-type MockDecompressor struct {
-	decompressError error
+// MockDecompressor: Use a functional adapter since single method interface
+type DecompressFunc func(payload []byte, headers map[string][]string) ([]byte, func(), error)
+
+func (f DecompressFunc) decompress(payload []byte, headers map[string][]string) ([]byte, func(), error) {
+	return f(payload, headers)
 }
 
-func (m *MockDecompressor) decompress(payload []byte, headers map[string][]string) ([]byte, func(), error) {
-	return payload, func() {}, m.decompressError
+// MockDecoder: Use a functional adapter since single method interface
+type DecoderFunc func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error)
+
+func (f DecoderFunc) decode(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
+	return f(payload, headers)
 }
 
 // MockMsg
