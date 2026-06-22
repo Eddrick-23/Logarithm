@@ -451,3 +451,82 @@ func (s *ClickHouseStore) GetLogRateStatistics(ctx context.Context) (core.LogRat
 
 	return result, nil
 }
+
+func (s *ClickHouseStore) GetStorageStats(ctx context.Context) ([]core.StorageStats, error) {
+	queryString := `
+        SELECT
+            name AS DiskName,
+            free_space AS FreeBytes,
+            total_space AS TotalBytes,
+            round((total_space - free_space) / total_space * 100, 2) AS UsedPercent
+        FROM system.disks
+    `
+
+	var result []core.StorageStats
+	if err := s.conn.Select(ctx, &result, queryString); err != nil {
+		return nil, fmt.Errorf("failed to get storage stats: %v", err)
+	}
+	return result, nil
+}
+
+const LOGS_TTL_DAYS = 30
+
+// GetLogsStorageOutlook reports the logs table's current size and, if it
+// hasn't yet reached its 30-day TTL steady-state, projects what that will be.
+func (s *ClickHouseStore) GetLogsStorageOutlook(ctx context.Context) (*core.StorageOutlook, error) {
+	queryString := `
+        SELECT
+            partition,
+            sum(bytes_on_disk) AS PartitionBytes
+        FROM system.parts
+        WHERE database = 'logarithm' AND table = 'logs' AND active
+        GROUP BY partition
+        ORDER BY partition
+    `
+	var partitions []struct {
+		Partition      string `ch:"partition"`
+		PartitionBytes uint64 `ch:"PartitionBytes"`
+	}
+	if err := s.conn.Select(ctx, &partitions, queryString); err != nil {
+		return nil, fmt.Errorf("failed to get partition sizes: %v", err)
+	}
+
+	var currentTotal uint64
+	for _, p := range partitions {
+		currentTotal += p.PartitionBytes
+	}
+
+	result := &core.StorageOutlook{
+		CurrentTotalBytes: currentTotal,
+		DaysOfHistory:     len(partitions),
+	}
+
+	if len(partitions) >= LOGS_TTL_DAYS {
+		// Steady-state already reached
+		result.IsSteadyState = true
+		result.ProjectedSteadyStateBytes = currentTotal
+		return result, nil
+	}
+
+	var avgDailyBytes uint64
+	if len(partitions) == 0 {
+		// if there is currently no history, set average daily bytes to be 0
+		avgDailyBytes = 0
+	} else {
+		// Not enough history yet — project forward using recent daily average.
+		// Exclude the most recent (still-filling) partition for a fairer average.
+		usable := partitions
+		if len(usable) > 1 {
+			usable = usable[:len(usable)-1]
+		}
+		var sum uint64
+		for _, p := range usable {
+			sum += p.PartitionBytes
+		}
+		avgDailyBytes = sum / uint64(len(usable))
+	}
+
+	result.IsSteadyState = false
+	result.ProjectedSteadyStateBytes = avgDailyBytes * LOGS_TTL_DAYS
+	return result, nil
+}

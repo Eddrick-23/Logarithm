@@ -1,8 +1,19 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchTopServiceErrorsStats, fetchIngestionMetrics, fetchErrorRateMetrics } from "../api/metricsApi";
+import {
+    fetchTopServiceErrorsStats,
+    fetchIngestionMetrics,
+    fetchErrorRateMetrics,
+    fetchStorageInfoMetrics,
+} from "../api/metricsApi";
 import { useCallback, useEffect, useRef } from "react";
 
 const STALE_THRESHOLD_MS = 15000; // 15s stale time
+const EVENT_MAP = [
+    { event: "ingestion", queryKey: "ingestionMetrics" },
+    { event: "top-service-errors", queryKey: "topServiceErrorsStats" },
+    { event: "error-rate", queryKey: "errorRateMetrics" },
+    { event: "storage-info", queryKey: "storageInfoMetrics" },
+]; // stores a map which contains event name and TanStack query key
 
 export const useIngestionMetrics = () => {
     const queryClient = useQueryClient();
@@ -30,26 +41,14 @@ export const useIngestionMetrics = () => {
 
         const eventSource = new EventSource("/api/ingestion-metrics/stream");
 
-        eventSource.addEventListener("ingestion", (e) => {
-            const data = JSON.parse(e.data);
-            queryClient.setQueryData(["ingestionMetrics"], data);
-            queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
-            lastMessageRef.current = Date.now();
-        });
-
-        eventSource.addEventListener("top-service-errors", (e) => {
-            const data = JSON.parse(e.data);
-            queryClient.setQueryData(["topServiceErrorsStats"], data);
-            queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
-            lastMessageRef.current = Date.now();
-        });
-
-        eventSource.addEventListener("error-rate", (e) => {
-            const data = JSON.parse(e.data);
-            queryClient.setQueryData(["errorRateMetrics"], data);
-            queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
-            lastMessageRef.current = Date.now();
-        });
+        for (const { event, queryKey } of EVENT_MAP) {
+            eventSource.addEventListener(event, (e) => {
+                const data = JSON.parse(e.data);
+                queryClient.setQueryData([queryKey], data);
+                queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
+                lastMessageRef.current = Date.now();
+            });
+        }
 
         eventSource.onerror = () => {
             if (eventSourceRef.current?.readyState !== EventSource.OPEN) {
@@ -114,6 +113,15 @@ export const useErrorRateMetrics = () => {
     return useQuery({
         queryKey: ["errorRateMetrics"],
         queryFn: fetchErrorRateMetrics,
+        staleTime: Infinity,
+        refetchInterval: false,
+    });
+};
+
+export const useStorageInfoMetrics = () => {
+    return useQuery({
+        queryKey: ["storageInfoMetrics"],
+        queryFn: fetchStorageInfoMetrics,
         staleTime: Infinity,
         refetchInterval: false,
     });

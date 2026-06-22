@@ -13,7 +13,6 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
-	"github.com/gorilla/websocket"
 )
 
 func AddRoutes(
@@ -32,6 +31,7 @@ func AddRoutes(
 	mux.Handle("GET /api/ingestion-metrics", handleIngestionMetrics(logger, logStore))
 	mux.Handle("GET /api/ingestion-metrics/stream", handleIngestionMetricsStream(logger, logStore, appCtx))
 	mux.Handle("GET /api/error-rate-metrics", handleErrorRateMetrics(logger, logStore))
+	mux.Handle("GET /api/storage-info", handleStorageInfo(logger, logStore))
 	mux.Handle("GET /ws/logs/tail", handleLiveTail(logger, broker, config))
 }
 
@@ -256,149 +256,6 @@ func handleIngestionMetrics(logger *slog.Logger, logStore *storage.ClickHouseSto
 	}
 }
 
-func writeIngestionMetricsEvent(
-	ctx context.Context,
-	w http.ResponseWriter,
-	flusher http.Flusher,
-	logger *slog.Logger,
-	logStore *storage.ClickHouseStore,
-) error {
-	ingestionMetrics, err := logStore.GetAllIngestionMetrics(ctx)
-	if err != nil {
-		logger.Error("failed to get ingestion metrics", "err", err)
-		return err
-	}
-
-	data, err := json.Marshal(ingestionMetrics)
-	if err != nil {
-		logger.Error("failed to marshal ingestion metrics", "err", err)
-		return err
-	}
-
-	// data: <payload>\n\n is the SSE wire protocol
-	if _, err := fmt.Fprintf(w, "event: ingestion\ndata: %s\n\n", data); err != nil {
-		// client likely disconnected
-		return err
-	}
-
-	flusher.Flush()
-	return nil
-}
-
-func writeErrorRateMetricsEvent(
-	ctx context.Context,
-	w http.ResponseWriter,
-	flusher http.Flusher,
-	logger *slog.Logger,
-	logStore *storage.ClickHouseStore,
-) error {
-	errorRateMetrics, err := logStore.GetErrorRateMetrics(ctx)
-	if err != nil {
-		logger.Error("failed to get error rate metrics", "err", err)
-		return err
-	}
-
-	data, err := json.Marshal(errorRateMetrics)
-	if err != nil {
-		logger.Error("failed to marshal error rate metrics", "err", err)
-		return err
-	}
-
-	// event: error-rate
-	// data: <payload>\n\n is the SSE wire protocol
-	if _, err := fmt.Fprintf(w, "event: error-rate\ndata: %s\n\n", data); err != nil {
-		// client likely disconnected
-		return err
-	}
-
-	flusher.Flush()
-	return nil
-}
-
-func writeTopServiceErrorsStatsEvent(
-	ctx context.Context,
-	w http.ResponseWriter,
-	flusher http.Flusher,
-	logger *slog.Logger,
-	logStore *storage.ClickHouseStore,
-) error {
-	topServiceErrorsStats, err := logStore.GetTopServiceErrorsStats(ctx)
-	if err != nil {
-		logger.Error("failed to get ingestion metrics", "err", err)
-		return err
-	}
-
-	data, err := json.Marshal(topServiceErrorsStats)
-	if err != nil {
-		logger.Error("failed to marshal ingestion metrics", "err", err)
-		return err
-	}
-
-	// data: <payload>\n\n is the SSE wire protocol
-	if _, err := fmt.Fprintf(w, "event: top-service-errors\ndata: %s\n\n", data); err != nil {
-		// client likely disconnected
-		return err
-	}
-
-	flusher.Flush()
-	return nil
-}
-
-func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHouseStore, appCtx context.Context) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
-			return
-		}
-
-		// write headers for SSE
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-
-		ticker5s := time.NewTicker(5 * time.Second)
-		ticker15s := time.NewTicker(15 * time.Second)
-		ticker30s := time.NewTicker(30 * time.Second)
-
-		defer ticker5s.Stop()
-		defer ticker15s.Stop()
-		defer ticker30s.Stop()
-
-		for {
-			select {
-			case <-r.Context().Done():
-				// Client closed the browser tab
-				logger.Debug("client disconnected from ingestion metrics stream")
-				return
-
-			case <-appCtx.Done():
-				// Server is shutting down (ctrl-c)
-				logger.Debug("server is shutting down, closing SSE stream gracefully")
-				return
-
-			case <-ticker5s.C:
-				// ingestion graph and logs / second refreshes every 5s
-				if err := writeIngestionMetricsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
-					return
-				}
-
-			case <-ticker15s.C:
-				// error rate metrics refreshes every 15s
-				if err := writeErrorRateMetricsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
-					return
-				}
-
-			case <-ticker30s.C:
-				// top service errors refreshes every 30s
-				if err := writeTopServiceErrorsStatsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
-					return
-				}
-			}
-		}
-	}
-}
-
 func handleTopServiceErrors(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
@@ -426,79 +283,60 @@ func handleTopServiceErrors(logger *slog.Logger, logStore *storage.ClickHouseSto
 	}
 }
 
-var upgrader = websocket.Upgrader{
-	// CORS header
-	CheckOrigin: func(r *http.Request) bool { return true },
-}
-
-func handleLiveTail(logger *slog.Logger, broker *transport.NatsBroker, config *config.Config) http.HandlerFunc {
+func handleStorageInfo(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// upgrade HTTP to WebSocket
-		ws, err := upgrader.Upgrade(w, r, nil)
+		ctx := r.Context()
+
+		stats, err := logStore.GetStorageStats(ctx)
 		if err != nil {
-			logger.Error("Failed to upgrade websocket", "error", err)
+			logger.Error("failed to get storage stats", "error", err)
+			http.Error(w, "failed to get storage info", http.StatusInternalServerError)
 			return
 		}
-		defer ws.Close()
-
-		// create a cancellable context tied to this WebSocket connection
-		ctx, cancel := context.WithCancel(r.Context())
-		defer cancel()
-
-		// listen for client disconnects to cancel the context
-		go func() {
-			for {
-				// if ReadMessage fails, the client disconnected or the connection died
-				if _, _, err := ws.ReadMessage(); err != nil {
-					logger.Debug("Websocket client disconnected")
-					cancel()
-					return
-				}
-			}
-		}()
-
-		// start tailing NATS
-		liveTailCh, cleanup, err := broker.TailLiveLogs(ctx, transport.LiveTailSubject, config.LiveTailMaxBatch)
-		if err != nil {
-			logger.Error("Failed to start NATS tail", "error", err)
-			ws.WriteMessage(websocket.CloseMessage, []byte("Internal Server Error"))
+		if len(stats) == 0 {
+			logger.Error("no disk stats found")
+			http.Error(w, "no disk stats found", http.StatusInternalServerError)
 			return
 		}
-		defer cleanup() // ensure NATS consumer stops when the websocket closes
 
-		ticker := time.NewTicker(time.Duration(config.LiveTailRefreshInterval) * time.Millisecond) // default flush interval: 500ms
-		defer ticker.Stop()
+		disk := stats[0]
+		usedBytes := disk.TotalBytes - disk.FreeBytes
+		usedPercent := float64(usedBytes) / float64(disk.TotalBytes) * 100
 
-		var batch []byte // accumulate payloads between ticks
+		outlook, err := logStore.GetLogsStorageOutlook(ctx)
+		if err != nil {
+			logger.Error("failed to get logs storage outlook", "error", err)
+			http.Error(w, "failed to get storage info", http.StatusInternalServerError)
+			return
+		}
 
-		// pump NATS messages to the WebSocket
-		for {
-			select {
-			case <-ctx.Done():
-				// context cancelled (client disconnected or server shutting down)
-				return
-			case payload, ok := <-liveTailCh:
-				if !ok {
-					// channel closed
-					return
-				}
+		card := core.StorageCardData{
+			Value: fmt.Sprintf("%.0f", usedPercent),
+			Unit:  "%",
+		}
 
-				// append raw messagePack bytes directly
-				batch = append(batch, payload...)
+		projectedTotal := outlook.ProjectedSteadyStateBytes
+		if projectedTotal <= usedBytes {
+			card.Delta = "Stable"
+			card.DeltaColour = "text.secondary"
+		} else {
+			// Steady-state would exceed current capacity — compute a real runway.
+			growthPerDay := float64(projectedTotal-usedBytes) / 30
+			daysRemaining := float64(disk.FreeBytes) / growthPerDay
 
-			case <-ticker.C:
-				if len(batch) == 0 {
-					continue
-				}
-
-				// write the binary payload directly to the WebSocket
-				err = ws.WriteMessage(websocket.BinaryMessage, batch)
-				if err != nil {
-					logger.Error("Failed to write to websocket", "error", err)
-					return // exiting the loop triggers defer cleanup() and cancel()
-				}
-				batch = batch[:0]
+			switch {
+			case daysRemaining > 30:
+				card.Delta = fmt.Sprintf("~%.0f days at current rate", daysRemaining)
+				card.DeltaColour = "warning.main"
+			default:
+				card.Delta = fmt.Sprintf("~%.0f days — action needed", daysRemaining)
+				card.DeltaColour = "error.main"
 			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(card); err != nil {
+			logger.Error("failed to encode storage card response", "error", err)
 		}
 	}
 }
