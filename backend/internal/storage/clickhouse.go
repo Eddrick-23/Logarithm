@@ -26,6 +26,7 @@ type ClickHouseStore struct {
 	logger     *slog.Logger
 	ingestMu   sync.Mutex // ch.Client not thread safe
 	ingestConn *ch.Client // low level api for inserting
+	batchPool  sync.Pool
 }
 
 var _ LogStore = (*ClickHouseStore)(nil)
@@ -80,6 +81,11 @@ func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, d
 		ingestConn: ingestConn,
 		tables:     tables,
 		logger:     logger,
+		batchPool: sync.Pool{
+			New: func() any {
+				return newColumnBatch()
+			},
+		},
 	}, nil
 }
 
@@ -371,7 +377,7 @@ func (s *ClickHouseStore) GetErrorRateMetrics(ctx context.Context) (core.ErrorRa
 	}
 
 	queryString := fmt.Sprintf(`
-		SELECT 
+		SELECT
 			sum(ErrorsCount) / nullIf(sum(LogsCount), 0) AS CurrentRate
 		FROM %v
 		WHERE Timestamp >= now() - toIntervalMinute(@minute)

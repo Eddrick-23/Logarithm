@@ -4,19 +4,12 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/ClickHouse/ch-go"
 	"github.com/ClickHouse/ch-go/proto"
 	"github.com/Eddrick-23/Logarithm/internal/core"
 )
-
-var pool = sync.Pool{
-	New: func() any {
-		return newColumnBatch()
-	},
-}
 
 type LogFields struct {
 	ScopeName    string
@@ -78,7 +71,7 @@ func (b *batchAppender) Append(
 }
 
 func (b *batchAppender) Flush(ctx context.Context) error {
-	defer pool.Put(b.batch)
+	defer b.store.batchPool.Put(b.batch)
 	return b.store.insertRecords(ctx, b.batch)
 }
 
@@ -145,7 +138,7 @@ func (c *columnBatch) Reset() {
 // This avoids intermediate allocations and fills out ch-go's internal
 // column buffers directly
 func (s *ClickHouseStore) FastInsert() LogAppender {
-	colBatch := pool.Get().(*columnBatch)
+	colBatch := s.batchPool.Get().(*columnBatch)
 	colBatch.Reset()
 	return &batchAppender{
 		store: s,
@@ -180,9 +173,9 @@ func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLo
 		return nil
 	}
 
-	colBatch := pool.Get().(*columnBatch)
+	colBatch := s.batchPool.Get().(*columnBatch)
 	colBatch.Reset()
-	defer pool.Put(colBatch)
+	defer s.batchPool.Put(colBatch)
 
 	for _, record := range records {
 		traceIdBytes, err := traceIdToBytes(record.TraceId)
