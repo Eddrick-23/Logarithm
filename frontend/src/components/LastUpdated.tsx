@@ -19,7 +19,7 @@ export function LastUpdated({ timestamp, refreshIntervalMs, placement = "bottom-
             title={timestamp ? "Last updated at " + new Date(timestamp).toLocaleTimeString() : ""}
             placement={placement}
         >
-            <Typography sx={{ fontSize: 11, color: "text.disabled", mt: 0.5 }}>
+            <Typography sx={{ fontSize: 11, color: "text.disabled", mt: 0.5, width: "fit-content" }}>
                 Updated {relativeTime}
                 {intervalLabel && ` · every ${intervalLabel}`}
             </Typography>
