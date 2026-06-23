@@ -3,15 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { vi, describe, it, expect, beforeAll, beforeEach, afterEach, afterAll } from "vitest";
 import { setupServer } from "msw/node";
 import { ws } from "msw";
-import LiveTailLogs from "../components/LiveTailLogs";
-import type { FlatLogRecord } from "../types/Log";
+import LiveTailLogs from "../../components/LiveTailLogs";
+import type { FlatLogRecord } from "../../types/Log";
 import { encode } from "@msgpack/msgpack";
 
 const connectingMessage = "Connecting to live tail server...";
 const pauseMessage = "Tail paused — new logs buffering";
 const errorMessage = "Connection lost. Failed to connect to the live tail server.";
 
-vi.mock("../hooks/useDistinctServices", () => ({
+vi.mock("../../hooks/useDistinctServices", () => ({
     useDistinctServices: () => ({
         data: { services: ["auth-service", "payment-service"] },
         isLoading: false,
