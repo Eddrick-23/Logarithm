@@ -2,18 +2,12 @@ package worker
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
-
-	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
-
-type decoderFunc func([]byte, map[string][]string) (*plogotlp.ExportRequest, error)
 
 // ConsumeCallback returns the message handler used by the log consumer.
 //
@@ -21,8 +15,8 @@ type decoderFunc func([]byte, map[string][]string) (*plogotlp.ExportRequest, err
 // live-tail stream on a file and forget basis, and bulk inserted into storage.
 // Storage insertion failures are returned; live-tail publish failures are
 // logged and ignored.
-func ConsumeCallback(logger *slog.Logger, store storage.LogStore, decompressor Decompressor, transformer Transformer, publisher Publisher, estRows int) (func([]transport.Message) error, error) {
-	decoder := makeDecoder()
+func ConsumeCallback(logger *slog.Logger, store storage.LogStore, decompressor Decompressor,
+	decoder Decoder, transformer Transformer, publisher Publisher, estRows int) (func([]transport.Message) error, error) {
 	return func(messages []transport.Message) error {
 		if len(messages) == 0 {
 			return nil
@@ -38,7 +32,7 @@ func ConsumeCallback(logger *slog.Logger, store storage.LogStore, decompressor D
 	}, nil
 }
 
-func processMessages(logger *slog.Logger, decompressor Decompressor, decoder decoderFunc, messages []transport.Message,
+func processMessages(logger *slog.Logger, decompressor Decompressor, decoder Decoder, messages []transport.Message,
 	transformer Transformer, publisher Publisher, appender storage.LogAppender) {
 
 	for _, msg := range messages {
@@ -48,7 +42,7 @@ func processMessages(logger *slog.Logger, decompressor Decompressor, decoder dec
 			continue
 		}
 
-		req, err := decoder(decompressedPayload, msg.Headers)
+		req, err := decoder.decode(decompressedPayload, msg.Headers)
 		if err != nil {
 			logger.Error("dropped malformed log payload", "err", err)
 			cleanup()
@@ -60,33 +54,6 @@ func processMessages(logger *slog.Logger, decompressor Decompressor, decoder dec
 		for i := 0; i < logs.ResourceLogs().Len(); i++ {
 			transformer.Flatten(logs.ResourceLogs().At(i), publisher, appender)
 		}
-	}
-}
-
-func makeDecoder() func([]byte, map[string][]string) (*plogotlp.ExportRequest, error) {
-	return func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
-		req := plogotlp.NewExportRequest()
-
-		contentType := ""
-		if vals, ok := headers["Content-Type"]; ok && len(vals) > 0 {
-			contentType = vals[0]
-		}
-
-		if strings.HasPrefix(contentType, "application/x-protobuf") {
-			if err := req.UnmarshalProto(payload); err != nil {
-				return nil, err
-			}
-			return &req, nil
-		}
-
-		if strings.HasPrefix(contentType, "application/json") {
-			if err := req.UnmarshalJSON(payload); err != nil {
-				return nil, err
-			}
-			return &req, nil
-		}
-
-		return nil, fmt.Errorf("unsupported or missing content type: %s", contentType)
 	}
 }
 

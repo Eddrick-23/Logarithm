@@ -112,9 +112,10 @@ func run(ctx context.Context, w io.Writer) error {
 	liveTailPublisher := worker.NewLiveTailPublisher(publishLogger, natsBroker, config.WorkerLiveTailCount, config.WorkerLiveTailQueueSize)
 	defer liveTailPublisher.Close()
 
+	decoder := worker.NewLogDecoder()
 	flattener := worker.NewLogTransformer(logger)
 
-	consumeCallback, err := worker.ConsumeCallback(workerLogger, store, decompressor, flattener, liveTailPublisher, config.WorkerRowsPerBatch)
+	consumeCallback, err := worker.ConsumeCallback(workerLogger, store, decompressor, decoder, flattener, liveTailPublisher, config.WorkerRowsPerBatch)
 	if err != nil {
 		return err
 	}
