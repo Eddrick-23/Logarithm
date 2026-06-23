@@ -164,7 +164,7 @@ func (c *columnBatch) ensureSize(targetRows int) {
 	// ch-go's ColArr works like so:
 	// It is a generic with a Data field that holds columnOf interface.
 	// We hold T of type string, so underlying its a proto.Colstr that satisfies the interface
-	// ColStr intenally holds a Buf:[]byte and a Pos:[]Position. position tells us []byte[start:end] is a word
+	// ColStr internally holds a Buf:[]byte and a Pos:[]Position. Position tells us []byte[start:end] is a word.
 	// Buf is preallocated with targetRows * estimatedKeyBytes(total bytes per []string appended)
 	// Pos is preallocated with targetRows * estimatedAttrPerRow(length of []string appended)
 	// ColArr now wraps ColStr and does the row tracking with its Offsets slice(Pos[start:end] is one row).
