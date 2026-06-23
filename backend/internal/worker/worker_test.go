@@ -285,7 +285,7 @@ func TestConsumeCallback(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			appender := MockLogAppender{flushErr: tc.flushErr}
 			store := &MockLogStore{Appender: &appender}
-			callback, err := ConsumeCallback(slog.Default(), store, &NoOpDecompressor{}, &NoOpTransformer{}, &NoOpPublisher{})
+			callback, err := ConsumeCallback(slog.Default(), store, &NoOpDecompressor{}, &NoOpTransformer{}, &NoOpPublisher{}, 10)
 
 			require.NoError(t, err, "error creating consume callback")
 

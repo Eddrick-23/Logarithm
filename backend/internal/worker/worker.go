@@ -21,14 +21,14 @@ type decoderFunc func([]byte, map[string][]string) (*plogotlp.ExportRequest, err
 // live-tail stream on a file and forget basis, and bulk inserted into storage.
 // Storage insertion failures are returned; live-tail publish failures are
 // logged and ignored.
-func ConsumeCallback(logger *slog.Logger, store storage.LogStore, decompressor Decompressor, transformer Transformer, publisher Publisher) (func([]transport.Message) error, error) {
+func ConsumeCallback(logger *slog.Logger, store storage.LogStore, decompressor Decompressor, transformer Transformer, publisher Publisher, estRows int) (func([]transport.Message) error, error) {
 	decoder := makeDecoder()
 	return func(messages []transport.Message) error {
 		if len(messages) == 0 {
 			return nil
 		}
 
-		appender := store.FastInsert()
+		appender := store.FastInsert(estRows)
 		processMessages(logger, decompressor, decoder, messages, transformer, publisher, appender)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
