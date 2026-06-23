@@ -15,7 +15,7 @@ import (
 )
 
 type LogStore interface {
-	FastInsert() LogAppender
+	FastInsert(int) LogAppender
 	BatchInsert(context.Context, []core.FlatLogRecord) error
 	SearchLogs(context.Context, core.LogQueryFilter) ([]core.FlatLogRecord, error)
 }

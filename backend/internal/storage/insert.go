@@ -11,8 +11,6 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/core"
 )
 
-const targetRows = 260000 // TODO add configurable in the future
-
 type LogFields struct {
 	ScopeName    string
 	ScopeVersion string
@@ -214,10 +212,10 @@ func (c *columnBatch) ensureSize(targetRows int) {
 // Then call the Flush() interface method to perform the insert.
 // This avoids intermediate allocations and fills out ch-go's internal
 // column buffers directly.
-func (s *ClickHouseStore) FastInsert() LogAppender {
+func (s *ClickHouseStore) FastInsert(preSize int) LogAppender {
 	colBatch := s.batchPool.Get().(*columnBatch)
 	colBatch.Reset()
-	colBatch.ensureSize(targetRows)
+	colBatch.ensureSize(preSize)
 	return &batchAppender{
 		store: s,
 		batch: colBatch,

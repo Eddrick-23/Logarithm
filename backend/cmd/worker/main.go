@@ -114,7 +114,7 @@ func run(ctx context.Context, w io.Writer) error {
 
 	flattener := worker.NewLogTransformer(logger)
 
-	consumeCallback, err := worker.ConsumeCallback(workerLogger, store, decompressor, flattener, liveTailPublisher)
+	consumeCallback, err := worker.ConsumeCallback(workerLogger, store, decompressor, flattener, liveTailPublisher, config.WorkerRowsPerBatch)
 	if err != nil {
 		return err
 	}
