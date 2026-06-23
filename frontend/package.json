@@ -30,6 +30,7 @@
     "dayjs": "^1.11.20",
     "material-react-table": "^3.2.1",
     "msw": "^2.14.6",
+    "mui-color-input": "^9.0.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "vitest": "^4.1.8"
