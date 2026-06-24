@@ -2,6 +2,7 @@
 
 > All benchmarks are reproducible. Load generator configs are in `load_generator/configs/` and profiling scripts in `load_generator/`. <br>
 > M1 results were collected on 14 June 2026 at commit `bench-m1` (0d4aba89527fbb191b5061210e2180ac7c9683c7). <br>
+> M2 results were collected on 24 June 2026 at commit `bench-m2` (55e996a06fa37cebc60ba81310c4f04bdb674170). <br>
 > To reproduce, see [Reproducing Results](#reproducing-results).
 
 ---
