@@ -47,7 +47,7 @@ export default function TailLogRow({ time, service, severity, message }: TailLog
                         py: 0.25,
                     }}
                 >
-                    <Typography sx={{ fontSize: 12, color: "#9e9e9e" }}>{service}</Typography>
+                    <Typography sx={{ fontSize: 12, color: "text.disabled" }}>{service}</Typography>
                 </Box>
             </Box>
 
@@ -80,7 +80,7 @@ export default function TailLogRow({ time, service, severity, message }: TailLog
                     flexGrow: 1,
                     textAlign: "left",
                     fontSize: 13,
-                    color: "#9e9e9e",
+                    color: "text.disabled",
                     overflowWrap: "break-word",
                 }}
             >

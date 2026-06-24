@@ -52,7 +52,7 @@ function ServiceErrorRow({ serviceName, totalErrors, errorRate, thresholds }: Se
                         {formatNumber(totalErrors)}
                     </Typography>
                 </Tooltip>
-                <Typography sx={{ fontSize: "0.75rem", color: "#8b949e" }}>{errorRate.toFixed(2)}%</Typography>
+                <Typography sx={{ fontSize: "0.75rem", color: "text.secondary" }}>{errorRate.toFixed(2)}%</Typography>
             </Box>
         </Box>
     );
@@ -81,13 +81,13 @@ export default function ServiceError() {
                             size="small"
                             onClick={() => setEditorOpen(true)}
                             aria-label="Configure thresholds"
-                            sx={{ color: "#8b949e", "&:hover": { color: "#cdd9e5" } }}
+                            sx={{ color: "primary.main", "&:hover": { color: "#63b4f6" } }}
                         >
                             <SettingsIcon fontSize="small" />
                         </IconButton>
                     </Tooltip>
                 </Typography>
-                <Typography variant="caption" sx={{ color: "#8b949e", fontSize: "0.85rem", mb: 1 }}>
+                <Typography variant="caption" sx={{ color: "primary.main", fontSize: "0.85rem", mb: 1 }}>
                     last 1h
                 </Typography>
             </Box>
@@ -113,7 +113,7 @@ export default function ServiceError() {
             {/* no errors found in past hour */}
             {!isLoading && !isError && (!data || data.length === 0) && (
                 <Box sx={{ py: 3, textAlign: "center" }}>
-                    <Typography variant="body2" sx={{ color: "#8b949e" }}>
+                    <Typography variant="body2" sx={{ color: "text.secondary" }}>
                         No errors recorded in the last hour.
                     </Typography>
                 </Box>
