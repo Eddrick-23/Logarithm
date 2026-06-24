@@ -122,9 +122,12 @@ export default function IngestionGraph({ data, isLoading, isError, lastUpdatedAt
 
             {/* no logs received from api */}
             {isEmpty && (
-                <Alert variant="outlined" severity="info">
-                    No logs received in the last 60 seconds
-                </Alert>
+                // add a gap between LastUpdatedAt and alert bar
+                <Box sx={{ mt: 1.5 }}>
+                    <Alert variant="outlined" severity="info">
+                        No logs received in the last 60 seconds
+                    </Alert>
+                </Box>
             )}
 
             {/* only show the graph if data and timestamps are valid */}

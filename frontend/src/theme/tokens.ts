@@ -13,7 +13,7 @@ export const sectionLabel: SxProps<Theme> = {
     fontWeight: 700,
     textTransform: "uppercase",
     letterSpacing: "0.1em",
-    color: "text.disabled",
+    color: "primary.main",
     mb: 1,
 };
 

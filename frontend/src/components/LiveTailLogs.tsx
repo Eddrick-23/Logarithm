@@ -238,7 +238,7 @@ export default function LiveTailLogs() {
                 <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
                     <Stack direction="row" sx={{ alignItems: "center" }} spacing={1}>
                         <Box sx={{ ...pulseSx, bgcolor: dotColour }} />
-                        <Typography sx={{ ...sectionLabel }}>Live Tail</Typography>
+                        <Typography sx={{ ...sectionLabel, color: dotColour }}>Live Tail</Typography>
                     </Stack>
                     <Button
                         variant="outlined"
@@ -246,7 +246,7 @@ export default function LiveTailLogs() {
                         onClick={isPaused ? handleResume : handlePause}
                         disabled={connectionStatus !== "connected"}
                         sx={{
-                            color: "#9e9e9e",
+                            color: "text.disabled",
                             borderColor: "rgba(255,255,255,0.15)",
                             textTransform: "none",
                             fontSize: 13,
@@ -366,8 +366,8 @@ export default function LiveTailLogs() {
                             mb: 3,
                         }}
                     >
-                        <PauseIcon sx={{ fontSize: 16, color: "#c97316" }} />
-                        <Typography variant="body2" sx={{ color: "#c97316" }}>
+                        <PauseIcon sx={{ fontSize: 16, color: "warning.main" }} />
+                        <Typography variant="body2" sx={{ color: "warning.main" }}>
                             Tail paused — new logs buffering
                         </Typography>
                     </Box>
@@ -388,7 +388,7 @@ export default function LiveTailLogs() {
                             width: columnWidths.time,
                             textAlign: "left",
                             fontSize: 13,
-                            color: "#6e7681",
+                            color: "text.secondary",
                             fontWeight: 600,
                         }}
                     >
@@ -399,7 +399,7 @@ export default function LiveTailLogs() {
                             width: columnWidths.service,
                             textAlign: "left",
                             fontSize: 13,
-                            color: "#6e7681",
+                            color: "text.secondary",
                             fontWeight: 600,
                         }}
                     >
@@ -410,14 +410,14 @@ export default function LiveTailLogs() {
                             width: columnWidths.severity,
                             textAlign: "left",
                             fontSize: 13,
-                            color: "#6e7681",
+                            color: "text.secondary",
                             fontWeight: 600,
                         }}
                     >
                         SEVERITY
                     </Typography>
                     <Typography
-                        sx={{ flexGrow: 1, textAlign: "left", fontSize: 13, color: "#6e7681", fontWeight: 600 }}
+                        sx={{ flexGrow: 1, textAlign: "left", fontSize: 13, color: "text.secondary", fontWeight: 600 }}
                     >
                         BODY
                     </Typography>
@@ -438,7 +438,7 @@ export default function LiveTailLogs() {
                         ))}
 
                     {filteredLogs.length === 0 && (
-                        <Box sx={{ textAlign: "center", py: 3, color: "#6e7681" }}>
+                        <Box sx={{ textAlign: "center", py: 3, color: "text.secondary" }}>
                             <Typography variant="body2">No logs match your filters</Typography>
                         </Box>
                     )}

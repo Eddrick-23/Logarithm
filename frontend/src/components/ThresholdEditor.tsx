@@ -117,7 +117,7 @@ export function ThresholdEditor({ open, onClose, thresholds, onChange }: Thresho
             </DialogTitle>
 
             <DialogContent sx={{ pt: 0 }}>
-                <Typography variant="caption" sx={{ color: "#8b949e", display: "block", mb: 2 }}>
+                <Typography variant="caption" sx={{ color: "text.secondary", display: "block", mb: 2 }}>
                     Bands are matched top-down. The band with the highest min value that the error rate meets is
                     applied. A band starting at 0 is required as the catch-all floor. Maximum of {MAX_BANDS} bands.
                 </Typography>
@@ -129,7 +129,7 @@ export function ThresholdEditor({ open, onClose, thresholds, onChange }: Thresho
                             key={header}
                             variant="caption"
                             sx={{
-                                color: "#8b949e",
+                                color: "text.secondary",
                                 fontSize: "0.7rem",
                                 textTransform: "uppercase",
                                 letterSpacing: "0.05em",
@@ -198,7 +198,7 @@ export function ThresholdEditor({ open, onClose, thresholds, onChange }: Thresho
                                         onClick={() => removeRow(i)}
                                         aria-label="Remove band"
                                         sx={{
-                                            color: floor ? "transparent" : "#8b949e",
+                                            color: floor ? "transparent" : "text.secondary",
                                             "&:hover": { color: "#f44336" },
                                         }}
                                     >
@@ -231,7 +231,7 @@ export function ThresholdEditor({ open, onClose, thresholds, onChange }: Thresho
                         mt: 1,
                         mb: 2,
                         borderStyle: "dashed",
-                        color: "#8b949e",
+                        color: "text.secondary",
                         borderColor: "rgba(255,255,255,0.18)",
                         "&:hover": { borderStyle: "dashed", borderColor: "rgba(255,255,255,0.35)" },
                     }}
@@ -248,7 +248,12 @@ export function ThresholdEditor({ open, onClose, thresholds, onChange }: Thresho
                     py: 1.5,
                 }}
             >
-                <Button onClick={handleReset} startIcon={<RestartAltIcon />} size="small" sx={{ color: "#8b949e" }}>
+                <Button
+                    onClick={handleReset}
+                    startIcon={<RestartAltIcon />}
+                    size="small"
+                    sx={{ color: "text.secondary" }}
+                >
                     Reset to defaults
                 </Button>
 

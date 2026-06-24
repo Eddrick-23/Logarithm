@@ -25,7 +25,7 @@ export function ThresholdLegend({ thresholds }: ThresholdLegendProps) {
                     />
 
                     {/* label */}
-                    <Typography sx={{ fontSize: "0.7rem", color: "#8b949e" }}>
+                    <Typography sx={{ fontSize: "0.7rem", color: "text.secondary" }}>
                         {t.label} ≥{t.min}%
                     </Typography>
                 </Box>

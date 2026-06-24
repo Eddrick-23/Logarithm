@@ -155,6 +155,14 @@ export default function EnhancedTable() {
             showProgressBars: isRefetching,
             sorting,
         },
+        muiTableHeadCellProps: {
+            sx: {
+                color: "primary.main",
+                fontSize: 12,
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+            },
+        },
     });
 
     return (

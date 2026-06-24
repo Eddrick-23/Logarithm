@@ -39,7 +39,7 @@ function StatCard({
             <Typography sx={{ ...statValue }}>
                 {value}
                 {unit && (
-                    <Box component="span" sx={{ fontSize: 18, color: "text.disabled" }}>
+                    <Box component="span" sx={{ fontSize: 18, color: "text.secondary" }}>
                         {unit}
                     </Box>
                 )}
