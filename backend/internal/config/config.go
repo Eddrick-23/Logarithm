@@ -52,6 +52,7 @@ type Config struct {
 	WorkerBackoff             []time.Duration `env:"WORKER_BACKOFF, default=5s,30s,60s,300s,3600s"`
 	WorkerLiveTailCount       int             `env:"WORKER_LIVE_TAIL_Count, default=3"`
 	WorkerLiveTailQueueSize   int             `env:"WORKER_LIVE_TAIL_QUEUE_SIZE, default=10000"`
+	WorkerRowsPerBatch        int             `env:"WORKER_ROWS_PER_BATCH, default=1000"`
 	SeedSystem                bool            `env:"SEED_SYSTEM, default=false"`
 	EnablePprof               bool            `env:"ENABLE_PPROF, default=false"`
 	PprofHost                 string          `env:"PPROF_HOST, default=0.0.0.0"`

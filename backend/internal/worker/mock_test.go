@@ -37,7 +37,7 @@ type MockLogStore struct {
 	Appender *MockLogAppender
 }
 
-func (m *MockLogStore) FastInsert() storage.LogAppender {
+func (m *MockLogStore) FastInsert(preSize int) storage.LogAppender {
 	return m.Appender
 }
 

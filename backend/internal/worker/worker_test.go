@@ -184,7 +184,7 @@ func TestConsumeCallback(t *testing.T) {
 				return &validReq, nil
 			})
 
-			callback, err := ConsumeCallback(slog.Default(), store, &NoOpDecompressor{}, decoder, &NoOpTransformer{}, &NoOpPublisher{})
+			callback, err := ConsumeCallback(slog.Default(), store, &NoOpDecompressor{}, decoder, &NoOpTransformer{}, &NoOpPublisher{}, 10)
 
 			require.NoError(t, err, "error creating consume callback")
 

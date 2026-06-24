@@ -16,13 +16,13 @@ import (
 // Storage insertion failures are returned; live-tail publish failures are
 // logged and ignored.
 func ConsumeCallback(logger *slog.Logger, store storage.LogStore, decompressor Decompressor,
-	decoder Decoder, transformer Transformer, publisher Publisher) (func([]transport.Message) error, error) {
+	decoder Decoder, transformer Transformer, publisher Publisher, estRows int) (func([]transport.Message) error, error) {
 	return func(messages []transport.Message) error {
 		if len(messages) == 0 {
 			return nil
 		}
 
-		appender := store.FastInsert()
+		appender := store.FastInsert(estRows)
 		processMessages(logger, decompressor, decoder, messages, transformer, publisher, appender)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

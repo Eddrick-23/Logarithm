@@ -4,19 +4,12 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/ClickHouse/ch-go"
 	"github.com/ClickHouse/ch-go/proto"
 	"github.com/Eddrick-23/Logarithm/internal/core"
 )
-
-var pool = sync.Pool{
-	New: func() any {
-		return newColumnBatch()
-	},
-}
 
 type LogFields struct {
 	ScopeName    string
@@ -78,7 +71,7 @@ func (b *batchAppender) Append(
 }
 
 func (b *batchAppender) Flush(ctx context.Context) error {
-	defer pool.Put(b.batch)
+	defer b.store.batchPool.Put(b.batch)
 	return b.store.insertRecords(ctx, b.batch)
 }
 
@@ -138,15 +131,92 @@ func (c *columnBatch) Reset() {
 	c.ResAttrValues.Reset()
 }
 
-// Returns an interface for optimised inserts
+// keep private to call internally as of now.
+// May expose to clients for better dynamic sizing in the future.
+func (c *columnBatch) ensureSize(targetRows int) {
+	const estimatedBodyBytesPerRow = 50
+	const estimatedKeyBytes = 50
+	const estimatedValBytes = 100
+	const estimatedAttrPerRow = 5
+
+	existingRows := cap(c.Timestamps.Data)
+	if existingRows >= targetRows {
+		return
+	}
+
+	// resize only if existing rows is smaller
+	c.Timestamps.Data = make([]proto.DateTime64, 0, targetRows)
+	c.ScopeNames.Values = make([]string, 0, targetRows)
+	c.ScopeVersions.Values = make([]string, 0, targetRows)
+
+	c.TraceIds = make(proto.ColFixedStr32, 0, targetRows)
+	c.SpanIds = make(proto.ColFixedStr16, 0, targetRows)
+	c.ObservedTimestamps.Data = make([]proto.DateTime64, 0, targetRows)
+	c.SeverityTexts.Values = make([]string, 0, targetRows)
+	c.SeverityNumbers = make(proto.ColUInt8, 0, targetRows)
+	c.ServiceNames.Values = make([]string, 0, targetRows)
+	c.Bodies.Buf = make([]byte, 0, targetRows*estimatedBodyBytesPerRow)
+	c.Bodies.Pos = make([]proto.Position, 0, targetRows)
+	c.BodyTypes.Values = make([]string, 0, targetRows)
+
+	// Preallocating the ColArr[T] type
+	// ch-go's ColArr works like so:
+	// It is a generic with a Data field that holds columnOf interface.
+	// We hold T of type string, so underlying its a proto.Colstr that satisfies the interface
+	// ColStr internally holds a Buf:[]byte and a Pos:[]Position. Position tells us []byte[start:end] is a word.
+	// Buf is preallocated with targetRows * estimatedKeyBytes(total bytes per []string appended)
+	// Pos is preallocated with targetRows * estimatedAttrPerRow(length of []string appended)
+	// ColArr now wraps ColStr and does the row tracking with its Offsets slice(Pos[start:end] is one row).
+	// Overall structure:
+	// Row 0 (LogAttrKeys for record 0): ["env", "region"]
+	// Row 1 (LogAttrKeys for record 1): ["pod"]
+	// Row 2 (LogAttrKeys for record 2): ["env", "pod", "zone"]
+
+	// Data (a *ColStr, flattened):
+	//   Buf: [e n v r e g i o n p o d e n v p o d z o n e]
+	//   Pos: [{0,3}, {3,9}, {9,12}, {12,15}, {15,18}, {18,22}]
+	//           "env"  "region" "pod"   "env"   "pod"   "zone"
+
+	// Offsets (ColUInt64, cumulative count of elements per row):
+	//   [2, 3, 6]
+	//   row 0 = Data rows [0:2]   = "env", "region"
+	//   row 1 = Data rows [2:3]   = "pod"
+	//   row 2 = Data rows [3:6]   = "env", "pod", "zone"
+	if k, ok := c.LogAttrKeys.Data.(*proto.ColStr); ok {
+		k.Buf = make([]byte, 0, targetRows*estimatedKeyBytes)
+		k.Pos = make([]proto.Position, 0, targetRows*estimatedAttrPerRow)
+	}
+	c.LogAttrKeys.Offsets = make(proto.ColUInt64, 0, targetRows)
+
+	if k, ok := c.LogAttrValues.Data.(*proto.ColStr); ok {
+		k.Buf = make([]byte, 0, targetRows*estimatedKeyBytes)
+		k.Pos = make([]proto.Position, 0, targetRows*estimatedAttrPerRow)
+	}
+	c.LogAttrValues.Offsets = make(proto.ColUInt64, 0, targetRows)
+
+	if k, ok := c.ResAttrKeys.Data.(*proto.ColStr); ok {
+		k.Buf = make([]byte, 0, targetRows*estimatedKeyBytes)
+		k.Pos = make([]proto.Position, 0, targetRows*estimatedAttrPerRow)
+	}
+	c.ResAttrKeys.Offsets = make(proto.ColUInt64, 0, targetRows)
+
+	if k, ok := c.ResAttrValues.Data.(*proto.ColStr); ok {
+		k.Buf = make([]byte, 0, targetRows*estimatedKeyBytes)
+		k.Pos = make([]proto.Position, 0, targetRows*estimatedAttrPerRow)
+	}
+	c.ResAttrValues.Offsets = make(proto.ColUInt64, 0, targetRows)
+}
+
+// Returns an interface for optimised inserts.
 //
-// It is the callers responsibility to append required fields
-// Then call the Flush() interface method to perform the insert
+// It is the callers responsibility to append required fields.
+// Then call the Flush() interface method to perform the insert.
 // This avoids intermediate allocations and fills out ch-go's internal
-// column buffers directly
-func (s *ClickHouseStore) FastInsert() LogAppender {
-	colBatch := pool.Get().(*columnBatch)
+// column buffers directly.
+func (s *ClickHouseStore) FastInsert(preSize int) LogAppender {
+	colBatch := s.batchPool.Get().(*columnBatch)
 	colBatch.Reset()
+	colBatch.ensureSize(preSize)
 	return &batchAppender{
 		store: s,
 		batch: colBatch,
@@ -171,18 +241,19 @@ func spanIdToBytes(s string) ([16]byte, error) {
 	return v, nil
 }
 
-// Batch Insert by passing in a slice of FlatLogRecords
+// Batch Insert by passing in a slice of FlatLogRecords.
 //
 // Performs transformation to fill up ch-go column buffers under the hood.
-// If batches are large consider using the FastInsert interface
+// If batches are large consider using the FastInsert interface.
 func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLogRecord) error {
 	if len(records) == 0 {
 		return nil
 	}
 
-	colBatch := pool.Get().(*columnBatch)
+	colBatch := s.batchPool.Get().(*columnBatch)
 	colBatch.Reset()
-	defer pool.Put(colBatch)
+	colBatch.ensureSize(len(records))
+	defer s.batchPool.Put(colBatch)
 
 	for _, record := range records {
 		traceIdBytes, err := traceIdToBytes(record.TraceId)
