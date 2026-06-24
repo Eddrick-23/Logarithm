@@ -157,6 +157,7 @@ func (c *columnBatch) ensureSize(targetRows int) {
 	c.ServiceNames.Values = make([]string, 0, targetRows)
 	c.Bodies.Buf = make([]byte, 0, targetRows*estimatedBodyBytesPerRow)
 	c.Bodies.Pos = make([]proto.Position, 0, targetRows)
+	c.BodyTypes.Values = make([]string, 0, targetRows)
 
 	// Preallocating the ColArr[T] type
 	// ch-go's ColArr works like so:
