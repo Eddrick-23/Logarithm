@@ -238,7 +238,7 @@ export default function LiveTailLogs() {
                 <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
                     <Stack direction="row" sx={{ alignItems: "center" }} spacing={1}>
                         <Box sx={{ ...pulseSx, bgcolor: dotColour }} />
-                        <Typography sx={{ ...sectionLabel }}>Live Tail</Typography>
+                        <Typography sx={{ ...sectionLabel, color: dotColour }}>Live Tail</Typography>
                     </Stack>
                     <Button
                         variant="outlined"

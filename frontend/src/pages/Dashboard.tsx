@@ -57,7 +57,7 @@ export default function Dashboard() {
                                 fontSize: 10,
                                 fontWeight: 700,
                                 letterSpacing: "0.1em",
-                                color: "text.disabled",
+                                color: status.colour,
                             }}
                         >
                             {status.label}
