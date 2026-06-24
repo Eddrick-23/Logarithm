@@ -2,6 +2,7 @@
 
 > All benchmarks are reproducible. Load generator configs are in `load_generator/configs/` and profiling scripts in `load_generator/`. <br>
 > M1 results were collected on 14 June 2026 at commit `bench-m1` (0d4aba89527fbb191b5061210e2180ac7c9683c7). <br>
+> M2 results were collected on 24 June 2026 at commit `bench-m2` (55e996a06fa37cebc60ba81310c4f04bdb674170). <br>
 > To reproduce, see [Reproducing Results](#reproducing-results).
 
 ---
@@ -227,12 +228,12 @@ The ceiling is identified by stepping RPS up incrementally until p99 exceeds 100
 
 | RPS | p99/ms | Queue Stabilised |
 |-----|-----|-------------------|
-| 1,000 | | |
-| 2,000 | | |
-| 3,000 | | |
-| 4,000 | | |
-| 5,000 | | |
-| **Ceiling** | — | — |
+| 1,000 | 1.48 | Yes |
+| 2,000 | 1.14 | Yes |
+| 3,000 | 1.22 | Yes |
+| 3,500 | 1.32 | Yes |
+| 4,000 | 1.55 | No |
+| **Ceiling** | 1.32 | Yes |
 
 </td>
 
@@ -242,12 +243,13 @@ The ceiling is identified by stepping RPS up incrementally until p99 exceeds 100
 
 | RPS | p99/ms | Queue Stabilised |
 |-----|-----|-------------------|
-| 1,000 | | |
-| 2,000 | | |
-| 3,000 | | |
-| 4,000 | | |
-| 5,000 | | |
-| **Ceiling** | — | — |
+| 1,000 | 2.24 | Yes |
+| 2,000 | 0.96 | Yes |
+| 3,000 | 1.08 | Yes |
+| 4,000 | 1.17 | Yes |
+| 5,000 | 1.35 | Yes |
+| 5,500 | 1.59 | No |
+| **Ceiling** | 1.35 | Yes |
 
 </td>
 
@@ -304,9 +306,9 @@ The ceiling is identified by stepping RPS up incrementally until p99 exceeds 100
 ### Ceiling Summary
 | Milestone | Transport | Payload | Ceiling RPS | p99 at Ceiling/ms |
 |---|---|---|---|---|
-| M1 | HTTP | JSON | 2000| 3.66|
-| M2 | HTTP | JSON | | |
-| M2 | HTTP | Protobuf | | |
+| M1 | HTTP | JSON | 2000 | 3.66 |
+| M2 | HTTP | JSON | 3500 | 1.32 |
+| M2 | HTTP | Protobuf | 5000 | 1.35 |
 | M3 | HTTP | JSON | | |
 | M3 | HTTP | Protobuf | | |
 | M3 | gRPC | Protobuf | | |
@@ -323,15 +325,19 @@ A stabilising curve confirms the worker drains the queue faster than the ingesti
 | Milestone |Transport | Payload | Peak NumPending at Max Throughput|
 |---|---|---|---|
 | M1 | HTTP | JSON | 798 |
-| M2 | HTTP | JSON | |
-| M2 | HTTP | protobuf | |
+| M2 | HTTP | JSON | 0 |
+| M2 | HTTP | protobuf | 1049 |
 | M3 | HTTP | JSON | |
 | M3 | HTTP | protobuf | |
 | M3 | gRPC | protobuf | |
 
-<a href="./assets/">
-  <img src="./assets/Milestone 1 Nats Queue Depth over time.svg" alt="Open Folder" width="1000">
-</a>
+<p align="center">
+  <a href="./assets/">
+    <img src="./assets/Milestone 1 Nats Queue Depth over time.svg" alt="Milestone 1" width="32%">
+    <img src="./assets/Milestone 2 Nats Queue Depth over time (JSON).svg" alt="Milestone 2 JSON" width="32%">
+    <img src="./assets/Milestone 2 Nats Queue Depth over time (protobuf).svg" alt="Milestone 2 Protobuf" width="32%">
+  </a>
+</p>
 
 ---
 
