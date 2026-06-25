@@ -52,6 +52,7 @@ services:
   ingester:
     build:
       context: ./backend
+      target: ingester
     ports:
       - "8090:8090"
     command: ./ingester
@@ -63,6 +64,7 @@ services:
   worker:
     build:
       context: ./backend
+      target: worker
     command: ./worker
     env_file:
       - ./backend/.env
@@ -74,13 +76,14 @@ services:
   dashboard-api:
     build:
       context: ./backend
+      target: dashboard
     ports:
       - "8091:8091"
     command: ./dashboard
     env_file:
       - ./backend/.env
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://dashboard-api:8091/health"]      
+      test: ["CMD", "wget", "-qO-", "http://dashboard-api:8091/health"]
       interval: 10s
       timeout: 5s
       retries: 5

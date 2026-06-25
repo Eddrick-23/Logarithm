@@ -5,7 +5,7 @@ RUN go install github.com/air-verse/air@latest
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-CMD ["air", "-c", ".air.dashboard.toml"]  
+CMD ["air", "-c", ".air.dashboard.toml"]
 
 # Build stage
 FROM golang:1.25-alpine AS builder
@@ -20,8 +20,16 @@ RUN go build -o ./bin/dashboard ./cmd/dashboard
 RUN go build -o ./bin/ingester ./cmd/ingester
 RUN go build -o ./bin/worker ./cmd/worker
 
-FROM alpine:latest 
+FROM alpine:latest AS dashboard
 WORKDIR /root/
-COPY --from=builder /build/bin .
+COPY --from=builder /build/bin/dashboard .
 
-# no start commands, handled by docker compose  
+FROM alpine:latest AS ingester
+WORKDIR /root/
+COPY --from=builder /build/bin/ingester .
+
+FROM alpine:latest AS worker
+WORKDIR /root/
+COPY --from=builder /build/bin/worker .
+
+# no start commands, handled by docker compose

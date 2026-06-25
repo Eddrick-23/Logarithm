@@ -1,5 +1,5 @@
 services:
-  react: 
+  react:
     build:
       context: ./frontend
     ports:
@@ -51,6 +51,7 @@ services:
   ingester:
     build:
       context: ./backend
+      target: ingester
     command: ./ingester
     env_file:
       - ./backend/.env
@@ -65,13 +66,13 @@ services:
       nofile:
         soft: 65535
         hard: 65535
-    network_mode:
-      "host"
+    network_mode: "host"
   worker:
     build:
       context: ./backend
+      target: worker
     ports:
-      - "6061:6061" 
+      - "6061:6061"
     command: ./worker
     env_file:
       - ./backend/.env
@@ -86,6 +87,7 @@ services:
   dashboard-api:
     build:
       context: ./backend
+      target: dashboard
     ports:
       - "8091:8091"
     command: ./dashboard
@@ -96,7 +98,7 @@ services:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
-      
+
 volumes:
   clickhouse_data:
   clickhouse_logs:
