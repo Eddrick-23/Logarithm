@@ -5,23 +5,42 @@ RUN go install github.com/air-verse/air@latest
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-CMD ["air", "-c", ".air.dashboard.toml"]  
+CMD ["air", "-c", ".air.dashboard.toml"]
 
-# Build stage
+# global build base
 FROM golang:1.25-alpine AS builder
-
 WORKDIR /build
+ENV CGO_ENABLED=0 GOOS=linux
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY . .
-ENV CGO_ENABLED=0 GOOS=linux
-RUN go build -o ./bin/dashboard ./cmd/dashboard
-RUN go build -o ./bin/ingester ./cmd/ingester
-RUN go build -o ./bin/worker ./cmd/worker
+# isolated build stages
+FROM builder AS build-dashboard
+RUN --mount=type=bind,source=.,target=/build \
+    go build -o /out/dashboard ./cmd/dashboard
 
-FROM alpine:latest 
+FROM builder AS build-ingester
+RUN --mount=type=bind,source=.,target=/build \
+    go build -o /out/ingester ./cmd/ingester
+
+FROM builder AS build-worker
+RUN --mount=type=bind,source=.,target=/build \
+    go build -o /out/worker ./cmd/worker
+
+# TARGET: DASHBOARD
+FROM alpine:latest AS dashboard
 WORKDIR /root/
-COPY --from=builder /build/bin .
+COPY --from=build-dashboard /out/dashboard .
+CMD ["./dashboard"]
 
-# no start commands, handled by docker compose  
+# TARGET: INGESTER
+FROM alpine:latest AS ingester
+WORKDIR /root/
+COPY --from=build-ingester /out/ingester .
+CMD ["./ingester"]
+
+# TARGET: WORKER
+FROM alpine:latest AS worker
+WORKDIR /root/
+COPY --from=build-worker /out/worker .
+CMD ["./worker"]
