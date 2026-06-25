@@ -13,25 +13,34 @@ WORKDIR /build
 ENV CGO_ENABLED=0 GOOS=linux
 COPY go.mod go.sum ./
 RUN go mod download
-COPY . .
+
+# isolated build stages
+FROM builder AS build-dashboard
+RUN --mount=type=bind,source=.,target=/build \
+    go build -o /out/dashboard ./cmd/dashboard
+
+FROM builder AS build-ingester
+RUN --mount=type=bind,source=.,target=/build \
+    go build -o /out/ingester ./cmd/ingester
+
+FROM builder AS build-worker
+RUN --mount=type=bind,source=.,target=/build \
+    go build -o /out/worker ./cmd/worker
 
 # TARGET: DASHBOARD
 FROM alpine:latest AS dashboard
 WORKDIR /root/
-RUN --mount=type=bind,from=builder,source=/build,target=/build \
-    go build -o /root/dashboard /build/cmd/dashboard
+COPY --from=build-dashboard /out/dashboard .
 CMD ["./dashboard"]
 
 # TARGET: INGESTER
 FROM alpine:latest AS ingester
 WORKDIR /root/
-RUN --mount=type=bind,from=builder,source=/build,target=/build \
-    go build -o /root/ingester /build/cmd/ingester
+COPY --from=build-ingester /out/ingester .
 CMD ["./ingester"]
 
 # TARGET: WORKER
 FROM alpine:latest AS worker
 WORKDIR /root/
-RUN --mount=type=bind,from=builder,source=/build,target=/build \
-    go build -o /root/worker /build/cmd/worker
+COPY --from=build-worker /out/worker .
 CMD ["./worker"]
