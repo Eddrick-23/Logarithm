@@ -55,7 +55,6 @@ services:
       target: ingester
     ports:
       - "8090:8090"
-    command: ./ingester
     env_file:
       - ./backend/.env
     depends_on:
@@ -65,7 +64,6 @@ services:
     build:
       context: ./backend
       target: worker
-    command: ./worker
     env_file:
       - ./backend/.env
     depends_on:
@@ -79,7 +77,6 @@ services:
       target: dashboard
     ports:
       - "8091:8091"
-    command: ./dashboard
     env_file:
       - ./backend/.env
     healthcheck:

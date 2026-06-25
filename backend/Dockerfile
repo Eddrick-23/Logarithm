@@ -7,29 +7,31 @@ RUN go mod download
 COPY . .
 CMD ["air", "-c", ".air.dashboard.toml"]
 
-# Build stage
+# global build base
 FROM golang:1.25-alpine AS builder
-
 WORKDIR /build
+ENV CGO_ENABLED=0 GOOS=linux
 COPY go.mod go.sum ./
 RUN go mod download
-
 COPY . .
-ENV CGO_ENABLED=0 GOOS=linux
-RUN go build -o ./bin/dashboard ./cmd/dashboard
-RUN go build -o ./bin/ingester ./cmd/ingester
-RUN go build -o ./bin/worker ./cmd/worker
 
+# TARGET: DASHBOARD
 FROM alpine:latest AS dashboard
 WORKDIR /root/
-COPY --from=builder /build/bin/dashboard .
+RUN --mount=type=bind,from=builder,source=/build,target=/build \
+    go build -o /root/dashboard /build/cmd/dashboard
+CMD ["./dashboard"]
 
+# TARGET: INGESTER
 FROM alpine:latest AS ingester
 WORKDIR /root/
-COPY --from=builder /build/bin/ingester .
+RUN --mount=type=bind,from=builder,source=/build,target=/build \
+    go build -o /root/ingester /build/cmd/ingester
+CMD ["./ingester"]
 
+# TARGET: WORKER
 FROM alpine:latest AS worker
 WORKDIR /root/
-COPY --from=builder /build/bin/worker .
-
-# no start commands, handled by docker compose
+RUN --mount=type=bind,from=builder,source=/build,target=/build \
+    go build -o /root/worker /build/cmd/worker
+CMD ["./worker"]
