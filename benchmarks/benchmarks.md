@@ -194,8 +194,8 @@ changes are directly attributable to code optimisations, not load changes.
 | Milestone | Transport| p99/ms |
 |---|---|---|
 | M1: JSON bytes | HTTP | 2.88 |
-| M2: JSON bytes | HTTP | |
-| M2: protobuf bytes | HTTP | |
+| M2: JSON bytes | HTTP | 1.48 |
+| M2: protobuf bytes | HTTP | 2.24 |
 | M3: JSON bytes | HTTP | |
 | M3: protobuf bytes | HTTP | |
 | M3: protobuf bytes| gRPC | |
