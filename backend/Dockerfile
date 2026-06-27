@@ -8,24 +8,27 @@ COPY . .
 CMD ["air", "-c", ".air.dashboard.toml"]
 
 # global build base
-FROM golang:1.25-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS builder
 WORKDIR /build
 ENV CGO_ENABLED=0 GOOS=linux
+
+ARG TARGETARCH
+
 COPY go.mod go.sum ./
 RUN go mod download
 
 # isolated build stages
 FROM builder AS build-dashboard
 RUN --mount=type=bind,source=.,target=/build \
-    go build -o /out/dashboard ./cmd/dashboard
+    GOARCH=$TARGETARCH go build -o /out/dashboard ./cmd/dashboard
 
 FROM builder AS build-ingester
 RUN --mount=type=bind,source=.,target=/build \
-    go build -o /out/ingester ./cmd/ingester
+    GOARCH=$TARGETARCH go build -o /out/ingester ./cmd/ingester
 
 FROM builder AS build-worker
 RUN --mount=type=bind,source=.,target=/build \
-    go build -o /out/worker ./cmd/worker
+    GOARCH=$TARGETARCH go build -o /out/worker ./cmd/worker
 
 # TARGET: DASHBOARD
 FROM alpine:latest AS dashboard
