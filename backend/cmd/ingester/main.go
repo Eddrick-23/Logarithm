@@ -81,7 +81,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	srv := NewServer(httpLogger, config, natsBroker)
 
 	httpServer := &http.Server{
-		Addr:              net.JoinHostPort(config.IngesterHost, config.IngesterPort),
+		Addr:              net.JoinHostPort(config.IngesterHost, config.IngesterPortHTTP),
 		Handler:           srv,
 		ReadHeaderTimeout: config.IngesterReadHeaderTimeout,
 		ReadTimeout:       config.IngesterReadTimeout,
@@ -95,17 +95,18 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		grpc.ForceServerCodecV2(encoding.GetCodecV2(ingester.CodecName)),
 		grpc.UnknownServiceHandler(proxyHandler.StreamHandler),
 	)
+
+	// start http and grpc servers
 	go func() {
 		httpLogger.Info("listening", "addr", httpServer.Addr)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			httpLogger.Error("http server failed", "err", err)
 		}
-
 	}()
 
 	go func() {
-		grpcLogger.Info("listening", "addr", "tcp"+":8089") // TODO set config later
-		lis, err := net.Listen("tcp", ":8089")
+		grpcLogger.Info("listening", "addr", "tcp"+":"+config.IngesterPortGRPC)
+		lis, err := net.Listen("tcp", ":"+config.IngesterPortGRPC)
 		if err != nil {
 			grpcLogger.Error("failed to listen", "err", err)
 		}

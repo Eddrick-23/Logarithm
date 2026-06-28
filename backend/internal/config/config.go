@@ -25,7 +25,8 @@ func (b *ByteSize) EnvDecode(val string) error {
 
 type Config struct {
 	IngesterHost              string          `env:"INGESTER_HOST, default=localhost"`
-	IngesterPort              string          `env:"INGESTER_PORT, default=8090"`
+	IngesterPortGRPC          string          `env:"INGESTER_PORT_GRPC, default=8089"`
+	IngesterPortHTTP          string          `env:"INGESTER_PORT_HTTP, default=8090"`
 	IngesterReadHeaderTimeout time.Duration   `env:"INGESTER_READ_HEADER_TIMEOUT, default=2s"`
 	IngesterReadTimeout       time.Duration   `env:"INGESTER_READ_TIMEOUT, default=5s"`
 	IngesterWriteTimeout      time.Duration   `env:"INGESTER_WRITE_TIMEOUT, default=10s"`
