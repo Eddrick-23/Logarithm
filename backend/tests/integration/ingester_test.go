@@ -4,17 +4,13 @@ package integration
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/ingester"
 	"github.com/stretchr/testify/assert"
 )
@@ -23,29 +19,12 @@ type MockProducer struct {
 	Err error
 }
 
-func (m *MockProducer) PublishLogs(context.Context, string, []byte) error {
+func (m *MockProducer) PublishLogs(context.Context, string, []byte, map[string][]string) error {
 	return m.Err
 }
 
-var testLogRecordDTO core.LogRecordDTO = core.LogRecordDTO{
-	Timestamp:      time.Date(2024, 5, 20, 10, 0, 0, 0, time.UTC),
-	TraceId:        "4bf92f3577b34da6a3ce929d0e0e4736",
-	SpanId:         "00f067aa0ba902b7",
-	SeverityText:   "ERROR",
-	SeverityNumber: 17,
-	Body:           "Failed to process transaction due to timeout",
-	LogAttributes:  []core.KeyValue{{Key: "http.method", Value: "POST"}},
-}
-
-var testIngestRequest core.LogIngestRequest = core.LogIngestRequest{
-	ServiceName:        "test-service",
-	ResourceAttributes: []core.KeyValue{{Key: "host.name", Value: "prod-payment-02"}},
-	Records:            []core.LogRecordDTO{testLogRecordDTO},
-}
-var testIngestRequestNoServiceName core.LogIngestRequest = core.LogIngestRequest{
-	ServiceName:        "",
-	ResourceAttributes: []core.KeyValue{{Key: "host.name", Value: "prod-payment-02"}},
-	Records:            []core.LogRecordDTO{testLogRecordDTO},
+func (m *MockProducer) PublishLiveTail(subject string, data []byte) error {
+	return nil // not used
 }
 
 func setupTestApp(producerErr error) http.Handler {
@@ -55,63 +34,37 @@ func setupTestApp(producerErr error) http.Handler {
 	return mux
 }
 
-func marshalAndZipPayload(t *testing.T, payload any) ([]byte, []byte) {
-	t.Helper()
-	jsonBytes, err := json.Marshal(payload)
-
-	if err != nil {
-		t.Fatalf("error marshalling json body: %v", err)
-	}
-
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	_, err = gz.Write(jsonBytes)
-
-	if err != nil {
-		t.Fatalf("error writing gzip data: %v", err)
-	}
-
-	if err = gz.Close(); err != nil {
-		t.Fatalf("error closing gzip writer: %v", err)
-	}
-
-	return jsonBytes, buf.Bytes()
-}
-
 func TestIngestEndpoint(t *testing.T) {
-	validBodyBytes, validGzipped := marshalAndZipPayload(t, testIngestRequest)
-	bodyMissingServiceNameBytes, missingGzipped := marshalAndZipPayload(t, testIngestRequestNoServiceName)
-
+	dummyBody := []byte("data")
 	tests := []struct {
 		name           string
 		contentType    string
-		body           []byte
-		gzipped        bool
+		encoding       string
 		producerErr    error
 		expectedStatus int
 		expectedBody   string
 	}{
-		{"valid json", "application/json", validBodyBytes, false, nil, http.StatusAccepted, "Log ingested successfully"},
-		{"valid json gzip", "application/json", validGzipped, true, nil, http.StatusAccepted, "Log ingested successfully"},
-		{"missing service name", "application/json", bodyMissingServiceNameBytes, false, nil, http.StatusBadRequest, "No serviceName in payload"},
-		{"missing service name gzip", "application/json", missingGzipped, true, nil, http.StatusBadRequest, "No serviceName in payload"},
-		{"wrong content type", "text/plain", validBodyBytes, false, nil, http.StatusUnsupportedMediaType, "Content-Type must be application/json"},
-		{"missing content type", "", validBodyBytes, false, nil, http.StatusBadRequest, "Malformed/Missing Content-Type"},
-		{"invalid json", "application/json", []byte(`{bad}`), false, nil, http.StatusBadRequest, "Invalid JSON body"},
-		{"invalid gzip body", "application/json", []byte(`notgzip`), true, nil, http.StatusBadRequest, "Invalid gzip body"},
-		{"valid json publish failed", "application/json", validBodyBytes, false, fmt.Errorf("publish to nats failed"), http.StatusInternalServerError, "Error transporting json"},
-		{"valid json gzip publish failed", "application/json", validGzipped, true, fmt.Errorf("publish to nats failed"), http.StatusInternalServerError, "Error transporting json"},
+		{"json no encoding", "application/json", "", nil, http.StatusAccepted, "Log ingested successfully"},
+		{"json gzip encoding", "application/json", "gzip", nil, http.StatusAccepted, "Log ingested successfully"},
+		{"json with zstd encoding", "application/json", "zstd", nil, http.StatusAccepted, "Log ingested successfully"},
+		{"protobuf no encoding", "application/x-protobuf", "", nil, http.StatusAccepted, "Log ingested successfully"},
+		{"protobuf gzip encoding", "application/x-protobuf", "gzip", nil, http.StatusAccepted, "Log ingested successfully"},
+		{"protobuf with zstd encoding", "application/x-protobuf", "zstd", nil, http.StatusAccepted, "Log ingested successfully"},
+		{"unsupported content type", "text/plain", "", nil, http.StatusUnsupportedMediaType, "Unsupported or Missing Content-Type: text/plain"},
+		{"missing content type", "", "", nil, http.StatusUnsupportedMediaType, "Unsupported or Missing Content-Type:"},
+		{"json publish failed", "application/json", "", fmt.Errorf("publish to nats failed"), http.StatusServiceUnavailable, "Message broker unavailable"},
+		{"json unknown encoding", "application/json", "br", nil, http.StatusUnsupportedMediaType, "Unsupported Content-Encoding: br"},
+		{"protobuf publish failed", "application/x-protobuf", "", fmt.Errorf("publish to nats failed"), http.StatusServiceUnavailable, "Message broker unavailable"},
+		{"protobuf unknown encoding", "application/x-protobuf", "br", nil, http.StatusUnsupportedMediaType, "Unsupported Content-Encoding: br"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := setupTestApp(tc.producerErr)
-			req := httptest.NewRequest("POST", "/ingest", bytes.NewReader(tc.body))
+			req := httptest.NewRequest("POST", "/v1/logs", bytes.NewReader(dummyBody))
 			req.Header.Set("Content-type", tc.contentType)
-			if tc.gzipped {
-				req.Header.Set("Content-Encoding", "gzip")
-			}
+			req.Header.Set("Content-Encoding", tc.encoding)
 
 			rec := httptest.NewRecorder()
 			app.ServeHTTP(rec, req)

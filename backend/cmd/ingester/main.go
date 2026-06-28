@@ -7,8 +7,10 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -20,12 +22,27 @@ import (
 
 func NewServer(logger *slog.Logger, config *config.Config, producer transport.Producer) http.Handler {
 	mux := http.NewServeMux()
-	ingester.AddRoutes(mux, logger, producer, config.NatsPublishSubjectPrefix)
+	ingester.AddRoutes(mux, logger, producer, transport.LogStreamSubjectPrefix)
 
 	var handler http.Handler = mux
 	// add middlewares if any
 
 	return handler
+}
+
+func startPprof(logger *slog.Logger, config *config.Config) {
+	if !config.EnablePprof {
+		return
+	}
+	runtime.SetMutexProfileFraction(100)
+	runtime.SetBlockProfileRate(100000)
+	addr := net.JoinHostPort(config.PprofHost, "6060")
+	go func() {
+		logger.Info("pprof listening on", "addr", addr)
+		if err := http.ListenAndServe(addr, nil); err != nil {
+			logger.Error("pprof server stopped", "err", err)
+		}
+	}()
 }
 
 func run(ctx context.Context, w io.Writer, args []string) error {
@@ -34,6 +51,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	)
 	natsLogger := logger.With("component", "nats")
 	httpLogger := logger.With("component", "ingester")
+	pprofLogger := logger.With("component", "pprof")
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -42,21 +60,30 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+
+	startPprof(pprofLogger, config)
+
 	natsBroker, err := transport.NewNatsBroker(ctx, natsLogger, config.NatsURL)
 
 	if err != nil {
 		return fmt.Errorf("failed to crate nats broker: %w", err)
 	}
 
-	if _, err = natsBroker.EnsureStream(ctx, config.NatsSubject, config.NatsStreamMaxAge); err != nil {
+	if _, err = natsBroker.EnsureLogStream(ctx,
+		transport.LogStreamName, transport.LogStreamSubject,
+		config.NatsStreamMaxAge, int64(config.NatsLogStreamMaxBytes)); err != nil {
 		return fmt.Errorf("failed to ensure stream: %w", err)
 	}
 
 	srv := NewServer(httpLogger, config, natsBroker)
 
 	httpServer := &http.Server{
-		Addr:    net.JoinHostPort(config.IngesterHost, config.IngesterPort),
-		Handler: srv,
+		Addr:              net.JoinHostPort(config.IngesterHost, config.IngesterPort),
+		Handler:           srv,
+		ReadHeaderTimeout: config.IngesterReadHeaderTimeout,
+		ReadTimeout:       config.IngesterReadTimeout,
+		WriteTimeout:      config.IngesterWriteTimeout,
+		IdleTimeout:       config.IngesterIdleTimeout,
 	}
 
 	go func() {

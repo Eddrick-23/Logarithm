@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
+import Home from "../pages/Home";
 
 export const Route = createFileRoute("/")({
-    component: RouteComponent,
+    component: HomeComponent,
 });
 
-function RouteComponent() {
-    return <div>Logarithm</div>;
+function HomeComponent() {
+    return <Home />;
 }

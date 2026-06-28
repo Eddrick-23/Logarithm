@@ -4,228 +4,38 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
+	"github.com/ClickHouse/ch-go"
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/Eddrick-23/Logarithm/internal/core"
+	"golang.org/x/sync/errgroup"
 )
 
 type LogStore interface {
+	FastInsert(int) LogAppender
 	BatchInsert(context.Context, []core.FlatLogRecord) error
 	SearchLogs(context.Context, core.LogQueryFilter) ([]core.FlatLogRecord, error)
 }
 
 type ClickHouseStore struct {
 	conn       driver.Conn
-	dbAndTable string
+	tables     map[string]string
+	logger     *slog.Logger
+	ingestMu   sync.Mutex // ch.Client not thread safe
+	ingestConn *ch.Client // low level api for inserting
+	batchPool  sync.Pool
 }
 
-var testRecord1 core.FlatLogRecord = core.FlatLogRecord{
-	Timestamp:      time.Now().Add(-1 * time.Hour),
-	TraceId:        "4bf92f3577b34da6a3ce929d0e0e4736",
-	SpanId:         "00f067aa0ba902b7",
-	SeverityText:   "ERROR",
-	SeverityNumber: 17,
-	ServiceName:    "test-service1",
-	Body:           "Failed to process transaction due to timeout",
-	LogAttrKeys:    []string{"http.method", "http.status_code", "retry_count"},
-	LogAttrValues:  []string{"POST", "504", "3"},
-	ResAttrKeys:    []string{"host.name", "os.type", "service.version"},
-	ResAttrValues:  []string{"prod-server-1", "linux", "1.2.0"},
-}
-var testRecord2 core.FlatLogRecord = core.FlatLogRecord{
-	Timestamp:      time.Now().Add(-2 * time.Hour),
-	TraceId:        "4bf92f3577b37da6a3ce929d0f0e4736",
-	SpanId:         "01f067ef0ba402b7",
-	SeverityText:   "WARNING",
-	SeverityNumber: 13,
-	ServiceName:    "test-service2",
-	Body:           "extra information",
-	LogAttrKeys:    []string{"http.method", "http.status_code", "retry_count"},
-	LogAttrValues:  []string{"POST", "504", "3"},
-	ResAttrKeys:    []string{"host.name", "os.type", "service.version"},
-	ResAttrValues:  []string{"prod-server-2", "windows", "2.0.1"},
-}
-var testRecord3 core.FlatLogRecord = core.FlatLogRecord{
-	Timestamp:      time.Now(),
-	TraceId:        "8bf92f3577b34da6d3ce921d0e0e4536",
-	SpanId:         "02y067aa0ba902h3",
-	SeverityText:   "INFO",
-	SeverityNumber: 9,
-	ServiceName:    "test-service3",
-	Body:           "Just some test body",
-	LogAttrKeys:    []string{"http.method", "http.status_code", "retry_count"},
-	LogAttrValues:  []string{"GET", "500", "3"},
-	ResAttrKeys:    []string{"host.name", "os.type", "service.version"},
-	ResAttrValues:  []string{"prod-server-3", "linux", "3.1.0"},
-}
-var testRecord4 core.FlatLogRecord = core.FlatLogRecord{
-	Timestamp:      time.Now().Add(-30 * time.Minute),
-	TraceId:        "1cf92f3577b34da6a3ce929d0e0e1234",
-	SpanId:         "10f067aa0ba902c1",
-	SeverityText:   "INFO",
-	SeverityNumber: 9,
-	ServiceName:    "test-service1",
-	Body:           "User authentication successful",
-	LogAttrKeys:    []string{"http.method", "http.status_code", "user.id"},
-	LogAttrValues:  []string{"POST", "200", "usr-991"},
-	ResAttrKeys:    []string{"host.name", "os.type", "service.version"},
-	ResAttrValues:  []string{"prod-server-1", "linux", "1.2.0"},
-}
-var testRecord5 core.FlatLogRecord = core.FlatLogRecord{
-	Timestamp:      time.Now().Add(-45 * time.Minute),
-	TraceId:        "2df92f3577b34da6a3ce929d0e0e5678",
-	SpanId:         "11f067aa0ba902c2",
-	SeverityText:   "ERROR",
-	SeverityNumber: 17,
-	ServiceName:    "test-service2",
-	Body:           "Database connection pool exhausted",
-	LogAttrKeys:    []string{"db.system", "db.name", "error.type"},
-	LogAttrValues:  []string{"postgresql", "orders_db", "ConnectionPoolError"},
-	ResAttrKeys:    []string{"host.name", "os.type", "service.version"},
-	ResAttrValues:  []string{"prod-server-2", "windows", "2.0.1"},
-}
-var testRecord6 core.FlatLogRecord = core.FlatLogRecord{
-	Timestamp:      time.Now().Add(-3 * time.Hour),
-	TraceId:        "3ef92f3577b34da6a3ce929d0e0e9012",
-	SpanId:         "12f067aa0ba902c3",
-	SeverityText:   "WARNING",
-	SeverityNumber: 13,
-	ServiceName:    "test-service3",
-	Body:           "Memory usage above 80% threshold",
-	LogAttrKeys:    []string{"mem.used_mb", "mem.total_mb", "mem.percent"},
-	LogAttrValues:  []string{"6554", "8192", "80.5"},
-	ResAttrKeys:    []string{"host.name", "os.type", "service.version"},
-	ResAttrValues:  []string{"prod-server-3", "linux", "3.1.0"},
-}
-var testRecord7 core.FlatLogRecord = core.FlatLogRecord{
-	Timestamp:      time.Now().Add(-4 * time.Hour),
-	TraceId:        "4ff92f3577b34da6a3ce929d0e0e3456",
-	SpanId:         "13f067aa0ba902c4",
-	SeverityText:   "INFO",
-	SeverityNumber: 9,
-	ServiceName:    "test-service1",
-	Body:           "Cache invalidation completed",
-	LogAttrKeys:    []string{"cache.keys_evicted", "cache.size_mb", "cache.hit_rate"},
-	LogAttrValues:  []string{"142", "512", "0.87"},
-	ResAttrKeys:    []string{"host.name", "os.type", "service.version"},
-	ResAttrValues:  []string{"prod-server-1", "linux", "1.2.0"},
-}
-var testRecord8 core.FlatLogRecord = core.FlatLogRecord{
-	Timestamp:      time.Now().Add(-5 * time.Hour),
-	TraceId:        "5af92f3577b34da6a3ce929d0e0e7890",
-	SpanId:         "14f067aa0ba902c5",
-	SeverityText:   "ERROR",
-	SeverityNumber: 17,
-	ServiceName:    "test-service2",
-	Body:           "Payment gateway returned unexpected response",
-	LogAttrKeys:    []string{"http.method", "http.status_code", "payment.gateway"},
-	LogAttrValues:  []string{"POST", "502", "stripe"},
-	ResAttrKeys:    []string{"host.name", "os.type", "service.version"},
-	ResAttrValues:  []string{"prod-server-2", "windows", "2.0.1"},
-}
-var testRecord9 core.FlatLogRecord = core.FlatLogRecord{
-	Timestamp:      time.Now().Add(-6 * time.Hour),
-	TraceId:        "6bf92f3577b34da6a3ce929d0e0e2345",
-	SpanId:         "15f067aa0ba902c6",
-	SeverityText:   "INFO",
-	SeverityNumber: 9,
-	ServiceName:    "test-service3",
-	Body:           "Scheduled job completed successfully",
-	LogAttrKeys:    []string{"job.name", "job.duration_ms", "job.records_processed"},
-	LogAttrValues:  []string{"daily-report", "4521", "10200"},
-	ResAttrKeys:    []string{"host.name", "os.type", "service.version"},
-	ResAttrValues:  []string{"prod-server-3", "linux", "3.1.0"},
-}
-var testRecord10 core.FlatLogRecord = core.FlatLogRecord{
-	Timestamp:      time.Now().Add(-7 * time.Hour),
-	TraceId:        "7cf92f3577b34da6a3ce929d0e0e6789",
-	SpanId:         "16f067aa0ba902c7",
-	SeverityText:   "WARNING",
-	SeverityNumber: 13,
-	ServiceName:    "test-service1",
-	Body:           "Retrying failed request to downstream service",
-	LogAttrKeys:    []string{"http.method", "http.url", "retry.attempt"},
-	LogAttrValues:  []string{"GET", "http://inventory-svc/api/stock", "2"},
-	ResAttrKeys:    []string{"host.name", "os.type", "service.version"},
-	ResAttrValues:  []string{"prod-server-1", "linux", "1.2.0"},
-}
-var testRecord11 core.FlatLogRecord = core.FlatLogRecord{
-	Timestamp:      time.Now().Add(-8 * time.Hour),
-	TraceId:        "8df92f3577b34da6a3ce929d0e0e1357",
-	SpanId:         "17f067aa0ba902c8",
-	SeverityText:   "ERROR",
-	SeverityNumber: 17,
-	ServiceName:    "test-service2",
-	Body:           "Unhandled exception in order processing pipeline",
-	LogAttrKeys:    []string{"exception.type", "exception.message", "order.id"},
-	LogAttrValues:  []string{"NullPointerException", "order item is nil", "ord-77342"},
-	ResAttrKeys:    []string{"host.name", "os.type", "service.version"},
-	ResAttrValues:  []string{"prod-server-2", "windows", "2.0.1"},
-}
-var testRecord12 core.FlatLogRecord = core.FlatLogRecord{
-	Timestamp:      time.Now().Add(-9 * time.Hour),
-	TraceId:        "9ef92f3577b34da6a3ce929d0e0e2468",
-	SpanId:         "18f067aa0ba902c9",
-	SeverityText:   "INFO",
-	SeverityNumber: 9,
-	ServiceName:    "test-service3",
-	Body:           "New user registered successfully",
-	LogAttrKeys:    []string{"user.id", "user.email", "user.country"},
-	LogAttrValues:  []string{"usr-1124", "newuser@example.com", "SG"},
-	ResAttrKeys:    []string{"host.name", "os.type", "service.version"},
-	ResAttrValues:  []string{"prod-server-3", "linux", "3.1.0"},
-}
-var testRecord13 core.FlatLogRecord = core.FlatLogRecord{
-	Timestamp:      time.Now().Add(-10 * time.Hour),
-	TraceId:        "aaf92f3577b34da6a3ce929d0e0e3579",
-	SpanId:         "19f067aa0ba902d1",
-	SeverityText:   "WARNING",
-	SeverityNumber: 13,
-	ServiceName:    "test-service1",
-	Body:           "Disk usage approaching limit on data volume",
-	LogAttrKeys:    []string{"disk.path", "disk.used_gb", "disk.total_gb"},
-	LogAttrValues:  []string{"/data", "92", "100"},
-	ResAttrKeys:    []string{"host.name", "os.type", "service.version"},
-	ResAttrValues:  []string{"prod-server-1", "linux", "1.2.0"},
-}
-var testRecord14 core.FlatLogRecord = core.FlatLogRecord{
-	Timestamp:      time.Now().Add(-11 * time.Hour),
-	TraceId:        "bbf92f3577b34da6a3ce929d0e0e4680",
-	SpanId:         "20f067aa0ba902d2",
-	SeverityText:   "ERROR",
-	SeverityNumber: 17,
-	ServiceName:    "test-service2",
-	Body:           "TLS certificate validation failed",
-	LogAttrKeys:    []string{"tls.peer", "tls.error", "http.url"},
-	LogAttrValues:  []string{"api.partner.com", "certificate expired", "https://api.partner.com/v2/sync"},
-	ResAttrKeys:    []string{"host.name", "os.type", "service.version"},
-	ResAttrValues:  []string{"prod-server-2", "windows", "2.0.1"},
-}
-var testRecord15 core.FlatLogRecord = core.FlatLogRecord{
-	Timestamp:      time.Now().Add(-12 * time.Hour),
-	TraceId:        "ccf92f3577b34da6a3ce929d0e0e5791",
-	SpanId:         "21f067aa0ba902d3",
-	SeverityText:   "INFO",
-	SeverityNumber: 9,
-	ServiceName:    "test-service3",
-	Body:           "Feature flag evaluated successfully",
-	LogAttrKeys:    []string{"feature.flag", "feature.enabled", "user.id"},
-	LogAttrValues:  []string{"new-checkout-flow", "true", "usr-4421"},
-	ResAttrKeys:    []string{"host.name", "os.type", "service.version"},
-	ResAttrValues:  []string{"prod-server-3", "linux", "3.1.0"},
-}
-
-var testData []core.FlatLogRecord = []core.FlatLogRecord{
-	testRecord1, testRecord2, testRecord3, testRecord4, testRecord5,
-	testRecord6, testRecord7, testRecord8, testRecord9, testRecord10,
-	testRecord11, testRecord12, testRecord13, testRecord14, testRecord15,
-}
+var _ LogStore = (*ClickHouseStore)(nil)
 
 // addr should be full host:port e.g. localhost:9000 or clickhouse:9000
-func NewClickHouseStore(ctx context.Context, addr string, dbName string, tableName string, username string, password string) (*ClickHouseStore, error) {
-	slog.Info("Connecting to database...")
+func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, dbName string, username string, password string) (*ClickHouseStore, error) {
+	logger.Info("Connecting to database...")
+
+	// high level driver
 	conn, err := clickhouse.Open(&clickhouse.Options{
 		Addr: []string{addr},
 		Auth: clickhouse.Auth{
@@ -241,6 +51,23 @@ func NewClickHouseStore(ctx context.Context, addr string, dbName string, tableNa
 		return nil, fmt.Errorf("failed to configure clickhouse: %v", err)
 	}
 
+	// low level driver
+	ingestConn, err := ch.Dial(ctx, ch.Options{
+		Address:  addr,
+		Database: dbName,
+		User:     username,
+		Password: password,
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to dial ch-go ingest conn: %w", err)
+	}
+
+	tables, err := initTables(dbName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialise table mapping: %v", err)
+	}
+
 	// TODO: add backoff and retry logic in case of connection instability
 	if err := conn.Ping(ctx); err != nil {
 		if exception, ok := err.(*clickhouse.Exception); ok {
@@ -248,15 +75,38 @@ func NewClickHouseStore(ctx context.Context, addr string, dbName string, tableNa
 		}
 		return nil, err
 	}
-	slog.Info("connection to database established")
-	return &ClickHouseStore{conn: conn, dbAndTable: dbName + "." + tableName}, nil
+	logger.Info("connection to database established")
+	return &ClickHouseStore{
+		conn:       conn,
+		ingestConn: ingestConn,
+		tables:     tables,
+		logger:     logger,
+		batchPool: sync.Pool{
+			New: func() any {
+				return newColumnBatch()
+			},
+		},
+	}, nil
+}
+
+func (s *ClickHouseStore) table(name string) (string, error) {
+	t, ok := s.tables[name]
+	if !ok {
+		return "", fmt.Errorf("unknown table: %s", name)
+	}
+	return t, nil
 }
 
 func (s *ClickHouseStore) InitDB(ctx context.Context) error {
-	fmt.Println(">>> InitDB called, table:", s.dbAndTable)
+	fmt.Println(">>> InitDB called, table:", s.tables[TableLogs])
+
+	tbl, err := s.table(TableLogs)
+	if err != nil {
+		return fmt.Errorf("failed to get table: %v", err)
+	}
 
 	var count uint64
-	if err := s.conn.QueryRow(ctx, "SELECT count() FROM "+s.dbAndTable).Scan(&count); err != nil {
+	if err := s.conn.QueryRow(ctx, "SELECT count() FROM "+tbl).Scan(&count); err != nil {
 		fmt.Println(">>> count query failed:", err)
 		return fmt.Errorf("failed to check existing data: %w", err)
 	}
@@ -266,7 +116,7 @@ func (s *ClickHouseStore) InitDB(ctx context.Context) error {
 		return nil
 	}
 
-	err := s.BatchInsert(ctx, testData)
+	err = s.BatchInsert(ctx, testData)
 	if err != nil {
 		fmt.Println(">>> BatchInsert failed:", err)
 		return fmt.Errorf("failed to init db: %w", err)
@@ -277,41 +127,11 @@ func (s *ClickHouseStore) InitDB(ctx context.Context) error {
 }
 
 func (s *ClickHouseStore) Close() error {
-	slog.Info("Closing clickhouse connection")
+	s.logger.Info("Closing clickhouse connection")
+	if err := s.ingestConn.Close(); err != nil {
+		return err
+	}
 	return s.conn.Close()
-}
-
-func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLogRecord) error {
-	batch, err := s.conn.PrepareBatch(ctx, "INSERT INTO "+s.dbAndTable)
-
-	if err != nil {
-		slog.Error("Failed to prepare batch: %v", "err", err)
-		return err
-	}
-
-	for _, record := range records {
-		err = batch.Append(
-			record.Timestamp,
-			record.TraceId,
-			record.SpanId,
-			record.SeverityText,
-			record.SeverityNumber,
-			record.ServiceName,
-			record.Body,
-			record.LogAttrKeys,
-			record.LogAttrValues,
-			record.ResAttrKeys,
-			record.ResAttrValues,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to append row: %v", err)
-		}
-	}
-
-	if err := batch.Send(); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (s *ClickHouseStore) buildFilterQueryString(filter core.LogQueryFilter) (string, []any) {
@@ -355,8 +175,13 @@ func (s *ClickHouseStore) buildFilterQueryString(filter core.LogQueryFilter) (st
 }
 
 func (s *ClickHouseStore) SearchLogs(ctx context.Context, filter core.LogQueryFilter) ([]core.FlatLogRecord, error) {
+	tbl, err := s.table(TableLogs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get table: %v", err)
+	}
+
 	whereClause, args := s.buildFilterQueryString(filter)
-	queryString := fmt.Sprintf("Select * FROM %v %v", s.dbAndTable, whereClause)
+	queryString := fmt.Sprintf("Select * FROM %v %v", tbl, whereClause)
 
 	if filter.OrderBy != "" {
 		queryString += fmt.Sprintf(" ORDER BY %s", filter.OrderBy)
@@ -389,12 +214,325 @@ func (s *ClickHouseStore) SearchLogs(ctx context.Context, filter core.LogQueryFi
 }
 
 func (s *ClickHouseStore) GetFilteredLogsCount(ctx context.Context, filter core.LogQueryFilter) (int, error) {
+	tbl, err := s.table(TableLogs)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get table: %v", err)
+	}
+
 	whereClause, args := s.buildFilterQueryString(filter)
-	queryString := fmt.Sprintf("SELECT COUNT(*) FROM %v %v", s.dbAndTable, whereClause)
+	queryString := fmt.Sprintf("SELECT COUNT(*) FROM %v %v", tbl, whereClause)
 
 	var count uint64
 	if err := s.conn.QueryRow(ctx, queryString, args...).Scan(&count); err != nil {
 		return 0, err
 	}
 	return int(count), nil
+}
+
+func (s *ClickHouseStore) GetDistinctServices(ctx context.Context) ([]string, error) {
+	tbl, err := s.table(TableServiceRegistry)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get table: %v", err)
+	}
+
+	// ReplacingMergeTree removes duplicates asynchronously so we need FINAL
+	queryString := "SELECT ServiceName FROM " + tbl + " FINAL"
+
+	rows, err := s.conn.Query(ctx, queryString)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query for distinct services: %v", err)
+	}
+	defer rows.Close()
+
+	var services []string
+
+	for rows.Next() {
+		var service string
+		if err := rows.Scan(&service); err != nil {
+			return nil, fmt.Errorf("failed to scan service name: %v", err)
+		}
+		services = append(services, service)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over service rows: %v", err)
+	}
+
+	return services, nil
+}
+
+const INGESTION_METRICS_DURATION = 1 // it is in minutes
+
+// ingestion graph only, TODO: remove this in favour of SSE
+func (s *ClickHouseStore) GetIngestionMetrics(ctx context.Context) (core.IngestionMetricsResponse, error) {
+	tbl, err := s.table(TableMetrics)
+	if err != nil {
+		return core.IngestionMetricsResponse{}, fmt.Errorf("failed to get table: %v", err)
+	}
+
+	whereClause := `WHERE Timestamp >= @start AND Timestamp < @end
+					GROUP BY ServiceName, Timestamp
+					ORDER BY ServiceName, Timestamp ASC
+					WITH FILL
+						FROM @start
+    					TO @end
+						STEP toIntervalSecond(1)`
+	// back fills timestamps with no values
+	queryString := fmt.Sprintf("SELECT Timestamp, ServiceName, sum(LogsCount) AS LogsCount FROM %v %v ", tbl, whereClause)
+	end := time.Now().UTC().Truncate(time.Second)
+	start := end.Add(-time.Duration(INGESTION_METRICS_DURATION) * time.Minute)
+
+	var rows []core.IngestionMetrics
+	// for now, im taking the metrics in the past 1 min, can be adjusted based on specifications
+	if err := s.conn.Select(ctx, &rows, queryString, clickhouse.Named("start", start), clickhouse.Named("end", end)); err != nil {
+		return core.IngestionMetricsResponse{}, err
+	}
+
+	return core.NewIngestionMetricsResponse(rows, INGESTION_METRICS_DURATION*60), nil
+}
+
+// all ingestion metrics
+func (s *ClickHouseStore) GetAllIngestionMetrics(ctx context.Context) (core.IngestionMetricsEvent, error) {
+	tbl, err := s.table(TableMetrics)
+	if err != nil {
+		return core.IngestionMetricsEvent{}, err
+	}
+
+	var (
+		result      core.IngestionMetricsEvent
+		ingestionMu sync.Mutex
+		eg, egCtx   = errgroup.WithContext(ctx)
+	)
+
+	// query 1: ingestion graph points (last 60 ticks for the chart)
+	eg.Go(func() error {
+		end := time.Now().UTC().Truncate(time.Second)
+		start := end.Add(-time.Duration(INGESTION_METRICS_DURATION) * time.Minute)
+
+		whereClause := `WHERE Timestamp >= @start AND Timestamp < @end
+					GROUP BY ServiceName, Timestamp
+					ORDER BY ServiceName, Timestamp ASC
+					WITH FILL
+						FROM @start
+    					TO @end
+						STEP toIntervalSecond(1)`
+		queryString := fmt.Sprintf("SELECT Timestamp, ServiceName, sum(LogsCount) AS LogsCount FROM %v %v ", tbl, whereClause)
+
+		var rows []core.IngestionMetrics
+		if err := s.conn.Select(egCtx, &rows, queryString, clickhouse.Named("start", start), clickhouse.Named("end", end)); err != nil {
+			return fmt.Errorf("ingestion graph: %w", err)
+		}
+
+		ingestionMu.Lock()
+		result.Graph = core.NewIngestionMetricsResponse(rows, INGESTION_METRICS_DURATION*60)
+		ingestionMu.Unlock()
+		return nil
+	})
+
+	// query 2: log rate stats
+	eg.Go(func() error {
+		now := time.Now().UTC().Truncate(time.Second)
+
+		queryString := fmt.Sprintf(`
+		WITH
+			current AS (
+				SELECT sum(LogsCount) / 5 AS rate
+				FROM %v
+				WHERE Timestamp >= @now - INTERVAL 5 SECOND
+			),
+			baseline AS (
+				SELECT sum(LogsCount) / 60 AS rate
+				FROM %v
+				WHERE Timestamp >= @now - INTERVAL 60 SECOND
+			)
+		SELECT
+			current.rate AS CurrentRate,
+			baseline.rate AS AvgRate,
+			current.rate / nullIf(baseline.rate, 0) AS Ratio
+		FROM current, baseline
+	`, tbl, tbl)
+
+		var row core.LogRateStatistics
+		if err := s.conn.QueryRow(egCtx, queryString, clickhouse.Named("now", now)).ScanStruct(&row); err != nil {
+			return fmt.Errorf("log rate stats: %w", err)
+		}
+
+		ingestionMu.Lock()
+		result.LogStats = row
+		ingestionMu.Unlock()
+		return nil
+	})
+
+	if err := eg.Wait(); err != nil {
+		return core.IngestionMetricsEvent{}, err
+	}
+
+	return result, nil
+}
+
+func (s *ClickHouseStore) GetErrorRateMetrics(ctx context.Context) (core.ErrorRateMetrics, error) {
+	tbl, err := s.table(TableMetrics)
+	if err != nil {
+		return core.ErrorRateMetrics{}, fmt.Errorf("failed to get table: %v", err)
+	}
+
+	queryString := fmt.Sprintf(`
+		SELECT
+			sum(ErrorsCount) / nullIf(sum(LogsCount), 0) AS CurrentRate
+		FROM %v
+		WHERE Timestamp >= now() - toIntervalMinute(@minute)
+	`, tbl)
+
+	// calculate error rate metrics for the past 5 minutes
+	var result core.ErrorRateMetrics
+	if err := s.conn.QueryRow(ctx, queryString, clickhouse.Named("minute", 5)).ScanStruct(&result); err != nil {
+		return core.ErrorRateMetrics{}, err
+	}
+
+	// convert from fraction to percentage to be passed to frontend
+	result.CurrentRate = result.CurrentRate * 100
+	return result, nil
+}
+
+func (s *ClickHouseStore) GetTopServiceErrorsStats(ctx context.Context) ([]core.TopServiceErrorsStats, error) {
+	// top service errors stats will return error rates within the past 1 hour
+	tbl, err := s.table(TableMetrics1m)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get table: %v", err)
+	}
+
+	queryString := fmt.Sprintf(`
+        SELECT
+            ServiceName,
+            sum(ErrorsCount) AS TotalErrors,
+            round(sum(ErrorsCount) / sum(LogsCount) * 100, 2) AS ErrorRate
+        FROM %v
+        WHERE Timestamp >= now() - toIntervalHour(@hour)
+        GROUP BY ServiceName
+        ORDER BY ErrorRate DESC
+        LIMIT 5
+    `, tbl)
+
+	var result []core.TopServiceErrorsStats
+	if err := s.conn.Select(ctx, &result, queryString, clickhouse.Named("hour", 1)); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func (s *ClickHouseStore) GetLogRateStatistics(ctx context.Context) (core.LogRateStatistics, error) {
+	tbl, err := s.table(TableMetrics)
+	if err != nil {
+		return core.LogRateStatistics{}, fmt.Errorf("failed to get table: %v", err)
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+
+	// current rate: logs / second in past 5 seconds
+	// average rate: logs / second in past 1 minute
+	queryString := fmt.Sprintf(`
+		WITH
+			current AS (
+				SELECT sum(LogsCount) / 5 AS rate
+				FROM %v
+				WHERE Timestamp >= @now - INTERVAL 5 SECOND
+			),
+			baseline AS (
+				SELECT sum(LogsCount) / 60 AS rate
+				FROM %v
+				WHERE Timestamp >= @now - INTERVAL 60 SECOND
+			)
+		SELECT
+			current.rate AS CurrentRate,
+			baseline.rate AS AvgRate,
+			current.rate / nullIf(baseline.rate, 0) AS Ratio
+		FROM current, baseline
+	`, tbl, tbl)
+
+	var result core.LogRateStatistics
+	if err := s.conn.Select(ctx, &result, queryString, clickhouse.Named("now", now)); err != nil {
+		return core.LogRateStatistics{}, err
+	}
+
+	return result, nil
+}
+
+func (s *ClickHouseStore) GetStorageStats(ctx context.Context) ([]core.StorageStats, error) {
+	queryString := `
+        SELECT
+            name AS DiskName,
+            free_space AS FreeBytes,
+            total_space AS TotalBytes,
+            round((total_space - free_space) / total_space * 100, 2) AS UsedPercent
+        FROM system.disks
+    `
+
+	var result []core.StorageStats
+	if err := s.conn.Select(ctx, &result, queryString); err != nil {
+		return nil, fmt.Errorf("failed to get storage stats: %v", err)
+	}
+	return result, nil
+}
+
+const LOGS_TTL_DAYS = 30
+
+// GetLogsStorageOutlook reports the logs table's current size and, if it
+// hasn't yet reached its 30-day TTL steady-state, projects what that will be.
+func (s *ClickHouseStore) GetLogsStorageOutlook(ctx context.Context) (*core.StorageOutlook, error) {
+	queryString := `
+        SELECT
+            partition,
+            sum(bytes_on_disk) AS PartitionBytes
+        FROM system.parts
+        WHERE database = 'logarithm' AND table = 'logs' AND active
+        GROUP BY partition
+        ORDER BY partition
+    `
+	var partitions []struct {
+		Partition      string `ch:"partition"`
+		PartitionBytes uint64 `ch:"PartitionBytes"`
+	}
+	if err := s.conn.Select(ctx, &partitions, queryString); err != nil {
+		return nil, fmt.Errorf("failed to get partition sizes: %v", err)
+	}
+
+	var currentTotal uint64
+	for _, p := range partitions {
+		currentTotal += p.PartitionBytes
+	}
+
+	result := &core.StorageOutlook{
+		CurrentTotalBytes: currentTotal,
+		DaysOfHistory:     len(partitions),
+	}
+
+	if len(partitions) >= LOGS_TTL_DAYS {
+		// Steady-state already reached
+		result.IsSteadyState = true
+		result.ProjectedSteadyStateBytes = currentTotal
+		return result, nil
+	}
+
+	var avgDailyBytes uint64
+	if len(partitions) == 0 {
+		// if there is currently no history, set average daily bytes to be 0
+		avgDailyBytes = 0
+	} else {
+		// Not enough history yet — project forward using recent daily average.
+		// Exclude the most recent (still-filling) partition for a fairer average.
+		usable := partitions
+		if len(usable) > 1 {
+			usable = usable[:len(usable)-1]
+		}
+		var sum uint64
+		for _, p := range usable {
+			sum += p.PartitionBytes
+		}
+		avgDailyBytes = sum / uint64(len(usable))
+	}
+
+	result.IsSteadyState = false
+	result.ProjectedSteadyStateBytes = avgDailyBytes * LOGS_TTL_DAYS
+	return result, nil
 }

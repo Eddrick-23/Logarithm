@@ -1,0 +1,11 @@
+html,
+body {
+    min-width: 1200px;
+    min-height: 100vh;
+    overflow-x: auto; /* for small screens of width below 1200px, a scroll bar will be given to prevent any overflow issues*/
+}
+
+#root {
+    min-width: 1200px;
+    min-height: 100vh;
+}

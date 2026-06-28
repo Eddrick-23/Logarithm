@@ -4,26 +4,42 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 )
 
+const ( // infra constants
+	LogStreamName          = "LOGS"
+	LogStreamSubject       = "logs.>"
+	LogStreamSubjectPrefix = "logs."
+	DLQStreamName          = "LOGS_DLQ"
+	DLQSubject             = "dlq.logs"
+	LiveTailSubject        = "tail.>"
+	LiveTailSubjectPrefix  = "tail."
+)
+
 var _ Producer = (*NatsBroker)(nil)
 var _ Consumer = (*NatsJSConsumer)(nil)
 
-const logStreamName = "LOGS" // infrastructure constant, not configurable
-
-type ProcessLogFunc func(payload [][]byte) error  // callback to consume from stream
-type DelayCalcFunc func(int uint64) time.Duration // callback to determine delay for NakWithDelay
+type Message struct {
+	Payload []byte
+	Headers map[string][]string
+}
+type ProcessLogFunc func(messages []Message) error                   // callback to consume from stream
+type DLQFunc func(payload []byte, headers map[string][]string) error // callback to move data to dlq stream
+type DelayCalcFunc func(maxDeliver uint64) time.Duration             // callback to determine delay for NakWithDelay
 
 type Producer interface { // for ingestion endpoint to push payload
-	PublishLogs(context.Context, string, []byte) error
+	PublishLogs(context.Context, string, []byte, map[string][]string) error
+	PublishLiveTail(string, []byte) error
 }
 
 type Consumer interface { // for worker to read logs from stream
-	ConsumeLogs(ctx context.Context, logHandler ProcessLogFunc, delayHandler DelayCalcFunc, maxBatch int, maxWait time.Duration) error
+	ConsumeLogs(ctx context.Context, logHandler ProcessLogFunc, dlqHandler DLQFunc, delayHandler DelayCalcFunc,
+		maxBatch int, maxWait time.Duration) error
 }
 
 type NatsBroker struct {
@@ -33,13 +49,9 @@ type NatsBroker struct {
 }
 
 type NatsJSConsumer struct {
-	consumer jetstream.Consumer
-	logger   *slog.Logger
-}
-
-type TransimittedLog struct {
-	Payload []byte
-	Ack     func() error
+	consumer   jetstream.Consumer
+	logger     *slog.Logger
+	maxDeliver uint64
 }
 
 func NewNatsBroker(ctx context.Context, logger *slog.Logger, natsUrl string) (*NatsBroker, error) {
@@ -75,26 +87,54 @@ func (nb *NatsBroker) Close() {
 	}
 }
 
-func (nb *NatsBroker) EnsureStream(ctx context.Context, subject string, NatsStreamMaxAge time.Duration) (jetstream.Stream, error) {
+func (nb *NatsBroker) EnsureLogStream(ctx context.Context, streamName string, subject string, maxAge time.Duration, maxBytes int64) (jetstream.Stream, error) {
 	nb.logger.Info("Ensuring stream exists", "subject", subject)
-
-	stream, err := nb.js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
-		Name:        logStreamName,
-		Description: "unified log stream for all client services",
+	streamConfig := jetstream.StreamConfig{
+		Name:        streamName,
+		Description: "unified stream containing raw log data",
 		Subjects:    []string{subject},
-		Storage:     jetstream.FileStorage, // Persist to disk for durable queue
-		MaxAge:      NatsStreamMaxAge,
-	})
+		Storage:     jetstream.FileStorage,
+		Discard:     jetstream.DiscardOld,
+		MaxAge:      maxAge,
+		MaxBytes:    maxBytes,
+	}
+
+	return nb.ensureStream(ctx, &streamConfig)
+}
+
+func (nb *NatsBroker) EnsureDLQStream(ctx context.Context, streamName string, subject string, maxAge time.Duration, maxBytes int64) (jetstream.Stream, error) {
+	nb.logger.Info("Ensuring stream exists", "subject", subject)
+	streamConfig := jetstream.StreamConfig{
+		Name:        streamName,
+		Description: "dead letter queue for failed log deliveries",
+		Subjects:    []string{subject},
+		Storage:     jetstream.FileStorage,
+		Discard:     jetstream.DiscardOld,
+		MaxAge:      maxAge,
+		MaxBytes:    maxBytes,
+	}
+
+	return nb.ensureStream(ctx, &streamConfig)
+}
+
+func (nb *NatsBroker) ensureStream(ctx context.Context, config *jetstream.StreamConfig) (jetstream.Stream, error) {
+	stream, err := nb.js.CreateOrUpdateStream(ctx, *config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
 
-	nb.logger.Info("stream created", "name", logStreamName, "subject", subject)
+	nb.logger.Info("stream created", "name", config.Name, "subject", config.Subjects)
 	return stream, nil
 }
 
-func (nb *NatsBroker) PublishLogs(ctx context.Context, subject string, payload []byte) error {
-	ack, err := nb.js.Publish(ctx, subject, payload)
+func (nb *NatsBroker) PublishLogs(ctx context.Context, subject string, payload []byte, headers map[string][]string) error {
+	msg := &nats.Msg{
+		Subject: subject,
+		Data:    payload,
+		Header:  nats.Header(headers),
+	}
+
+	ack, err := nb.js.PublishMsg(ctx, msg)
 	if err != nil {
 		return fmt.Errorf("published failed: %w, subject: %v", err, subject)
 	}
@@ -107,21 +147,28 @@ func (nb *NatsBroker) PublishLogs(ctx context.Context, subject string, payload [
 	return nil
 }
 
-func (nb *NatsBroker) NewDurableConsumer(ctx context.Context, stream jetstream.Stream, consumerName string, maxDeliver int, backoff []time.Duration) (*NatsJSConsumer, error) {
+func (nb *NatsBroker) PublishLiveTail(subject string, data []byte) error {
+	return nb.conn.Publish(subject, data) // core NATS, no ack just fire and forget
+}
+
+func (nb *NatsBroker) NewDurableConsumer(ctx context.Context, stream jetstream.Stream, consumerName string,
+	maxDeliver int, backoff []time.Duration, maxAckPending int) (*NatsJSConsumer, error) {
 	cons, err := stream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
-		Name:       consumerName,
-		Durable:    consumerName,
-		AckPolicy:  jetstream.AckExplicitPolicy,
-		MaxDeliver: maxDeliver,
-		BackOff:    backoff, // does not affect Nak, it defines how long nats waits for an Ack() before it times out
+		Name:          consumerName,
+		Durable:       consumerName,
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		MaxDeliver:    maxDeliver,
+		BackOff:       backoff, // does not affect Nak, it defines how long nats waits for an Ack() before it times out
+		MaxAckPending: maxAckPending,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create jetstream consumer: %w", err)
 	}
-	return &NatsJSConsumer{cons, nb.logger}, nil
+	return &NatsJSConsumer{cons, nb.logger, uint64(maxDeliver)}, nil
 }
 
-func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, logHandler ProcessLogFunc, delayHandler DelayCalcFunc, maxBatch int, maxWait time.Duration) error {
+func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, logHandler ProcessLogFunc, dlqHandler DLQFunc, delayHandler DelayCalcFunc,
+	maxBatch int, maxWait time.Duration) error {
 
 	msgCh := make(chan jetstream.Msg, maxBatch*2) // buffered channel between NATS and batching loop
 	nc.logger.Info("starting streaming from jetstream to database")
@@ -159,9 +206,12 @@ func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, logHandler ProcessLog
 			return
 		}
 
-		payloads := make([][]byte, len(batch))
+		payloads := make([]Message, len(batch))
 		for i, msg := range batch {
-			payloads[i] = msg.Data()
+			payloads[i] = Message{
+				Payload: msg.Data(),
+				Headers: msg.Headers(),
+			}
 		}
 
 		if err := logHandler(payloads); err != nil {
@@ -174,10 +224,22 @@ func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, logHandler ProcessLog
 				if err != nil {
 					nc.logger.Error("cannot extract message metadata defaulting delay duration to 30s")
 					delay = 30 * time.Second
+					msg.NakWithDelay(delay)
+					continue
+				}
+				if metadata.NumDelivered >= nc.maxDeliver {
+					if err := dlqHandler(msg.Data(), msg.Headers()); err != nil {
+						nc.logger.Error("Failed to publish to DLQ, message will be lost",
+							"err", err,
+							"payload", string(msg.Data()),
+							"num_delivered", metadata.NumDelivered,
+						)
+					}
+					msg.Ack()
+				} else {
+					msg.NakWithDelay(delayHandler(metadata.NumDelivered))
 				}
 
-				delay = delayHandler(metadata.NumDelivered)
-				msg.NakWithDelay(delay)
 			}
 		} else {
 			for _, msg := range batch {
@@ -205,4 +267,69 @@ func (nc *NatsJSConsumer) ConsumeLogs(ctx context.Context, logHandler ProcessLog
 		}
 
 	}
+}
+
+// TailLiveLogs subscribes to a core NATS subject and pipes incoming log data into a channel.
+// It utilizes an ephemeral, pure pub-sub connection with no underlying persistence.
+//
+// To protect the NATS connection from slow consumers (like a lagging WebSocket),
+// the returned channel acts as a ring buffer of capacity maxBatch. If the caller
+// falls behind, the oldest unread logs are dropped to make room for live data.
+//
+// The caller receives a channel for the data and a cleanup closure. The caller MUST
+// either execute the cleanup closure when finished, or cancel the provided context
+// to unsubscribe from NATS and safely close the channel.
+func (nb *NatsBroker) TailLiveLogs(ctx context.Context, subject string, maxBatch int) (<-chan []byte, func(), error) {
+	// Buffer the channel to handle slight backpressure from the websocket
+	nb.logger.Info("setting up live tail subscription")
+	logCh := make(chan []byte, maxBatch)
+
+	sub, err := nb.conn.Subscribe(subject, func(msg *nats.Msg) {
+		// handle closed connection
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// use channel as ring buffer
+		select {
+		case logCh <- msg.Data: // successful insert
+			return
+		default: // drop oldest and insert
+			select {
+			case <-logCh:
+			default:
+			}
+
+			logCh <- msg.Data
+		}
+
+	})
+
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to start live tail subscription")
+	}
+
+	// Provide a cleanup function to stop the NATS consumer and close the channel
+	var once sync.Once
+	cleanup := func() {
+		once.Do(func() {
+			if err := sub.Unsubscribe(); err != nil {
+				nb.logger.Error("failed to unsubscribe core nats sub", "err", err)
+			}
+			close(logCh)
+			nb.logger.Info("stopped live tail consumer", "subject", subject)
+		})
+	}
+
+	// in case context dies before caller cleans up
+	go func() {
+		<-ctx.Done()
+		if sub.IsValid() {
+			cleanup()
+		}
+	}()
+
+	return logCh, cleanup, nil
 }

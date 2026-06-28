@@ -5,34 +5,26 @@ export const theme = createTheme({
         mode: "dark",
 
         background: {
-            default: "#1e293b",
-            paper: "#334155",
+            default: "#121212",
+            paper: "#1e1e1e",
         },
 
-        divider: "#475569",
+        divider: "#30363d",
 
         primary: {
-            main: "#38bdf8",
-            contrastText: "#0f172a",
+            main: "#2196F3",
+            contrastText: "#ffffff",
         },
 
         text: {
-            primary: "#f8fafc",
-            secondary: "#cbd5e1",
-            disabled: "#94a3b8",
+            primary: "#e1e1e1",
+            secondary: "#8b949e",
+            disabled: "#9e9e9e",
         },
 
-        success: {
-            main: "#34d399",
-        },
-
-        warning: {
-            main: "#fbbf24",
-        },
-
-        error: {
-            main: "#f87171",
-        },
+        success: { main: "#22c55e" },
+        warning: { main: "#eab308" },
+        error: { main: "#ef4444" },
     },
 
     typography: {
@@ -69,6 +61,40 @@ export const theme = createTheme({
         // Typography: section labels are always the muted/disabled colour
         MuiTypography: {
             defaultProps: { variantMapping: { body1: "p", body2: "p" } },
+        },
+
+        // Alert: override it with light mode colours
+        MuiAlert: {
+            styleOverrides: {
+                root: ({ ownerState }) => ({
+                    borderWidth: "1px",
+                    borderStyle: "solid",
+                    ...(ownerState.severity === "error" && {
+                        backgroundColor: "rgba(239,68,68,0.14)",
+                        borderColor: "rgba(239,68,68,0.32)",
+                        color: "#fca5a5",
+                        "& .MuiAlert-icon": { color: "#ef4444" },
+                    }),
+                    ...(ownerState.severity === "warning" && {
+                        backgroundColor: "rgba(234,179,8,0.12)",
+                        borderColor: "rgba(234,179,8,0.28)",
+                        color: "#fde047",
+                        "& .MuiAlert-icon": { color: "#eab308" },
+                    }),
+                    ...(ownerState.severity === "info" && {
+                        backgroundColor: "rgba(14,165,233,0.11)",
+                        borderColor: "rgba(14,165,233,0.27)",
+                        color: "#7dd3fc",
+                        "& .MuiAlert-icon": { color: "#0ea5e9" },
+                    }),
+                    ...(ownerState.severity === "success" && {
+                        backgroundColor: "rgba(34,197,94,0.11)",
+                        borderColor: "rgba(34,197,94,0.27)",
+                        color: "#86efac",
+                        "& .MuiAlert-icon": { color: "#22c55e" },
+                    }),
+                }),
+            },
         },
     },
 });
