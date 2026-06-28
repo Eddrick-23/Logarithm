@@ -23,8 +23,8 @@ func init() {
 	encoding.RegisterCompressor(&noopCompressor{gzipname})
 }
 
-type rawFrame struct {
-	rawBytes []byte
+type RawFrame struct {
+	RawBytes []byte
 }
 
 // no-op codec: instead of unmarshalling into proto.Message,
@@ -37,19 +37,19 @@ func (r *rawCodec) Name() string {
 
 // returns wireformat of v
 func (r *rawCodec) Marshal(v any) (mem.BufferSlice, error) {
-	out, ok := v.(*rawFrame)
+	out, ok := v.(*RawFrame)
 	if !ok {
 		return nil, fmt.Errorf("expected *rawFrame, got %T", v)
 	}
 
 	// wrap payload in a mem buffer slice
-	return mem.BufferSlice{mem.SliceBuffer(out.rawBytes)}, nil
+	return mem.BufferSlice{mem.SliceBuffer(out.RawBytes)}, nil
 }
 
 // parses the wire format into v
 // we want to keep raw bytes to parse to rawFrame
 func (r *rawCodec) Unmarshal(data mem.BufferSlice, v any) error {
-	out, ok := v.(*rawFrame)
+	out, ok := v.(*RawFrame)
 	if !ok {
 		return fmt.Errorf("expected *rawFrame, got %T", v)
 	}
@@ -57,8 +57,8 @@ func (r *rawCodec) Unmarshal(data mem.BufferSlice, v any) error {
 	// use materialise to concat all buffers to a single flat slice
 	// make a copy because data is freed when function exits
 	srcBytes := data.Materialize()
-	out.rawBytes = make([]byte, len(srcBytes))
-	copy(out.rawBytes, srcBytes)
+	out.RawBytes = make([]byte, len(srcBytes))
+	copy(out.RawBytes, srcBytes)
 	return nil
 }
 
@@ -82,7 +82,7 @@ func NewProxyHandler(logger *slog.Logger, producer transport.Producer, prefix st
 }
 
 func (p *ProxyHandler) StreamHandler(srv any, stream grpc.ServerStream) error {
-	frame := &rawFrame{}
+	frame := &RawFrame{}
 
 	if err := stream.RecvMsg(frame); err != nil {
 		if err == io.EOF {
@@ -97,18 +97,18 @@ func (p *ProxyHandler) StreamHandler(srv any, stream grpc.ServerStream) error {
 		"Content-Type": {"application/x-protobuf"},
 	}
 
-	if compression := detectCompression(frame.rawBytes); compression != "" {
+	if compression := detectCompression(frame.RawBytes); compression != "" {
 		headers["Content-Encoding"] = []string{compression}
 	}
 
-	if err := p.producer.PublishLogs(stream.Context(), p.natsSubjectPrefix+"raw", frame.rawBytes, headers); err != nil {
+	if err := p.producer.PublishLogs(stream.Context(), p.natsSubjectPrefix+"raw", frame.RawBytes, headers); err != nil {
 		p.logger.Error("failed to publish to nats", "err", err)
 		return status.Errorf(codes.Internal, "failed to publish to nats")
 	}
 
 	// Unary gRPC contract, client sends one message, server must send exactly one back.
 	// Then server closes the connection with status OK.
-	return stream.SendMsg(&rawFrame{rawBytes: []byte{}})
+	return stream.SendMsg(&RawFrame{RawBytes: []byte{}})
 }
 
 // detect gzip and zstd compression via byte sniffing

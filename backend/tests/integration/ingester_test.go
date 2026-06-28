@@ -7,12 +7,20 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/ingester"
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/encoding"
+	"google.golang.org/grpc/status"
+	"google.golang.org/grpc/test/bufconn"
 )
 
 type MockProducer struct {
@@ -71,6 +79,92 @@ func TestIngestEndpoint(t *testing.T) {
 
 			assert.Equal(t, tc.expectedStatus, rec.Code)
 			assert.Contains(t, rec.Body.String(), tc.expectedBody)
+		})
+	}
+}
+
+const bufSize = 1024 * 1024
+
+func setupGRPCTestApp(t *testing.T, producerErr error) (*grpc.Server, *bufconn.Listener) {
+	t.Helper()
+	mockProducer := MockProducer{Err: producerErr}
+	lis := bufconn.Listen(bufSize)
+
+	proxyHandler := ingester.NewProxyHandler(slog.Default(), &mockProducer, "logs.")
+
+	server := grpc.NewServer(
+		grpc.ForceServerCodecV2(encoding.GetCodecV2(ingester.CodecName)),
+		grpc.UnknownServiceHandler(proxyHandler.StreamHandler),
+	)
+
+	go func() {
+		if err := server.Serve(lis); err != nil {
+			t.Errorf("gRPC server exited with error: %v", err)
+		}
+	}()
+
+	return server, lis
+}
+
+func TestGRPCIngestEndpoint(t *testing.T) {
+	dummyBody := []byte("grpc-test-data")
+
+	tests := []struct {
+		name           string
+		encoding       string
+		producerErr    error
+		expectedCode   codes.Code
+		expectEncoding string
+	}{
+		// We trust the gRPC framework to reject unsupported encodings
+		// Only test the logic our proxy handles directly
+		{"no encoding", "", nil, codes.OK, ""},
+		{"gzip encoding", "gzip", nil, codes.OK, "gzip"},
+		{"zstd encoding", "zstd", nil, codes.OK, "zstd"},
+		{"publish failed", "", fmt.Errorf("publish to nats failed"), codes.Internal, ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server, lis := setupGRPCTestApp(t, tc.producerErr)
+			defer server.Stop()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+
+			// setup client
+			conn, err := grpc.NewClient("passthrough://bufnet",
+				grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
+					return lis.Dial()
+				}),
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+				grpc.WithDefaultCallOptions(grpc.CallContentSubtype(ingester.CodecName)), // call our custom codec
+			)
+			assert.NoError(t, err)
+			defer conn.Close()
+
+			// setup internal calls
+			var callOpts []grpc.CallOption
+			if tc.encoding != "" { // call specific compressor
+				callOpts = append(callOpts, grpc.UseCompressor(tc.encoding))
+			}
+
+			reqData := ingester.RawFrame{
+				RawBytes: dummyBody,
+			}
+			resData := ingester.RawFrame{}
+
+			// make actual request
+			err = conn.Invoke(ctx, "/OpenTelemetry.Logs/Export", &reqData, &resData, callOpts...)
+
+			if tc.expectedCode != codes.OK {
+				assert.Error(t, err)
+				st, _ := status.FromError(err)
+				assert.Equal(t, tc.expectedCode, st.Code())
+				return
+			}
+
+			assert.NoError(t, err)
 		})
 	}
 }
