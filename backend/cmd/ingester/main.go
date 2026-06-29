@@ -22,7 +22,7 @@ import (
 	"google.golang.org/grpc/encoding"
 )
 
-func NewServer(logger *slog.Logger, config *config.Config, producer transport.Producer) http.Handler {
+func NewHTTPServer(logger *slog.Logger, producer transport.Producer) http.Handler {
 	mux := http.NewServeMux()
 	ingester.AddRoutes(mux, logger, producer, transport.LogStreamSubjectPrefix)
 
@@ -30,6 +30,17 @@ func NewServer(logger *slog.Logger, config *config.Config, producer transport.Pr
 	// add middlewares if any
 
 	return handler
+}
+
+func NewGRPCServer(logger *slog.Logger, producer transport.Producer) *grpc.Server {
+	proxyHandler := ingester.NewProxyHandler(logger, producer, transport.LogStreamSubject)
+
+	grpcServer := grpc.NewServer(
+		grpc.ForceServerCodecV2(encoding.GetCodecV2(ingester.CodecName)),
+		grpc.UnknownServiceHandler(proxyHandler.StreamHandler),
+	)
+
+	return grpcServer
 }
 
 func startPprof(logger *slog.Logger, config *config.Config) {
@@ -78,7 +89,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		return fmt.Errorf("failed to ensure stream: %w", err)
 	}
 
-	srv := NewServer(httpLogger, config, natsBroker)
+	srv := NewHTTPServer(httpLogger, natsBroker)
 
 	httpServer := &http.Server{
 		Addr:              net.JoinHostPort(config.IngesterHost, config.IngesterPortHTTP),
@@ -89,12 +100,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		IdleTimeout:       config.IngesterIdleTimeout,
 	}
 
-	proxyHandler := ingester.NewProxyHandler(grpcLogger, natsBroker, transport.LogStreamSubject)
-
-	grpcServer := grpc.NewServer(
-		grpc.ForceServerCodecV2(encoding.GetCodecV2(ingester.CodecName)),
-		grpc.UnknownServiceHandler(proxyHandler.StreamHandler),
-	)
+	grpcServer := NewGRPCServer(grpcLogger, natsBroker)
 
 	// start http and grpc servers
 	go func() {
