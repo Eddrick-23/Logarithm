@@ -40,7 +40,8 @@ func TestByteSizeDecode(t *testing.T) {
 func TestValidate(t *testing.T) {
 	validConfig := Config{
 		IngesterHost:              "localhost",
-		IngesterPort:              "8090",
+		IngesterPortGRPC:          "8089",
+		IngesterPortHTTP:          "8090",
 		IngesterReadHeaderTimeout: 2 * time.Second,
 		IngesterReadTimeout:       10 * time.Second,
 		IngesterWriteTimeout:      10 * time.Second,

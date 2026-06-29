@@ -18,9 +18,11 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/config"
 	"github.com/Eddrick-23/Logarithm/internal/ingester"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/encoding"
 )
 
-func NewServer(logger *slog.Logger, config *config.Config, producer transport.Producer) http.Handler {
+func NewHTTPServer(logger *slog.Logger, producer transport.Producer) http.Handler {
 	mux := http.NewServeMux()
 	ingester.AddRoutes(mux, logger, producer, transport.LogStreamSubjectPrefix)
 
@@ -28,6 +30,17 @@ func NewServer(logger *slog.Logger, config *config.Config, producer transport.Pr
 	// add middlewares if any
 
 	return handler
+}
+
+func NewGRPCServer(logger *slog.Logger, producer transport.Producer) *grpc.Server {
+	proxyHandler := ingester.NewProxyHandler(logger, producer, transport.LogStreamSubject)
+
+	grpcServer := grpc.NewServer(
+		grpc.ForceServerCodecV2(encoding.GetCodecV2(ingester.CodecName)),
+		grpc.UnknownServiceHandler(proxyHandler.StreamHandler),
+	)
+
+	return grpcServer
 }
 
 func startPprof(logger *slog.Logger, config *config.Config) {
@@ -50,7 +63,8 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		slog.NewTextHandler(w, nil),
 	)
 	natsLogger := logger.With("component", "nats")
-	httpLogger := logger.With("component", "ingester")
+	httpLogger := logger.With("component", "ingester_http")
+	grpcLogger := logger.With("component", "ingester_grpc")
 	pprofLogger := logger.With("component", "pprof")
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
@@ -75,10 +89,10 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		return fmt.Errorf("failed to ensure stream: %w", err)
 	}
 
-	srv := NewServer(httpLogger, config, natsBroker)
+	srv := NewHTTPServer(httpLogger, natsBroker)
 
 	httpServer := &http.Server{
-		Addr:              net.JoinHostPort(config.IngesterHost, config.IngesterPort),
+		Addr:              net.JoinHostPort(config.IngesterHost, config.IngesterPortHTTP),
 		Handler:           srv,
 		ReadHeaderTimeout: config.IngesterReadHeaderTimeout,
 		ReadTimeout:       config.IngesterReadTimeout,
@@ -86,10 +100,26 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		IdleTimeout:       config.IngesterIdleTimeout,
 	}
 
+	grpcServer := NewGRPCServer(grpcLogger, natsBroker)
+
+	// start http and grpc servers
 	go func() {
 		httpLogger.Info("listening", "addr", httpServer.Addr)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			httpLogger.Error("http server failed", "err", err)
+		}
+	}()
+
+	grpcLogger.Info("listening", "addr", "tcp"+":"+config.IngesterPortGRPC)
+	lis, err := net.Listen("tcp", ":"+config.IngesterPortGRPC)
+	if err != nil {
+		grpcLogger.Error("failed to listen", "err", err)
+		return err
+	}
+
+	go func() {
+		if err := grpcServer.Serve(lis); err != nil {
+			grpcLogger.Error("grpc server failed", "err", err)
 		}
 	}()
 
@@ -104,10 +134,13 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		shutdownCtx, cancel := context.WithTimeout(shutdownCtx, 10*time.Second)
 		defer cancel()
 
-		httpLogger.Info("Shutting down server")
+		httpLogger.Info("Shutting down http server")
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
 			httpLogger.Error("http server shutting down failed", "err", err)
 		}
+
+		grpcLogger.Info("Shutting down grpc server")
+		grpcServer.GracefulStop()
 	}()
 
 	wg.Wait()

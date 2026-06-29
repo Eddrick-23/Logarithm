@@ -1,6 +1,8 @@
 package integration
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
 	"testing"
@@ -10,6 +12,8 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
+	"github.com/klauspost/compress/zstd"
+	"github.com/stretchr/testify/require"
 )
 
 var dbAddr string
@@ -154,4 +158,45 @@ func getRawDBConn() (driver.Conn, error) {
 	}
 
 	return conn, nil
+}
+
+// helper to set contentType and contentEncoding in headers
+//
+// If empty string is given, the key-value pair is not set at all
+func makeHeaders(contentType string, contentEncoding string) map[string][]string {
+	headers := map[string][]string{}
+	if contentType != "" {
+		headers["Content-Type"] = []string{contentType}
+	}
+
+	if contentEncoding != "" {
+		headers["Content-Encoding"] = []string{contentEncoding}
+	}
+
+	return headers
+}
+
+// helper to compress payloads using zstd
+func zstdCompress(tb testing.TB, data []byte) []byte {
+	tb.Helper()
+	var buf bytes.Buffer
+	w, err := zstd.NewWriter(&buf)
+	require.NoError(tb, err)
+	_, err = w.Write(data)
+	require.NoError(tb, err)
+	require.NoError(tb, w.Close())
+	return buf.Bytes()
+}
+
+// helper to compress payloads using gzip
+func gzipCompress(tb testing.TB, data []byte) []byte {
+	tb.Helper()
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+
+	_, err := gz.Write(data)
+	require.NoError(tb, err)
+	require.NoError(tb, gz.Close())
+	return buf.Bytes()
 }
