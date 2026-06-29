@@ -118,7 +118,6 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	}
 
 	go func() {
-		grpcLogger.Info("listening", "addr", "tcp"+":"+config.IngesterPortGRPC)
 		if err := grpcServer.Serve(lis); err != nil {
 			grpcLogger.Error("grpc server failed", "err", err)
 		}
