@@ -110,12 +110,15 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		}
 	}()
 
+	grpcLogger.Info("listening", "addr", "tcp"+":"+config.IngesterPortGRPC)
+	lis, err := net.Listen("tcp", ":"+config.IngesterPortGRPC)
+	if err != nil {
+		grpcLogger.Error("failed to listen", "err", err)
+		return err
+	}
+
 	go func() {
 		grpcLogger.Info("listening", "addr", "tcp"+":"+config.IngesterPortGRPC)
-		lis, err := net.Listen("tcp", ":"+config.IngesterPortGRPC)
-		if err != nil {
-			grpcLogger.Error("failed to listen", "err", err)
-		}
 		if err := grpcServer.Serve(lis); err != nil {
 			grpcLogger.Error("grpc server failed", "err", err)
 		}
