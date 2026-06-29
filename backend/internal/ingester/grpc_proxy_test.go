@@ -34,7 +34,6 @@ func gzipCompress(t *testing.T, data []byte) []byte {
 	return buf.Bytes()
 }
 
-// TODO write test for detectCompression
 func TestDetectCompression(t *testing.T) {
 	tests := []struct {
 		name           string

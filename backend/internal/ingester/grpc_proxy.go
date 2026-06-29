@@ -15,12 +15,12 @@ import (
 
 const CodecName = "raw-bytes"
 const zstdName = "zstd"
-const gzipname = "gzip"
+const gzipName = "gzip"
 
 func init() {
 	encoding.RegisterCodecV2(&rawCodec{})
 	encoding.RegisterCompressor(&noopCompressor{zstdName})
-	encoding.RegisterCompressor(&noopCompressor{gzipname})
+	encoding.RegisterCompressor(&noopCompressor{gzipName})
 }
 
 type RawFrame struct {
