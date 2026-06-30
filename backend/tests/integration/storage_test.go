@@ -11,6 +11,7 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewClickHouseStore(t *testing.T) {
@@ -68,7 +69,10 @@ func TestNewClickHouseStoreWrongPassword(t *testing.T) {
 	}
 }
 
-func TestBatchInsert(t *testing.T) {
+// Helper to create a new ClickHouseStore.
+// Store is closed automatically at the end of the test.
+func getNewTestStore(t *testing.T) *storage.ClickHouseStore {
+	t.Helper()
 	chConfig := storage.Config{
 		Address:  dbAddr,
 		Database: dbname,
@@ -77,19 +81,26 @@ func TestBatchInsert(t *testing.T) {
 	}
 	logStore, err := storage.NewClickHouseStore(context.Background(), chConfig, storage.WithLogger(slog.Default()))
 
-	ctx := context.Background()
-
 	if err != nil {
 		t.Fatalf("failed to establish db connection: %v", err)
 	}
 
-	conn, err := getRawDBConn()
-	if err != nil {
-		t.Fatalf("failed to get raw db connection: %v", err)
-	}
-	defer conn.Close()
+	t.Cleanup(func() {
+		if err := logStore.Close(); err != nil {
+			t.Errorf("failed to close store: %v", err)
+		}
+	})
 
-	err = conn.Exec(ctx, "TRUNCATE TABLE logarithm.logs")
+	return logStore
+}
+
+func TestBatchInsert(t *testing.T) {
+	logStore := getNewTestStore(t)
+	conn := getRawDBConn(t)
+
+	ctx := context.Background()
+
+	err := conn.Exec(ctx, "TRUNCATE TABLE logarithm.logs")
 	if err != nil {
 		t.Fatalf("failed to truncate table: %v", err)
 	}
@@ -114,7 +125,7 @@ func TestBatchInsert(t *testing.T) {
 
 	var records []core.FlatLogRecord
 	err = conn.Select(context.Background(), &records, "SELECT * FROM logarithm.logs")
-	assert.NoError(t, err, "error reading from clickhouse")
+	require.NoError(t, err, "error reading from clickhouse")
 
 	// ignore insertedAtField since that is managed by clickhouse
 	records[0].InsertedAt = time.Time{}
@@ -123,26 +134,12 @@ func TestBatchInsert(t *testing.T) {
 }
 
 func TestBatchInsertMultipleLogs(t *testing.T) {
-	chConfig := storage.Config{
-		Address:  dbAddr,
-		Database: dbname,
-		Username: user,
-		Password: password,
-	}
-	logStore, err := storage.NewClickHouseStore(context.Background(), chConfig, storage.WithLogger(slog.Default()))
+	logStore := getNewTestStore(t)
+	conn := getRawDBConn(t)
 
 	ctx := context.Background()
-	if err != nil {
-		t.Fatalf("failed to establish db connection: %v", err)
-	}
 
-	conn, err := getRawDBConn()
-	if err != nil {
-		t.Fatalf("failed to get raw db connection: %v", err)
-	}
-	defer conn.Close()
-
-	err = conn.Exec(ctx, "TRUNCATE TABLE logarithm.logs")
+	err := conn.Exec(ctx, "TRUNCATE TABLE logarithm.logs")
 	if err != nil {
 		t.Fatalf("failed to truncate table: %v", err)
 	}
@@ -163,6 +160,87 @@ func TestBatchInsertMultipleLogs(t *testing.T) {
 		t.Errorf("Expected %v logs got :%v", 2, finalCount)
 	}
 
+}
+
+func TestFastInsert(t *testing.T) {
+	tests := []struct {
+		name         string
+		records      []core.FlatLogRecord
+		expectedRows uint64
+	}{
+		{
+			name:         "0 input records",
+			records:      []core.FlatLogRecord{},
+			expectedRows: 0,
+		},
+		{
+			name:         "1 input records",
+			records:      []core.FlatLogRecord{testRecord1},
+			expectedRows: 1,
+		},
+		{
+			name:         "2 input records",
+			records:      []core.FlatLogRecord{testRecord1, testRecord2},
+			expectedRows: 2,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			logStore := getNewTestStore(t)
+			conn := getRawDBConn(t)
+
+			ctx := context.Background()
+
+			err := conn.Exec(ctx, "TRUNCATE TABLE logarithm.logs")
+			if err != nil {
+				t.Fatalf("failed to truncate table: %v", err)
+			}
+
+			appender := logStore.FastInsert(len(tc.records))
+
+			for _, record := range tc.records {
+				var traceBytes [16]byte
+				copy(traceBytes[:], record.TraceId)
+
+				var spanBytes [8]byte
+				copy(spanBytes[:], record.SpanId)
+
+				appender.Append(
+					record.Timestamp,
+					record.ObservedTimestamp,
+					record.SeverityNumber,
+					traceBytes,
+					spanBytes,
+					record.LogAttrKeys,
+					record.LogAttrValues,
+					record.ResAttrKeys,
+					record.ResAttrValues,
+					storage.LogFields{
+						ScopeName:    record.ScopeName,
+						ScopeVersion: record.ScopeVersion,
+						SeverityText: record.SeverityText,
+						ServiceName:  record.ServiceName,
+						Body:         record.Body,
+						BodyType:     record.BodyType,
+					},
+				)
+			}
+
+			err = appender.Flush(ctx)
+			if err != nil {
+				t.Fatalf("batch insert failed: %v", err)
+			}
+
+			var finalCount uint64
+			err = conn.QueryRow(ctx, "SELECT Count() FROM logarithm.logs").Scan(&finalCount)
+			if err != nil {
+				t.Errorf("DB query failed using raw conn: %v", err)
+			}
+
+			assert.Equal(t, tc.expectedRows, finalCount)
+
+		})
+	}
 }
 
 func TestSearchLogs(t *testing.T) {

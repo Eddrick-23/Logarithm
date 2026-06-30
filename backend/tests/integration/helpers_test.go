@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -117,13 +116,10 @@ var seedData = []core.FlatLogRecord{testRecord1, testRecord2, testRecord3, testR
 func setupTestDB(t *testing.T, ctx context.Context, store storage.LogStore) {
 	t.Helper()
 
-	conn, err := getRawDBConn()
-	if err != nil {
-		t.Fatalf("failed to get raw db conn in setup: %v", err)
-	}
+	conn := getRawDBConn(t)
 	defer conn.Close()
 
-	err = conn.Exec(ctx, "TRUNCATE TABLE logarithm.logs")
+	err := conn.Exec(ctx, "TRUNCATE TABLE logarithm.logs")
 	if err != nil {
 		t.Fatalf("failed to truncate table: %v", err)
 	}
@@ -133,7 +129,11 @@ func setupTestDB(t *testing.T, ctx context.Context, store storage.LogStore) {
 		t.Fatalf("failed to seed test data: %v", err)
 	}
 }
-func getRawDBConn() (driver.Conn, error) {
+
+// Helper to create a raw db connection.
+// Connection is closed automatically at the end of the test.
+func getRawDBConn(t *testing.T) driver.Conn {
+	t.Helper()
 	ctx := context.Background()
 	conn, err := clickhouse.Open(&clickhouse.Options{
 		Addr: []string{dbAddr},
@@ -147,17 +147,23 @@ func getRawDBConn() (driver.Conn, error) {
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to configure clickhouse: %v", err)
+		t.Fatalf("failed to configure clickhouse: %v", err)
 	}
+
+	t.Cleanup(func() {
+		if err := conn.Close(); err != nil {
+			t.Errorf("failed to close db connection: %v", err)
+		}
+	})
 
 	if err := conn.Ping(ctx); err != nil {
 		if exception, ok := err.(*clickhouse.Exception); ok {
-			fmt.Printf("Exception [%d] %s \n%s\n", exception.Code, exception.Message, exception.StackTrace)
+			t.Logf("Exception [%d] %s \n%s\n", exception.Code, exception.Message, exception.StackTrace)
 		}
-		return nil, err
+		t.Fatalf("failed to ping using established connection: %v", err)
 	}
 
-	return conn, nil
+	return conn
 }
 
 // helper to set contentType and contentEncoding in headers
