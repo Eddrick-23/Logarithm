@@ -13,8 +13,7 @@ import (
 type ByteSize int64
 
 func (b *ByteSize) EnvDecode(val string) error {
-	// convert from string to KB, MB, GB
-	parsed, err := units.FromHumanSize(val)
+	parsed, err := units.RAMInBytes(val)
 
 	if err != nil {
 		return err
@@ -122,8 +121,8 @@ func (c *Config) Public() PublicConfig {
 		NatsDLQMaxAge:             formatDuration(c.NatsDLQMaxAge),
 		NatsMaxDeliver:            c.NatsMaxDeliver,
 		NatsBackoff:               formatBackoff(c.NatsBackoff),
-		NatsLogStreamMaxBytes:     units.HumanSize(float64(c.NatsLogStreamMaxBytes)),
-		NatsDLQMaxBytes:           units.HumanSize(float64(c.NatsDLQMaxBytes)),
+		NatsLogStreamMaxBytes:     units.BytesSize(float64(c.NatsLogStreamMaxBytes)),
+		NatsDLQMaxBytes:           units.BytesSize(float64(c.NatsDLQMaxBytes)),
 		NatsConsumerMaxAckPending: c.NatsConsumerMaxAckPending,
 		WorkerLogLevel:            c.WorkerLogLevel,
 		WorkerMaxBatch:            c.WorkerMaxBatch,
