@@ -3,6 +3,8 @@ package config
 import (
 	"context"
 	"fmt"
+	"math"
+	"strings"
 	"time"
 
 	"github.com/docker/go-units"
@@ -13,7 +15,8 @@ import (
 type ByteSize int64
 
 func (b *ByteSize) EnvDecode(val string) error {
-	parsed, err := units.RAMInBytes(val)
+	// convert from string to KB, MB, GB
+	parsed, err := units.FromHumanSize(val)
 
 	if err != nil {
 		return err
@@ -59,6 +62,22 @@ type Config struct {
 	PprofHost                 string          `env:"PPROF_HOST, default=0.0.0.0"`
 }
 
+type PublicConfig struct {
+	LiveTailRefreshInterval   int    `json:"liveTailRefreshInterval"`
+	LiveTailMaxBatch          int    `json:"liveTailMaxBatch"`
+	NatsStreamMaxAge          string `json:"natsStreamMaxAge"`
+	NatsDLQMaxAge             string `json:"natsDLQMaxAge"`
+	NatsMaxDeliver            int    `json:"natsMaxDeliver"`
+	NatsBackoff               string `json:"natsBackoff"`
+	NatsLogStreamMaxBytes     string `json:"natsLogStreamMaxBytes"`
+	NatsDLQMaxBytes           string `json:"natsDLQMaxBytes"`
+	NatsConsumerMaxAckPending int    `json:"natsConsumerMaxAckPending"`
+	WorkerLogLevel            string `json:"workerLogLevel"`
+	WorkerMaxBatch            int    `json:"workerMaxBatch"`
+	WorkerBackoff             string `json:"workerBackoff"`
+	WorkerRowsPerBatch        int    `json:"workerRowsPerBatch"`
+}
+
 func LoadConfig(ctx context.Context) (*Config, error) {
 	if err := godotenv.Load(".env.local", ".env"); err != nil {
 		fmt.Println("Note: No .env found. using system environment variables with default fallbacks if needed.")
@@ -95,4 +114,63 @@ func (c *Config) validate() error {
 		)
 	}
 	return nil
+}
+
+func formatDuration(d time.Duration) string {
+	// custom duration formatter since package conversion function returns 1h0m0s instead of 1h
+	if d == 0 {
+		return "0s"
+	}
+
+	var b strings.Builder
+
+	hours := int64(d / time.Hour)
+	d -= time.Duration(hours) * time.Hour
+
+	minutes := int64(d / time.Minute)
+	d -= time.Duration(minutes) * time.Minute
+
+	seconds := d.Seconds() // remaining, may be fractional
+
+	if hours > 0 {
+		fmt.Fprintf(&b, "%dh", hours)
+	}
+	if minutes > 0 {
+		fmt.Fprintf(&b, "%dmin", minutes)
+	}
+	if seconds > 0 {
+		if seconds == math.Trunc(seconds) {
+			fmt.Fprintf(&b, "%ds", int64(seconds))
+		} else {
+			fmt.Fprintf(&b, "%gs", seconds)
+		}
+	}
+
+	return b.String()
+}
+
+func formatBackoff(durations []time.Duration) string {
+	parts := make([]string, len(durations))
+	for i, d := range durations {
+		parts[i] = formatDuration(d)
+	}
+	return strings.Join(parts, ", ")
+}
+
+func (c *Config) Public() PublicConfig {
+	return PublicConfig{
+		LiveTailRefreshInterval:   c.LiveTailRefreshInterval,
+		LiveTailMaxBatch:          c.LiveTailMaxBatch,
+		NatsStreamMaxAge:          formatDuration(c.NatsStreamMaxAge),
+		NatsDLQMaxAge:             formatDuration(c.NatsDLQMaxAge),
+		NatsMaxDeliver:            c.NatsMaxDeliver,
+		NatsBackoff:               formatBackoff(c.NatsBackoff),
+		NatsLogStreamMaxBytes:     units.HumanSize(float64(c.NatsLogStreamMaxBytes)),
+		NatsDLQMaxBytes:           units.HumanSize(float64(c.NatsDLQMaxBytes)),
+		NatsConsumerMaxAckPending: c.NatsConsumerMaxAckPending,
+		WorkerLogLevel:            c.WorkerLogLevel,
+		WorkerMaxBatch:            c.WorkerMaxBatch,
+		WorkerBackoff:             formatBackoff(c.WorkerBackoff),
+		WorkerRowsPerBatch:        c.WorkerRowsPerBatch,
+	}
 }
