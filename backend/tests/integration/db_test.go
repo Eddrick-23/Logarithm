@@ -39,7 +39,7 @@ func getRawDBConn(t *testing.T) driver.Conn {
 	conn, err := clickhouse.Open(&clickhouse.Options{
 		Addr: []string{dbAddr},
 		Auth: clickhouse.Auth{
-			Database: dbname,
+			Database: dbName,
 			Username: user,
 			Password: password,
 		},
@@ -73,7 +73,7 @@ func getNewTestStore(t *testing.T) *storage.ClickHouseStore {
 	t.Helper()
 	chConfig := storage.Config{
 		Address:  dbAddr,
-		Database: dbname,
+		Database: dbName,
 		Username: user,
 		Password: password,
 	}

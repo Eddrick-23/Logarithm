@@ -17,7 +17,7 @@ import (
 func TestNewClickHouseStore(t *testing.T) {
 	chConfig := storage.Config{
 		Address:  dbAddr,
-		Database: dbname,
+		Database: dbName,
 		Username: user,
 		Password: password,
 	}
@@ -45,7 +45,7 @@ func TestNewClickHouseStoreWrongDBName(t *testing.T) {
 func TestNewClickHouseStoreWrongUser(t *testing.T) {
 	chConfig := storage.Config{
 		Address:  dbAddr,
-		Database: dbname,
+		Database: dbName,
 		Username: "wronguser",
 		Password: password,
 	}
@@ -58,7 +58,7 @@ func TestNewClickHouseStoreWrongUser(t *testing.T) {
 func TestNewClickHouseStoreWrongPassword(t *testing.T) {
 	chConfig := storage.Config{
 		Address:  dbAddr,
-		Database: dbname,
+		Database: dbName,
 		Username: user,
 		Password: "wrongpassword",
 	}
@@ -219,17 +219,7 @@ func TestFastInsert(t *testing.T) {
 }
 
 func TestSearchLogs(t *testing.T) {
-	chConfig := storage.Config{
-		Address:  dbAddr,
-		Database: dbname,
-		Username: user,
-		Password: password,
-	}
-	logStore, err := storage.NewClickHouseStore(context.Background(), chConfig, storage.WithLogger(slog.Default()))
-
-	if err != nil {
-		t.Fatalf("failed to establish db connection: %v", err)
-	}
+	logStore := getNewTestStore(t)
 
 	ctx := context.Background()
 	setupTestDB(t, ctx, logStore)
