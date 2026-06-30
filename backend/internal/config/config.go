@@ -59,6 +59,22 @@ type Config struct {
 	PprofHost                 string          `env:"PPROF_HOST, default=0.0.0.0"`
 }
 
+type PublicConfig struct {
+	LiveTailRefreshInterval   int    `json:"liveTailRefreshInterval"`
+	LiveTailMaxBatch          int    `json:"liveTailMaxBatch"`
+	NatsStreamMaxAge          string `json:"natsStreamMaxAge"`
+	NatsDLQMaxAge             string `json:"natsDLQMaxAge"`
+	NatsMaxDeliver            int    `json:"natsMaxDeliver"`
+	NatsBackoff               string `json:"natsBackoff"`
+	NatsLogStreamMaxBytes     string `json:"natsLogStreamMaxBytes"`
+	NatsDLQMaxBytes           string `json:"natsDLQMaxBytes"`
+	NatsConsumerMaxAckPending int    `json:"natsConsumerMaxAckPending"`
+	WorkerLogLevel            string `json:"workerLogLevel"`
+	WorkerMaxBatch            int    `json:"workerMaxBatch"`
+	WorkerBackoff             string `json:"workerBackoff"`
+	WorkerRowsPerBatch        int    `json:"workerRowsPerBatch"`
+}
+
 func LoadConfig(ctx context.Context) (*Config, error) {
 	if err := godotenv.Load(".env.local", ".env"); err != nil {
 		fmt.Println("Note: No .env found. using system environment variables with default fallbacks if needed.")
@@ -95,4 +111,22 @@ func (c *Config) validate() error {
 		)
 	}
 	return nil
+}
+
+func (c *Config) Public() PublicConfig {
+	return PublicConfig{
+		LiveTailRefreshInterval:   c.LiveTailRefreshInterval,
+		LiveTailMaxBatch:          c.LiveTailMaxBatch,
+		NatsStreamMaxAge:          formatDuration(c.NatsStreamMaxAge),
+		NatsDLQMaxAge:             formatDuration(c.NatsDLQMaxAge),
+		NatsMaxDeliver:            c.NatsMaxDeliver,
+		NatsBackoff:               formatBackoff(c.NatsBackoff),
+		NatsLogStreamMaxBytes:     units.BytesSize(float64(c.NatsLogStreamMaxBytes)),
+		NatsDLQMaxBytes:           units.BytesSize(float64(c.NatsDLQMaxBytes)),
+		NatsConsumerMaxAckPending: c.NatsConsumerMaxAckPending,
+		WorkerLogLevel:            c.WorkerLogLevel,
+		WorkerMaxBatch:            c.WorkerMaxBatch,
+		WorkerBackoff:             formatBackoff(c.WorkerBackoff),
+		WorkerRowsPerBatch:        c.WorkerRowsPerBatch,
+	}
 }
