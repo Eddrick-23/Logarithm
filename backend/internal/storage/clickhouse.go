@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -43,7 +44,7 @@ var _ LogStore = (*ClickHouseStore)(nil)
 
 type Config struct {
 	logger   *slog.Logger
-	Address  string
+	Address  string // host:port
 	Database string
 	Username string
 	Password string
@@ -74,7 +75,6 @@ const (
 	defaultBatchRowLimit = 10000
 )
 
-// addr should be full host:port e.g. localhost:9000 or clickhouse:9000
 func NewClickHouseStore(ctx context.Context, config Config, opts ...Option) (*ClickHouseStore, error) {
 	s := &ClickHouseStore{
 		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -133,13 +133,13 @@ func NewClickHouseStore(ctx context.Context, config Config, opts ...Option) (*Cl
 		return c.Capacity() <= s.batchRowLimit
 	}))
 
+	s.conn = conn
+	s.ingestConn = ingestConn
+	s.tables = tables
+	s.batchPool = batchPool
+
 	s.logger.Info("connection to database established")
-	return &ClickHouseStore{
-		conn:       conn,
-		ingestConn: ingestConn,
-		tables:     tables,
-		batchPool:  batchPool,
-	}, nil
+	return s, nil
 }
 
 func (s *ClickHouseStore) table(name string) (string, error) {
@@ -181,10 +181,12 @@ func (s *ClickHouseStore) InitDB(ctx context.Context) error {
 
 func (s *ClickHouseStore) Close() error {
 	s.logger.Info("Closing clickhouse connection")
-	if err := s.ingestConn.Close(); err != nil {
-		return err
-	}
-	return s.conn.Close()
+
+	var errs []error
+	errs = append(errs, s.ingestConn.Close())
+	errs = append(errs, s.conn.Close())
+
+	return errors.Join(errs...)
 }
 
 func (s *ClickHouseStore) buildFilterQueryString(filter core.LogQueryFilter) (string, []any) {
