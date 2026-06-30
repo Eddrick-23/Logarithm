@@ -15,6 +15,9 @@ func formatDuration(d time.Duration) string {
 
 	var b strings.Builder
 
+	days := int64(d / (24 * time.Hour))
+	d -= time.Duration(days) * 24 * time.Hour
+
 	hours := int64(d / time.Hour)
 	d -= time.Duration(hours) * time.Hour
 
@@ -23,11 +26,14 @@ func formatDuration(d time.Duration) string {
 
 	seconds := d.Seconds() // remaining, may be fractional
 
+	if days > 0 {
+		fmt.Fprintf(&b, "%dd ", days)
+	}
 	if hours > 0 {
-		fmt.Fprintf(&b, "%dh", hours)
+		fmt.Fprintf(&b, "%dh ", hours)
 	}
 	if minutes > 0 {
-		fmt.Fprintf(&b, "%dmin", minutes)
+		fmt.Fprintf(&b, "%dmin ", minutes)
 	}
 	if seconds > 0 {
 		if seconds == math.Trunc(seconds) {
