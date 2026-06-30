@@ -32,6 +32,7 @@ func AddRoutes(
 	mux.Handle("GET /api/ingestion-metrics/stream", handleIngestionMetricsStream(logger, logStore, appCtx))
 	mux.Handle("GET /api/error-rate-metrics", handleErrorRateMetrics(logger, logStore))
 	mux.Handle("GET /api/storage-info", handleStorageInfo(logger, logStore))
+	mux.Handle("GET /api/config", handleConfig(logger, config))
 	mux.Handle("GET /ws/logs/tail", handleLiveTail(logger, broker, config))
 }
 
@@ -337,6 +338,18 @@ func handleStorageInfo(logger *slog.Logger, logStore *storage.ClickHouseStore) h
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(card); err != nil {
 			logger.Error("failed to encode storage card response", "error", err)
+		}
+	}
+}
+
+func handleConfig(logger *slog.Logger, config *config.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		err := json.NewEncoder(w).Encode(config.Public())
+		if err != nil {
+			logger.Error("failed to write config", "err", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		}
 	}
 }

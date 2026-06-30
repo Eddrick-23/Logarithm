@@ -20,7 +20,7 @@ import ListItemText from "@mui/material/ListItemText";
 import OverviewIcon from "@mui/icons-material/Dashboard";
 import LiveTailIcon from "@mui/icons-material/StreamOutlined";
 import SearchIcon from "@mui/icons-material/Search";
-import AnalyticsIcon from "@mui/icons-material/Analytics";
+import SettingsIcon from "@mui/icons-material/Settings";
 import { Link } from "@tanstack/react-router";
 
 const drawerWidth = 175;
@@ -63,14 +63,14 @@ const navIconMap: Record<string, React.ElementType> = {
     Overview: OverviewIcon,
     "Live Tail": LiveTailIcon,
     Search: SearchIcon,
-    Analytics: AnalyticsIcon,
+    Settings: SettingsIcon,
 };
 
 const navLinkMap: Record<string, string> = {
     Overview: "/dashboard",
     "Live Tail": "/live-tail",
     Search: "/search",
-    Analytics: "/analytics",
+    Settings: "/settings",
 };
 
 const AppBar = styled(MuiAppBar, {
