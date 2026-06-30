@@ -63,12 +63,13 @@ func run(ctx context.Context, w io.Writer) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	store, err := storage.NewClickHouseStore(ctx,
-		dblogger,
-		config.DBAddress,
-		config.DBName,
-		config.DBUser,
-		config.DBPassword)
+	chConfig := storage.Config{
+		Address:  config.DBAddress,
+		Database: config.DBName,
+		Username: config.DBUser,
+		Password: config.DBPassword,
+	}
+	store, err := storage.NewClickHouseStore(ctx, chConfig, storage.WithLogger(dblogger))
 
 	if err != nil {
 		return fmt.Errorf("failed to connect to db: %w", err)

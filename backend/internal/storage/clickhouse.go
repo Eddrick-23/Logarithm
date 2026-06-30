@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/Eddrick-23/Logarithm/internal/core"
+	"github.com/Eddrick-23/Logarithm/internal/pool"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -20,28 +22,79 @@ type LogStore interface {
 	SearchLogs(context.Context, core.LogQueryFilter) ([]core.FlatLogRecord, error)
 }
 
+type batchPool interface {
+	Get() *columnBatch
+	Put(*columnBatch) bool
+}
+
 type ClickHouseStore struct {
 	conn       driver.Conn
 	tables     map[string]string
 	logger     *slog.Logger
 	ingestMu   sync.Mutex // ch.Client not thread safe
 	ingestConn *ch.Client // low level api for inserting
-	batchPool  sync.Pool
+	batchPool  batchPool
+
+	batchPoolSize int
+	batchRowLimit int
 }
 
 var _ LogStore = (*ClickHouseStore)(nil)
 
+type Config struct {
+	logger   *slog.Logger
+	Address  string
+	Database string
+	Username string
+	Password string
+}
+
+type Option func(*ClickHouseStore)
+
+func WithLogger(l *slog.Logger) Option {
+	return func(s *ClickHouseStore) {
+		s.logger = l
+	}
+}
+
+func WithPoolSize(size int) Option {
+	return func(s *ClickHouseStore) {
+		s.batchPoolSize = size
+	}
+}
+
+func WithRowLimit(limit int) Option {
+	return func(s *ClickHouseStore) {
+		s.batchRowLimit = limit
+	}
+}
+
+const (
+	defaultBatchPoolSize = 5
+	defaultBatchRowLimit = 10000
+)
+
 // addr should be full host:port e.g. localhost:9000 or clickhouse:9000
-func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, dbName string, username string, password string) (*ClickHouseStore, error) {
-	logger.Info("Connecting to database...")
+func NewClickHouseStore(ctx context.Context, config Config, opts ...Option) (*ClickHouseStore, error) {
+	s := &ClickHouseStore{
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		batchPoolSize: defaultBatchPoolSize,
+		batchRowLimit: defaultBatchRowLimit,
+	}
+
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	s.logger.Info("Connecting to database...")
 
 	// high level driver
 	conn, err := clickhouse.Open(&clickhouse.Options{
-		Addr: []string{addr},
+		Addr: []string{config.Address},
 		Auth: clickhouse.Auth{
-			Database: dbName,
-			Username: username,
-			Password: password,
+			Database: config.Database,
+			Username: config.Username,
+			Password: config.Password,
 		},
 		MaxOpenConns: 10,
 		MaxIdleConns: 5,
@@ -53,17 +106,17 @@ func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, d
 
 	// low level driver
 	ingestConn, err := ch.Dial(ctx, ch.Options{
-		Address:  addr,
-		Database: dbName,
-		User:     username,
-		Password: password,
+		Address:  config.Address,
+		Database: config.Database,
+		User:     config.Username,
+		Password: config.Password,
 	})
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial ch-go ingest conn: %w", err)
 	}
 
-	tables, err := initTables(dbName)
+	tables, err := initTables(config.Database)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialise table mapping: %v", err)
 	}
@@ -75,17 +128,17 @@ func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, d
 		}
 		return nil, err
 	}
-	logger.Info("connection to database established")
+
+	batchPool := pool.New(s.batchPoolSize, newColumnBatch, pool.WithReuseCheck(func(c *columnBatch) bool {
+		return c.Capacity() <= s.batchRowLimit
+	}))
+
+	s.logger.Info("connection to database established")
 	return &ClickHouseStore{
 		conn:       conn,
 		ingestConn: ingestConn,
 		tables:     tables,
-		logger:     logger,
-		batchPool: sync.Pool{
-			New: func() any {
-				return newColumnBatch()
-			},
-		},
+		batchPool:  batchPool,
 	}, nil
 }
 

@@ -25,7 +25,14 @@ import (
 func setupDashboardServer(t *testing.T, ctx context.Context) (*httptest.Server, *transport.NatsBroker) {
 	t.Helper()
 
-	logStore, err := storage.NewClickHouseStore(ctx, slog.Default(), dbAddr, dbname, user, password)
+	chConfig := storage.Config{
+		Address:  dbAddr,
+		Database: dbname,
+		Username: user,
+		Password: password,
+	}
+
+	logStore, err := storage.NewClickHouseStore(ctx, chConfig, storage.WithLogger(slog.Default()))
 	if err != nil {
 		t.Fatalf("failed to initialize ClickHouse store: %v", err)
 	}

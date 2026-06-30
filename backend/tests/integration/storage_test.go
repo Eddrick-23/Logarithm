@@ -14,7 +14,13 @@ import (
 )
 
 func TestNewClickHouseStore(t *testing.T) {
-	_, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, user, password)
+	chConfig := storage.Config{
+		Address:  dbAddr,
+		Database: dbname,
+		Username: user,
+		Password: password,
+	}
+	_, err := storage.NewClickHouseStore(context.Background(), chConfig, storage.WithLogger(slog.Default()))
 
 	if err != nil {
 		t.Errorf("failed to establish db connection: %v", err)
@@ -22,7 +28,13 @@ func TestNewClickHouseStore(t *testing.T) {
 }
 
 func TestNewClickHouseStoreWrongDBName(t *testing.T) {
-	_, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, "wrongname", user, password)
+	chConfig := storage.Config{
+		Address:  dbAddr,
+		Database: "wrongname",
+		Username: user,
+		Password: password,
+	}
+	_, err := storage.NewClickHouseStore(context.Background(), chConfig, storage.WithLogger(slog.Default()))
 
 	if err == nil {
 		t.Error("Connection still established with wrong database name")
@@ -30,14 +42,26 @@ func TestNewClickHouseStoreWrongDBName(t *testing.T) {
 }
 
 func TestNewClickHouseStoreWrongUser(t *testing.T) {
-	_, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, "wronguser", password)
+	chConfig := storage.Config{
+		Address:  dbAddr,
+		Database: dbname,
+		Username: "wronguser",
+		Password: password,
+	}
+	_, err := storage.NewClickHouseStore(context.Background(), chConfig, storage.WithLogger(slog.Default()))
 
 	if err == nil {
 		t.Error("Connection still established with wrong username")
 	}
 }
 func TestNewClickHouseStoreWrongPassword(t *testing.T) {
-	_, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, user, "wrongpassword")
+	chConfig := storage.Config{
+		Address:  dbAddr,
+		Database: dbname,
+		Username: user,
+		Password: "wrongpassword",
+	}
+	_, err := storage.NewClickHouseStore(context.Background(), chConfig, storage.WithLogger(slog.Default()))
 
 	if err == nil {
 		t.Error("Connection still established with wrong password")
@@ -45,7 +69,14 @@ func TestNewClickHouseStoreWrongPassword(t *testing.T) {
 }
 
 func TestBatchInsert(t *testing.T) {
-	logStore, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, user, password)
+	chConfig := storage.Config{
+		Address:  dbAddr,
+		Database: dbname,
+		Username: user,
+		Password: password,
+	}
+	logStore, err := storage.NewClickHouseStore(context.Background(), chConfig, storage.WithLogger(slog.Default()))
+
 	ctx := context.Background()
 
 	if err != nil {
@@ -92,7 +123,13 @@ func TestBatchInsert(t *testing.T) {
 }
 
 func TestBatchInsertMultipleLogs(t *testing.T) {
-	logStore, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, user, password)
+	chConfig := storage.Config{
+		Address:  dbAddr,
+		Database: dbname,
+		Username: user,
+		Password: password,
+	}
+	logStore, err := storage.NewClickHouseStore(context.Background(), chConfig, storage.WithLogger(slog.Default()))
 
 	ctx := context.Background()
 	if err != nil {
@@ -129,7 +166,13 @@ func TestBatchInsertMultipleLogs(t *testing.T) {
 }
 
 func TestSearchLogs(t *testing.T) {
-	logStore, err := storage.NewClickHouseStore(context.Background(), slog.Default(), dbAddr, dbname, user, password)
+	chConfig := storage.Config{
+		Address:  dbAddr,
+		Database: dbname,
+		Username: user,
+		Password: password,
+	}
+	logStore, err := storage.NewClickHouseStore(context.Background(), chConfig, storage.WithLogger(slog.Default()))
 
 	if err != nil {
 		t.Fatalf("failed to establish db connection: %v", err)
