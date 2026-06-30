@@ -1,25 +1,11 @@
+// Shared sample test data shared across test files
 package integration
 
 import (
-	"bytes"
-	"compress/gzip"
-	"context"
-	"testing"
 	"time"
 
-	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/Eddrick-23/Logarithm/internal/core"
-	"github.com/Eddrick-23/Logarithm/internal/storage"
-	"github.com/klauspost/compress/zstd"
-	"github.com/stretchr/testify/require"
 )
-
-var dbAddr string
-var user string
-var password string
-var dbname string
-var natsUrl string
 
 var testRecordEveryField core.FlatLogRecord = core.FlatLogRecord{
 	Timestamp:         time.Date(2024, 5, 20, 10, 0, 0, 0, time.UTC),
@@ -109,100 +95,4 @@ var testRecord4 core.FlatLogRecord = core.FlatLogRecord{
 	LogAttrValues:     []string{"pay_abc123", "TIMEOUT", "2"},
 	ResAttrKeys:       []string{"host.name"},
 	ResAttrValues:     []string{"payment-worker-01"},
-}
-
-var seedData = []core.FlatLogRecord{testRecord1, testRecord2, testRecord3, testRecord4}
-
-func setupTestDB(t *testing.T, ctx context.Context, store storage.LogStore) {
-	t.Helper()
-
-	conn := getRawDBConn(t)
-	defer conn.Close()
-
-	err := conn.Exec(ctx, "TRUNCATE TABLE logarithm.logs")
-	if err != nil {
-		t.Fatalf("failed to truncate table: %v", err)
-	}
-
-	err = store.BatchInsert(ctx, seedData)
-	if err != nil {
-		t.Fatalf("failed to seed test data: %v", err)
-	}
-}
-
-// Helper to create a raw db connection.
-// Connection is closed automatically at the end of the test.
-func getRawDBConn(t *testing.T) driver.Conn {
-	t.Helper()
-	ctx := context.Background()
-	conn, err := clickhouse.Open(&clickhouse.Options{
-		Addr: []string{dbAddr},
-		Auth: clickhouse.Auth{
-			Database: dbname,
-			Username: user,
-			Password: password,
-		},
-		MaxOpenConns: 10,
-		MaxIdleConns: 5,
-	})
-
-	if err != nil {
-		t.Fatalf("failed to configure clickhouse: %v", err)
-	}
-
-	t.Cleanup(func() {
-		if err := conn.Close(); err != nil {
-			t.Errorf("failed to close db connection: %v", err)
-		}
-	})
-
-	if err := conn.Ping(ctx); err != nil {
-		if exception, ok := err.(*clickhouse.Exception); ok {
-			t.Logf("Exception [%d] %s \n%s\n", exception.Code, exception.Message, exception.StackTrace)
-		}
-		t.Fatalf("failed to ping using established connection: %v", err)
-	}
-
-	return conn
-}
-
-// helper to set contentType and contentEncoding in headers
-//
-// If empty string is given, the key-value pair is not set at all
-func makeHeaders(contentType string, contentEncoding string) map[string][]string {
-	headers := map[string][]string{}
-	if contentType != "" {
-		headers["Content-Type"] = []string{contentType}
-	}
-
-	if contentEncoding != "" {
-		headers["Content-Encoding"] = []string{contentEncoding}
-	}
-
-	return headers
-}
-
-// helper to compress payloads using zstd
-func zstdCompress(tb testing.TB, data []byte) []byte {
-	tb.Helper()
-	var buf bytes.Buffer
-	w, err := zstd.NewWriter(&buf)
-	require.NoError(tb, err)
-	_, err = w.Write(data)
-	require.NoError(tb, err)
-	require.NoError(tb, w.Close())
-	return buf.Bytes()
-}
-
-// helper to compress payloads using gzip
-func gzipCompress(tb testing.TB, data []byte) []byte {
-	tb.Helper()
-
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-
-	_, err := gz.Write(data)
-	require.NoError(tb, err)
-	require.NoError(tb, gz.Close())
-	return buf.Bytes()
 }

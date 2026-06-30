@@ -16,6 +16,12 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+var dbAddr string
+var user string
+var password string
+var dbname string
+var natsUrl string
+
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 

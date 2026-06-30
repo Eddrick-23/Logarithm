@@ -69,31 +69,6 @@ func TestNewClickHouseStoreWrongPassword(t *testing.T) {
 	}
 }
 
-// Helper to create a new ClickHouseStore.
-// Store is closed automatically at the end of the test.
-func getNewTestStore(t *testing.T) *storage.ClickHouseStore {
-	t.Helper()
-	chConfig := storage.Config{
-		Address:  dbAddr,
-		Database: dbname,
-		Username: user,
-		Password: password,
-	}
-	logStore, err := storage.NewClickHouseStore(context.Background(), chConfig, storage.WithLogger(slog.Default()))
-
-	if err != nil {
-		t.Fatalf("failed to establish db connection: %v", err)
-	}
-
-	t.Cleanup(func() {
-		if err := logStore.Close(); err != nil {
-			t.Errorf("failed to close store: %v", err)
-		}
-	})
-
-	return logStore
-}
-
 func TestBatchInsert(t *testing.T) {
 	logStore := getNewTestStore(t)
 	conn := getRawDBConn(t)
