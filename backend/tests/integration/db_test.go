@@ -1,4 +1,6 @@
-// clickhouse helpers shared across test files
+//go:build integration
+
+// Clickhouse helpers shared across test files
 package integration
 
 import (

@@ -1,3 +1,5 @@
+//go:build integration
+
 // Shared sample test data shared across test files
 package integration
 
