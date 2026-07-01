@@ -88,8 +88,12 @@ func TestValidate(t *testing.T) {
 	invalidConfigWorkerRowsPerBatch := validConfig
 	invalidConfigWorkerRowsPerBatch.WorkerRowsPerBatch = 0
 
+	invalidConfigDBBatchPoolSize := validConfig
+	invalidConfigDBBatchPoolSize.DBBatchPoolSize = 0
+
 	invalidConfigDBBatchPoolRowsTooSmall := validConfig
 	invalidConfigDBBatchPoolRowsTooSmall.DBBatchPoolMaxRows = 1
+
 	tests := []struct {
 		name          string
 		input         Config
@@ -116,8 +120,13 @@ func TestValidate(t *testing.T) {
 			expectedError: true,
 		},
 		{
-			name:          "invalid config live tail queue size",
+			name:          "invalid config worker rows per batch",
 			input:         invalidConfigWorkerRowsPerBatch,
+			expectedError: true,
+		},
+		{
+			name:          "invalid config DB Batch Pool size",
+			input:         invalidConfigDBBatchPoolSize,
 			expectedError: true,
 		},
 		{

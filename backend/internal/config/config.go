@@ -119,6 +119,12 @@ func (c *Config) validate() error {
 		)
 	}
 
+	if c.DBBatchPoolSize <= 0 {
+		return fmt.Errorf("DB_BATCH_POOL_SIZE (%d) must be a positive number",
+			c.DBBatchPoolSize,
+		)
+	}
+
 	if c.DBBatchPoolMaxRows < c.WorkerRowsPerBatch {
 		return fmt.Errorf("DB_BATCH_POOL_MAX_ROWS (%d) must be larger than WORKER_ROWS_PER_BATCH (%d) for effective buffer reuse. Recommended (%d)",
 			c.DBBatchPoolMaxRows, c.WorkerRowsPerBatch, 2*c.WorkerRowsPerBatch,
