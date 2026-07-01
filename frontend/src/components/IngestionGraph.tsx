@@ -1,10 +1,11 @@
 import { LineChart } from "@mui/x-charts/LineChart";
 import { useMemo, useState } from "react";
-import { Alert, Box, Checkbox, Chip, FormControlLabel, FormGroup, Skeleton, Stack, Typography } from "@mui/material";
+import { Alert, Box, Skeleton, Typography } from "@mui/material";
 import { card, sectionLabel } from "../theme/tokens";
 import type { IngestionGraphData } from "../types/Metric";
 import { INGESTION_GRAPH_REFETCH_INTERVAL_MS } from "../api/metricsApi";
 import { LastUpdated } from "./LastUpdated";
+import { ServiceFilters } from "./ServiceFilters";
 
 interface IngestionGraphProps {
     data?: IngestionGraphData;
@@ -52,23 +53,6 @@ export default function IngestionGraph({ data, isLoading, isError, lastUpdatedAt
             }));
     }, [data, services, hiddenServices, serviceColours]);
 
-    const toggleService = (service: string) => {
-        setHiddenServices((prev) => {
-            const currServices = new Set(prev);
-            if (currServices.has(service)) {
-                currServices.delete(service);
-            } else {
-                currServices.add(service);
-            }
-            return currServices;
-        });
-    };
-
-    const allSelected = services.every((service) => !hiddenServices.has(service));
-    const toggleAll = () => {
-        setHiddenServices(allSelected ? new Set(services) : new Set());
-    };
-
     const isEmpty = !isLoading && !isError && services.length === 0;
 
     return (
@@ -79,40 +63,12 @@ export default function IngestionGraph({ data, isLoading, isError, lastUpdatedAt
 
             {/* filters to choose which services to track on ingestion graph */}
             {!isLoading && services.length > 0 && (
-                <Box sx={{ my: 2 }}>
-                    <Stack direction="row" sx={{ flexWrap: "wrap", gap: 2.5, alignItems: "center" }}>
-                        <Chip
-                            label="All"
-                            size="small"
-                            variant={allSelected ? "filled" : "outlined"}
-                            onClick={toggleAll}
-                            sx={{ fontWeight: 600 }}
-                        />
-                        <FormGroup row>
-                            {services.map((service) => (
-                                <FormControlLabel
-                                    key={service}
-                                    control={
-                                        <Checkbox
-                                            size="small"
-                                            checked={!hiddenServices.has(service)}
-                                            onChange={() => toggleService(service)}
-                                            sx={{
-                                                color: serviceColours[service],
-                                                "&.Mui-checked": { color: serviceColours[service] },
-                                            }}
-                                        />
-                                    }
-                                    label={
-                                        <Typography variant="body2" noWrap>
-                                            {service}
-                                        </Typography>
-                                    }
-                                />
-                            ))}
-                        </FormGroup>
-                    </Stack>
-                </Box>
+                <ServiceFilters
+                    services={services}
+                    serviceColours={serviceColours}
+                    hiddenServices={hiddenServices}
+                    setHiddenServices={setHiddenServices}
+                />
             )}
 
             {/* rectangular skeleton box to signify loading of graph */}
