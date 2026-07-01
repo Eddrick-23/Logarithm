@@ -54,6 +54,8 @@ func TestValidate(t *testing.T) {
 		DBUser:                    "default",
 		DBPassword:                "password",
 		DBName:                    "logarithm",
+		DBBatchPoolSize:           5,
+		DBBatchPoolMaxRows:        2000,
 		NatsURL:                   "nats://localhost:4222",
 		NatsStreamMaxAge:          24 * time.Hour,
 		NatsDLQMaxAge:             24 * time.Hour,
@@ -68,6 +70,7 @@ func TestValidate(t *testing.T) {
 		WorkerBackoff:             []time.Duration{1 * time.Second},
 		WorkerLiveTailCount:       3,
 		WorkerLiveTailQueueSize:   10000,
+		WorkerRowsPerBatch:        1000,
 		SeedSystem:                false,
 		EnablePprof:               false,
 		PprofHost:                 "0.0.0.0",
@@ -81,6 +84,12 @@ func TestValidate(t *testing.T) {
 
 	invalidConfigLiveTailQueueSize := validConfig
 	invalidConfigLiveTailQueueSize.WorkerLiveTailQueueSize = 0
+
+	invalidConfigWorkerRowsPerBatch := validConfig
+	invalidConfigWorkerRowsPerBatch.WorkerRowsPerBatch = 0
+
+	invalidConfigDBBatchPoolRowsTooSmall := validConfig
+	invalidConfigDBBatchPoolRowsTooSmall.DBBatchPoolMaxRows = 1
 	tests := []struct {
 		name          string
 		input         Config
@@ -104,6 +113,16 @@ func TestValidate(t *testing.T) {
 		{
 			name:          "invalid config live tail queue size",
 			input:         invalidConfigLiveTailQueueSize,
+			expectedError: true,
+		},
+		{
+			name:          "invalid config live tail queue size",
+			input:         invalidConfigWorkerRowsPerBatch,
+			expectedError: true,
+		},
+		{
+			name:          "invalid config DB Batch Pool Max Rows is smaller than worker rows per batch",
+			input:         invalidConfigDBBatchPoolRowsTooSmall,
 			expectedError: true,
 		},
 	}

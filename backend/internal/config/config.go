@@ -39,6 +39,8 @@ type Config struct {
 	DBUser                    string          `env:"DB_USER, required"`
 	DBPassword                string          `env:"DB_PASSWORD, required"`
 	DBName                    string          `env:"DB_NAME, default=logarithm"`
+	DBBatchPoolSize           int             `env:"DB_BATCH_POOL_SIZE, default=5"`
+	DBBatchPoolMaxRows        int             `env:"DB_BATCH_POOL_MAX_ROWS, default=2000"`
 	NatsURL                   string          `env:"NATS_URL, default=nats://127.0.0.1:4222"`
 	NatsStreamMaxAge          time.Duration   `env:"NATS_STREAM_MAX_AGE, default=12h"`
 	NatsDLQMaxAge             time.Duration   `env:"NATS_DLQ_MAX_AGE, default=24h"`
@@ -108,6 +110,18 @@ func (c *Config) validate() error {
 	if c.WorkerLiveTailQueueSize <= 0 {
 		return fmt.Errorf("WORKER_LIVE_TAIL_QUEUE_SIZE (%d) must be a positive number for the live tail feature to work. Recommended (10000)",
 			c.WorkerLiveTailQueueSize,
+		)
+	}
+
+	if c.WorkerRowsPerBatch <= 0 {
+		return fmt.Errorf("WORKER_ROWS_PER_BATCH (%d) must be a positive number for effective buffer presizing. Recommended(2000)",
+			c.WorkerRowsPerBatch,
+		)
+	}
+
+	if c.DBBatchPoolMaxRows < c.WorkerRowsPerBatch {
+		return fmt.Errorf("DB_BATCH_POOL_MAX_ROWS (%d) must be larger than WORKER_ROWS_PER_BATCH (%d) for effective buffer reuse. Recommended (%d)",
+			c.DBBatchPoolMaxRows, c.WorkerRowsPerBatch, 2*c.WorkerRowsPerBatch,
 		)
 	}
 	return nil

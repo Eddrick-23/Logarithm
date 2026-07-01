@@ -69,7 +69,13 @@ func run(ctx context.Context, w io.Writer) error {
 		Username: config.DBUser,
 		Password: config.DBPassword,
 	}
-	store, err := storage.NewClickHouseStore(ctx, chConfig, storage.WithLogger(dblogger))
+	store, err := storage.NewClickHouseStore(
+		ctx,
+		chConfig,
+		storage.WithLogger(dblogger),
+		storage.WithPoolSize(config.DBBatchPoolSize),
+		storage.WithRowLimit(config.DBBatchPoolMaxRows),
+	)
 
 	if err != nil {
 		return fmt.Errorf("failed to connect to db: %w", err)
