@@ -16,7 +16,6 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/config"
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/dashboard"
-	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
@@ -25,10 +24,7 @@ import (
 func setupDashboardServer(t *testing.T, ctx context.Context) (*httptest.Server, *transport.NatsBroker) {
 	t.Helper()
 
-	logStore, err := storage.NewClickHouseStore(ctx, slog.Default(), dbAddr, dbname, user, password)
-	if err != nil {
-		t.Fatalf("failed to initialize ClickHouse store: %v", err)
-	}
+	logStore := getNewTestStore(t)
 
 	setupTestDB(t, ctx, logStore)
 

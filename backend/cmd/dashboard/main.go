@@ -218,7 +218,14 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		}
 	}()
 
-	logStore, err := storage.NewClickHouseStore(ctx, databaseLogger, config.DBAddress, config.DBName, config.DBUser, config.DBPassword)
+	chConfig := storage.Config{
+		Address:  config.DBAddress,
+		Database: config.DBName,
+		Username: config.DBUser,
+		Password: config.DBPassword,
+	}
+
+	logStore, err := storage.NewClickHouseStore(ctx, chConfig, storage.WithLogger(databaseLogger))
 	if err != nil {
 		databaseLogger.Error("failed to connect to db", "err", err)
 		panic(err)

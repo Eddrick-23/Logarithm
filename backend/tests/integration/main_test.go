@@ -16,6 +16,19 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+const (
+	user     = "clickhouse"
+	password = "password"
+	dbName   = "logarithm"
+)
+
+// Populated by TestMain before any tests run
+// Ports populated by docker
+var (
+	dbAddr  string
+	natsUrl string
+)
+
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 
@@ -51,15 +64,11 @@ func TestMain(m *testing.M) {
 
 	natsUrl = fmt.Sprintf("nats://%s:%s", natsHost, natsPort.Port())
 
-	user = "clickhouse"
-	password = "password"
-	dbname = "logarithm"
-
 	clickHouseContainer, err := chmodule.Run(ctx,
 		"clickhouse/clickhouse-server:26.3-alpine",
 		chmodule.WithUsername(user),
 		chmodule.WithPassword(password),
-		chmodule.WithDatabase(dbname),
+		chmodule.WithDatabase(dbName),
 		chmodule.WithInitScripts(filepath.Join("testdata", "init-db.sql")),
 	)
 

@@ -4,6 +4,7 @@ package integration
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
 	"log/slog"
@@ -14,7 +15,9 @@ import (
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/ingester"
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -22,6 +25,47 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 )
+
+// helper to set contentType and contentEncoding in headers
+//
+// If empty string is given, the key-value pair is not set at all
+func makeHeaders(contentType string, contentEncoding string) map[string][]string {
+	headers := map[string][]string{}
+	if contentType != "" {
+		headers["Content-Type"] = []string{contentType}
+	}
+
+	if contentEncoding != "" {
+		headers["Content-Encoding"] = []string{contentEncoding}
+	}
+
+	return headers
+}
+
+// helper to compress payloads using zstd
+func zstdCompress(tb testing.TB, data []byte) []byte {
+	tb.Helper()
+	var buf bytes.Buffer
+	w, err := zstd.NewWriter(&buf)
+	require.NoError(tb, err)
+	_, err = w.Write(data)
+	require.NoError(tb, err)
+	require.NoError(tb, w.Close())
+	return buf.Bytes()
+}
+
+// helper to compress payloads using gzip
+func gzipCompress(tb testing.TB, data []byte) []byte {
+	tb.Helper()
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+
+	_, err := gz.Write(data)
+	require.NoError(tb, err)
+	require.NoError(tb, gz.Close())
+	return buf.Bytes()
+}
 
 type MockProducer struct {
 	Err              error
