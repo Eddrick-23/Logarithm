@@ -43,7 +43,6 @@ type ClickHouseStore struct {
 var _ LogStore = (*ClickHouseStore)(nil)
 
 type Config struct {
-	logger   *slog.Logger
 	Address  string // host:port
 	Database string
 	Username string
