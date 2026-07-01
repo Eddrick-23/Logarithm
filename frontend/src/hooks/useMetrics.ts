@@ -6,7 +6,9 @@ import {
     fetchStorageInfoMetrics,
 } from "../api/metricsApi";
 import { useCallback, useEffect, useRef } from "react";
+import type { IngestionGraphData } from "../types/Metric";
 
+const MAX_POINTS = 60;
 const STALE_THRESHOLD_MS = 15000; // 15s stale time
 const EVENT_MAP = [
     { event: "ingestion", queryKey: "ingestionMetrics" },
@@ -42,12 +44,40 @@ export const useIngestionMetrics = () => {
         const eventSource = new EventSource("/api/ingestion-metrics/stream");
 
         for (const { event, queryKey } of EVENT_MAP) {
-            eventSource.addEventListener(event, (e) => {
-                const data = JSON.parse(e.data);
-                queryClient.setQueryData([queryKey], data);
-                queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
-                lastMessageRef.current = Date.now();
-            });
+            if (event === "ingestion") {
+                eventSource.addEventListener(event, (e) => {
+                    const liveDelta: IngestionGraphData = JSON.parse(e.data);
+
+                    queryClient.setQueryData([queryKey], (oldData: IngestionGraphData | undefined) => {
+                        if (!oldData) return liveDelta;
+
+                        const nextTimestamps = [...oldData.timestamps, ...liveDelta.timestamps].slice(-MAX_POINTS);
+                        const nextMetrics: Record<string, { logsCount: number }[]> = {};
+                        const allServices = Array.from(
+                            new Set([...Object.keys(oldData.metrics), ...Object.keys(liveDelta.metrics)]),
+                        );
+
+                        allServices.forEach((service) => {
+                            const oldVals = oldData.metrics[service] || [];
+                            const deltaVals =
+                                liveDelta.metrics[service] ?? Array(liveDelta.timestamps.length).fill({ logsCount: 0 });
+                            nextMetrics[service] = [...oldVals, ...deltaVals].slice(-MAX_POINTS);
+                        });
+
+                        return { timestamps: nextTimestamps, metrics: nextMetrics };
+                    });
+
+                    queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
+                    lastMessageRef.current = Date.now();
+                });
+            } else {
+                eventSource.addEventListener(event, (e) => {
+                    const data = JSON.parse(e.data);
+                    queryClient.setQueryData([queryKey], data);
+                    queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
+                    lastMessageRef.current = Date.now();
+                });
+            }
         }
 
         eventSource.onerror = () => {

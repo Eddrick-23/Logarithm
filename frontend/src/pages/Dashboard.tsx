@@ -68,6 +68,7 @@ export default function Dashboard() {
 
             {/* Stat cards */}
             <Box sx={{ mb: 2 }}>
+                {/* TODO: update serviceOverivew data */}
                 <ServiceOverview data={data?.logStats} isLoading={isLoading} logRateUpdatedAt={logRateUpdatedAt} />
             </Box>
 
@@ -75,7 +76,7 @@ export default function Dashboard() {
             <Grid container spacing={2} sx={{ mb: 2, alignItems: "stretch" }}>
                 <Grid size="grow">
                     <IngestionGraph
-                        data={data?.graph}
+                        data={data}
                         isLoading={isLoading}
                         isError={isError}
                         lastUpdatedAt={logRateUpdatedAt}

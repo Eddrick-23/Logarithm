@@ -1,9 +1,9 @@
 import axios from "axios";
 import type {
     ErrorRateMetrics,
-    GetIngestionMetricsResponse,
     TopServiceErrorsStats,
     GetTopServiceErrorsStatsResponse,
+    IngestionGraphData,
 } from "../types/Metric";
 import type { StorageInfoMetrics } from "../types/Storage";
 
@@ -13,9 +13,9 @@ export const ERROR_RATE_METRICS_REFETCH_INTERVAL_MS = 15_000; // 15 seconds
 export const TOP_SERVICE_ERRORS_STATS_REFETCH_INTERVAL_MS = 30_000; // 30 seconds
 export const STORAGE_INFO_METRICS_REFETCH_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
-export const fetchIngestionMetrics = async (): Promise<GetIngestionMetricsResponse> => {
+export const fetchIngestionMetrics = async (): Promise<IngestionGraphData> => {
     // response is of the type { metrics: IngestionMetricsMap, timestamps: number[] }
-    const response = await axios.get<GetIngestionMetricsResponse>("/api/ingestion-metrics");
+    const response = await axios.get<IngestionGraphData>("/api/ingestion-metrics");
     return response.data;
 };
 

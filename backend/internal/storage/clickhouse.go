@@ -14,7 +14,6 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/pool"
-	"golang.org/x/sync/errgroup"
 )
 
 type LogStore interface {
@@ -317,7 +316,7 @@ func (s *ClickHouseStore) GetDistinctServices(ctx context.Context) ([]string, er
 
 const INGESTION_METRICS_DURATION = 1 // it is in minutes
 
-// ingestion graph only, TODO: remove this in favour of SSE
+// ingestion graph metrics only
 func (s *ClickHouseStore) GetIngestionMetrics(ctx context.Context) (core.IngestionMetricsResponse, error) {
 	tbl, err := s.table(TableMetrics)
 	if err != nil {
@@ -346,80 +345,63 @@ func (s *ClickHouseStore) GetIngestionMetrics(ctx context.Context) (core.Ingesti
 }
 
 // all ingestion metrics
-func (s *ClickHouseStore) GetAllIngestionMetrics(ctx context.Context) (core.IngestionMetricsEvent, error) {
+func (s *ClickHouseStore) GetIngestionMetricsSince(ctx context.Context, since time.Time) (core.IngestionMetricsResponse, error) {
 	tbl, err := s.table(TableMetrics)
 	if err != nil {
-		return core.IngestionMetricsEvent{}, err
+		return core.IngestionMetricsResponse{}, err
 	}
 
-	var (
-		result      core.IngestionMetricsEvent
-		ingestionMu sync.Mutex
-		eg, egCtx   = errgroup.WithContext(ctx)
-	)
+	var result core.IngestionMetricsResponse
+	end := time.Now().UTC().Truncate(time.Second)
+	start := since
+	if !start.Before(end) {
+		// error handling in case start timing is after end
+		return core.IngestionMetricsResponse{}, nil
+	}
 
-	// query 1: ingestion graph points (last 60 ticks for the chart)
-	eg.Go(func() error {
-		end := time.Now().UTC().Truncate(time.Second)
-		start := end.Add(-time.Duration(INGESTION_METRICS_DURATION) * time.Minute)
-
-		whereClause := `WHERE Timestamp >= @start AND Timestamp < @end
+	whereClause := `WHERE Timestamp >= @start AND Timestamp < @end
 					GROUP BY ServiceName, Timestamp
 					ORDER BY ServiceName, Timestamp ASC
 					WITH FILL
 						FROM @start
     					TO @end
 						STEP toIntervalSecond(1)`
-		queryString := fmt.Sprintf("SELECT Timestamp, ServiceName, sum(LogsCount) AS LogsCount FROM %v %v ", tbl, whereClause)
+	queryString := fmt.Sprintf("SELECT Timestamp, ServiceName, sum(LogsCount) AS LogsCount FROM %v %v ", tbl, whereClause)
 
-		var rows []core.IngestionMetrics
-		if err := s.conn.Select(egCtx, &rows, queryString, clickhouse.Named("start", start), clickhouse.Named("end", end)); err != nil {
-			return fmt.Errorf("ingestion graph: %w", err)
-		}
-
-		ingestionMu.Lock()
-		result.Graph = core.NewIngestionMetricsResponse(rows, INGESTION_METRICS_DURATION*60)
-		ingestionMu.Unlock()
-		return nil
-	})
-
-	// query 2: log rate stats
-	eg.Go(func() error {
-		now := time.Now().UTC().Truncate(time.Second)
-
-		queryString := fmt.Sprintf(`
-		WITH
-			current AS (
-				SELECT sum(LogsCount) / 5 AS rate
-				FROM %v
-				WHERE Timestamp >= @now - INTERVAL 5 SECOND
-			),
-			baseline AS (
-				SELECT sum(LogsCount) / 60 AS rate
-				FROM %v
-				WHERE Timestamp >= @now - INTERVAL 60 SECOND
-			)
-		SELECT
-			current.rate AS CurrentRate,
-			baseline.rate AS AvgRate,
-			current.rate / nullIf(baseline.rate, 0) AS Ratio
-		FROM current, baseline
-	`, tbl, tbl)
-
-		var row core.LogRateStatistics
-		if err := s.conn.QueryRow(egCtx, queryString, clickhouse.Named("now", now)).ScanStruct(&row); err != nil {
-			return fmt.Errorf("log rate stats: %w", err)
-		}
-
-		ingestionMu.Lock()
-		result.LogStats = row
-		ingestionMu.Unlock()
-		return nil
-	})
-
-	if err := eg.Wait(); err != nil {
-		return core.IngestionMetricsEvent{}, err
+	var rows []core.IngestionMetrics
+	if err := s.conn.Select(ctx, &rows, queryString, clickhouse.Named("start", start), clickhouse.Named("end", end)); err != nil {
+		return core.IngestionMetricsResponse{}, err
 	}
+
+	numSeconds := int(end.Sub(start).Seconds())
+	result = core.NewIngestionMetricsResponse(rows, numSeconds)
+
+	// // query 2: log rate stats
+	// 	now := time.Now().UTC().Truncate(time.Second)
+
+	// 	queryString := fmt.Sprintf(`
+	// 	WITH
+	// 		current AS (
+	// 			SELECT sum(LogsCount) / 5 AS rate
+	// 			FROM %v
+	// 			WHERE Timestamp >= @now - INTERVAL 5 SECOND
+	// 		),
+	// 		baseline AS (
+	// 			SELECT sum(LogsCount) / 60 AS rate
+	// 			FROM %v
+	// 			WHERE Timestamp >= @now - INTERVAL 60 SECOND
+	// 		)
+	// 	SELECT
+	// 		current.rate AS CurrentRate,
+	// 		baseline.rate AS AvgRate,
+	// 		current.rate / nullIf(baseline.rate, 0) AS Ratio
+	// 	FROM current, baseline
+	// `, tbl, tbl)
+
+	// 	var row core.LogRateStatistics
+	// 	if err := s.conn.QueryRow(egCtx, queryString, clickhouse.Named("now", now)).ScanStruct(&row); err != nil {
+	// 		return fmt.Errorf("log rate stats: %w", err)
+	// 	}
 
 	return result, nil
 }

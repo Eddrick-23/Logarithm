@@ -35,6 +35,8 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 		defer ticker30s.Stop()
 		defer ticker15m.Stop()
 
+		lastSent := time.Now().UTC().Truncate(time.Second)
+
 		for {
 			select {
 			case <-r.Context().Done():
@@ -48,10 +50,14 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 				return
 
 			case <-ticker5s.C:
-				// ingestion graph and logs / second refreshes every 5s
-				if err := writeIngestionMetricsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
+				// ingestion graph refreshes every 5s
+				newLastSent, err := writeIngestionMetricsEvent(r.Context(), w, flusher, logger, logStore, lastSent)
+				if err != nil {
 					return
 				}
+				lastSent = newLastSent
+
+			// TODO: logs / second
 
 			case <-ticker15s.C:
 				// error rate metrics refreshes every 15s
@@ -81,28 +87,36 @@ func writeIngestionMetricsEvent(
 	flusher http.Flusher,
 	logger *slog.Logger,
 	logStore *storage.ClickHouseStore,
-) error {
-	ingestionMetrics, err := logStore.GetAllIngestionMetrics(ctx)
+	lastSent time.Time,
+) (time.Time, error) {
+	// retrieve metrics from last seen timing
+	ingestionMetrics, err := logStore.GetIngestionMetricsSince(ctx, lastSent)
 	if err != nil {
 		logger.Error("failed to get ingestion metrics", "err", err)
-		return err
+		return lastSent, err
+	}
+
+	if len(ingestionMetrics.Timestamps) == 0 {
+		return lastSent, nil
 	}
 
 	data, err := json.Marshal(ingestionMetrics)
 	if err != nil {
 		logger.Error("failed to marshal ingestion metrics", "err", err)
-		return err
+		return lastSent, err
 	}
 
 	// event: ingestion
 	// data: <payload>\n\n is the SSE wire protocol
 	if _, err := fmt.Fprintf(w, "event: ingestion\ndata: %s\n\n", data); err != nil {
 		// client likely disconnected
-		return err
+		return lastSent, err
 	}
 
+	// update last sent to be 1 second after the last timestamp recorded
+	newLastSent := time.UnixMilli(ingestionMetrics.Timestamps[len(ingestionMetrics.Timestamps)-1]).Add(time.Second)
 	flusher.Flush()
-	return nil
+	return newLastSent, nil
 }
 
 func writeErrorRateMetricsEvent(
