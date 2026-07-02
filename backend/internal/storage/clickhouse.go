@@ -316,11 +316,11 @@ func (s *ClickHouseStore) GetDistinctServices(ctx context.Context) ([]string, er
 
 const INGESTION_METRICS_DURATION = 1 // it is in minutes
 
-// ingestion graph metrics only
-func (s *ClickHouseStore) GetIngestionMetrics(ctx context.Context) (core.IngestionMetricsResponse, error) {
+// return ingestion graph metrics in the past minute
+func (s *ClickHouseStore) GetIngestionGraphMetrics(ctx context.Context) (core.IngestionGraphMetrics, error) {
 	tbl, err := s.table(TableMetrics)
 	if err != nil {
-		return core.IngestionMetricsResponse{}, fmt.Errorf("failed to get table: %v", err)
+		return core.IngestionGraphMetrics{}, fmt.Errorf("failed to get table: %v", err)
 	}
 
 	whereClause := `WHERE Timestamp >= @start AND Timestamp < @end
@@ -338,25 +338,25 @@ func (s *ClickHouseStore) GetIngestionMetrics(ctx context.Context) (core.Ingesti
 	var rows []core.IngestionMetrics
 	// for now, im taking the metrics in the past 1 min, can be adjusted based on specifications
 	if err := s.conn.Select(ctx, &rows, queryString, clickhouse.Named("start", start), clickhouse.Named("end", end)); err != nil {
-		return core.IngestionMetricsResponse{}, err
+		return core.IngestionGraphMetrics{}, err
 	}
 
-	return core.NewIngestionMetricsResponse(rows, INGESTION_METRICS_DURATION*60), nil
+	return core.NewIngestionGraphMetrics(rows, INGESTION_METRICS_DURATION*60), nil
 }
 
-// all ingestion metrics
-func (s *ClickHouseStore) GetIngestionMetricsSince(ctx context.Context, since time.Time) (core.IngestionMetricsResponse, error) {
+// returns ingestion graph metrics from a certain time
+func (s *ClickHouseStore) GetIngestionGraphMetricsSince(ctx context.Context, since time.Time) (core.IngestionGraphMetrics, error) {
 	tbl, err := s.table(TableMetrics)
 	if err != nil {
-		return core.IngestionMetricsResponse{}, err
+		return core.IngestionGraphMetrics{}, err
 	}
 
-	var result core.IngestionMetricsResponse
+	var result core.IngestionGraphMetrics
 	end := time.Now().UTC().Truncate(time.Second)
 	start := since
 	if !start.Before(end) {
 		// error handling in case start timing is after end
-		return core.IngestionMetricsResponse{}, nil
+		return core.IngestionGraphMetrics{}, nil
 	}
 
 	whereClause := `WHERE Timestamp >= @start AND Timestamp < @end
@@ -370,11 +370,11 @@ func (s *ClickHouseStore) GetIngestionMetricsSince(ctx context.Context, since ti
 
 	var rows []core.IngestionMetrics
 	if err := s.conn.Select(ctx, &rows, queryString, clickhouse.Named("start", start), clickhouse.Named("end", end)); err != nil {
-		return core.IngestionMetricsResponse{}, err
+		return core.IngestionGraphMetrics{}, err
 	}
 
 	numSeconds := int(end.Sub(start).Seconds())
-	result = core.NewIngestionMetricsResponse(rows, numSeconds)
+	result = core.NewIngestionGraphMetrics(rows, numSeconds)
 
 	return result, nil
 }

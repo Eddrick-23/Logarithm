@@ -209,7 +209,7 @@ func TestDashboardHandleMetrics(t *testing.T) {
 	ctx := context.Background()
 	server, _ := setupDashboardServer(t, ctx)
 
-	reqURL := server.URL + "/api/ingestion-metrics"
+	reqURL := server.URL + "/api/ingestion-graph-metrics"
 	resp, err := http.Get(reqURL)
 	if err != nil {
 		t.Fatalf("failed to make GET request: %v", err)

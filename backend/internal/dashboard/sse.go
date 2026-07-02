@@ -106,14 +106,14 @@ func writeIngestionGraphAndLogRatesEvent(
 	logStore *storage.ClickHouseStore,
 	since time.Time,
 ) (time.Time, error) {
-	var ingestionMetrics core.IngestionMetricsResponse
+	var ingestionGraphMetrics core.IngestionGraphMetrics
 	var logRateStats core.LogRateStatistics
 
 	eg, egCtx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
 		var err error
 		// retrieve metrics from last seen timing
-		ingestionMetrics, err = logStore.GetIngestionMetricsSince(egCtx, since)
+		ingestionGraphMetrics, err = logStore.GetIngestionGraphMetricsSince(egCtx, since)
 		return err
 	})
 	eg.Go(func() error {
@@ -127,7 +127,7 @@ func writeIngestionGraphAndLogRatesEvent(
 		return since, err
 	}
 
-	if err := writeSSEEvent(w, flusher, "ingestion-graph-metrics", ingestionMetrics); err != nil {
+	if err := writeSSEEvent(w, flusher, "ingestion-graph-metrics", ingestionGraphMetrics); err != nil {
 		return since, err
 	}
 
@@ -136,7 +136,7 @@ func writeIngestionGraphAndLogRatesEvent(
 	}
 
 	// update last sent to be 1 second after the last timestamp recorded
-	newLastSent := time.UnixMilli(ingestionMetrics.Timestamps[len(ingestionMetrics.Timestamps)-1]).Add(time.Second)
+	newLastSent := time.UnixMilli(ingestionGraphMetrics.Timestamps[len(ingestionGraphMetrics.Timestamps)-1]).Add(time.Second)
 	return newLastSent, nil
 }
 

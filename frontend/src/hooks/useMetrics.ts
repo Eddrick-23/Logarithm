@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     fetchTopServiceErrorsStats,
-    fetchIngestionMetrics,
+    fetchIngestionGraphMetrics,
     fetchErrorRateMetrics,
     fetchStorageInfoMetrics,
     fetchLogRateStats,
@@ -12,7 +12,7 @@ import type { IngestionGraphData } from "../types/Metric";
 const MAX_POINTS = 60;
 const STALE_THRESHOLD_MS = 15000; // 15s stale time
 const EVENT_MAP = [
-    { event: "ingestion-graph-metrics", queryKey: "ingestionMetrics" },
+    { event: "ingestion-graph-metrics", queryKey: "ingestionGraphMetrics" },
     { event: "log-rate-stats", queryKey: "logRateStats" },
     { event: "top-service-errors", queryKey: "topServiceErrorsStats" },
     { event: "error-rate", queryKey: "errorRateMetrics" },
@@ -25,8 +25,8 @@ export const useIngestionMetrics = () => {
     const lastMessageRef = useRef<number>(Date.now());
 
     const query = useQuery({
-        queryKey: ["ingestionMetrics"],
-        queryFn: fetchIngestionMetrics,
+        queryKey: ["ingestionGraphMetrics"],
+        queryFn: fetchIngestionGraphMetrics,
         staleTime: Infinity, // SSE keeps it fresh, no need for TanStack Query to refetch
         refetchInterval: false,
     });
@@ -99,7 +99,7 @@ export const useIngestionMetrics = () => {
     const connect = useCallback(async () => {
         // do REST fetch to pre load the data then (re)open SSE for live connection
         try {
-            const data = await fetchIngestionMetrics();
+            const data = await fetchIngestionGraphMetrics();
             queryClient.setQueryData(["ingestionMetrics"], data);
             queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
         } catch {
