@@ -1,4 +1,4 @@
-import { Box, Stack, Chip, FormGroup, FormControlLabel, Checkbox, Typography } from "@mui/material";
+import { Box, Stack, Chip, FormControlLabel, Checkbox, Typography } from "@mui/material";
 import React from "react";
 
 interface ServiceFiltersProps {
