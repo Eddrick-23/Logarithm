@@ -6,7 +6,7 @@ import {
     fetchStorageInfoMetrics,
     fetchLogRateStats,
 } from "../api/metricsApi";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { IngestionGraphData } from "../types/Metric";
 
 const MAX_POINTS = 60;
@@ -24,13 +24,7 @@ export const useDashboard = () => {
     const queryClient = useQueryClient();
     const eventSourceRef = useRef<EventSource | null>(null);
     const lastMessageRef = useRef<number>(Date.now());
-
-    const query = useQuery({
-        queryKey: ["ingestionGraphMetrics"],
-        queryFn: fetchIngestionGraphMetrics,
-        staleTime: Infinity, // SSE keeps it fresh, no need for TanStack Query to refetch
-        refetchInterval: false,
-    });
+    const [isLoading, setIsLoading] = useState<boolean>(false);
 
     const { data: connectionError } = useQuery({
         queryKey: [DASHBOARD_CONNECTION_ERROR_QUERY_KEY],
@@ -101,10 +95,12 @@ export const useDashboard = () => {
         // do REST fetch to pre load the data then (re)open SSE for live connection
         try {
             const data = await fetchIngestionGraphMetrics();
-            queryClient.setQueryData(["ingestionMetrics"], data);
+            queryClient.setQueryData(["ingestionGraphMetrics"], data);
             queryClient.setQueryData([DASHBOARD_CONNECTION_ERROR_QUERY_KEY], false);
         } catch {
             queryClient.setQueryData([DASHBOARD_CONNECTION_ERROR_QUERY_KEY], true);
+        } finally {
+            setIsLoading(false);
         }
         openStream();
     }, [queryClient, openStream]);
@@ -126,11 +122,16 @@ export const useDashboard = () => {
         };
     }, [connect]);
 
-    return {
-        ...query,
-        isError: query.isError || connectionError,
-        refetch: connect,
-    };
+    return { isLoading, isError: connectionError, refetch: connect };
+};
+
+export const useIngestionGraphMetrics = () => {
+    return useQuery({
+        queryKey: ["ingestionGraphMetrics"],
+        queryFn: fetchIngestionGraphMetrics,
+        staleTime: Infinity, // SSE keeps it fresh, no need for TanStack Query to refetch
+        refetchInterval: false,
+    });
 };
 
 export const useLogRateStats = () => {

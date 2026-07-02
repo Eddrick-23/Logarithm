@@ -19,7 +19,7 @@ function getStatus(isLoading: boolean, isError: boolean) {
 }
 
 export default function Dashboard() {
-    const { data, isLoading, isError, refetch, dataUpdatedAt: logRateUpdatedAt } = useDashboard();
+    const { isLoading, isError, refetch } = useDashboard();
     const status = getStatus(isLoading, isError);
 
     return (
@@ -74,12 +74,7 @@ export default function Dashboard() {
             {/* Chart + Latency */}
             <Grid container spacing={2} sx={{ mb: 2, alignItems: "stretch" }}>
                 <Grid size="grow">
-                    <IngestionGraph
-                        data={data}
-                        isLoading={isLoading}
-                        isError={isError}
-                        lastUpdatedAt={logRateUpdatedAt}
-                    />
+                    <IngestionGraph isLoading={isLoading} isError={isError} />
                 </Grid>
                 {/* for 1200px <= size < 1536px, size assigned is larger to fit the ServiceError without overflowing
                     for size >= 1536px, size assigned is smaller since there is sufficient space to fit ServiceError without overflowing */}
