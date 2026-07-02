@@ -10,6 +10,7 @@ import (
 
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
+	"golang.org/x/sync/errgroup"
 )
 
 func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHouseStore, appCtx context.Context) http.HandlerFunc {
@@ -51,13 +52,11 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 
 			case <-ticker5s.C:
 				// ingestion graph refreshes every 5s
-				newLastSent, err := writeIngestionMetricsEvent(r.Context(), w, flusher, logger, logStore, lastSent)
+				newLastSent, err := writeIngestionGraphAndLogRatesEvent(r.Context(), w, flusher, logger, logStore, lastSent)
 				if err != nil {
 					return
 				}
 				lastSent = newLastSent
-
-			// TODO: logs / second
 
 			case <-ticker15s.C:
 				// error rate metrics refreshes every 15s
@@ -99,27 +98,41 @@ func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, event string, da
 	return nil
 }
 
-func writeIngestionMetricsEvent(
+func writeIngestionGraphAndLogRatesEvent(
 	ctx context.Context,
 	w http.ResponseWriter,
 	flusher http.Flusher,
 	logger *slog.Logger,
 	logStore *storage.ClickHouseStore,
-	lastSent time.Time,
+	since time.Time,
 ) (time.Time, error) {
-	// retrieve metrics from last seen timing
-	ingestionMetrics, err := logStore.GetIngestionMetricsSince(ctx, lastSent)
-	if err != nil {
-		logger.Error("failed to get ingestion metrics", "err", err)
-		return lastSent, err
+	var ingestionMetrics core.IngestionMetricsResponse
+	var logRateStats core.LogRateStatistics
+
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		var err error
+		// retrieve metrics from last seen timing
+		ingestionMetrics, err = logStore.GetIngestionMetricsSince(egCtx, since)
+		return err
+	})
+	eg.Go(func() error {
+		var err error
+		logRateStats, err = logStore.GetLogRateStatistics(egCtx)
+		return err
+	})
+
+	if err := eg.Wait(); err != nil {
+		logger.Error("failed to fetch ingestion graph / log rate stats", "error", err)
+		return since, err
 	}
 
-	if len(ingestionMetrics.Timestamps) == 0 {
-		return lastSent, nil
+	if err := writeSSEEvent(w, flusher, "ingestion-graph-metrics", ingestionMetrics); err != nil {
+		return since, err
 	}
 
-	if err := writeSSEEvent(w, flusher, "ingestion", ingestionMetrics); err != nil {
-		return lastSent, err
+	if err := writeSSEEvent(w, flusher, "log-rate-stats", logRateStats); err != nil {
+		return since, err
 	}
 
 	// update last sent to be 1 second after the last timestamp recorded

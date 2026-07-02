@@ -11,7 +11,8 @@ import type { IngestionGraphData } from "../types/Metric";
 const MAX_POINTS = 60;
 const STALE_THRESHOLD_MS = 15000; // 15s stale time
 const EVENT_MAP = [
-    { event: "ingestion", queryKey: "ingestionMetrics" },
+    { event: "ingestion-graph-metrics", queryKey: "ingestionMetrics" },
+    { event: "log-rate-stats", queryKey: "logRateStats" },
     { event: "top-service-errors", queryKey: "topServiceErrorsStats" },
     { event: "error-rate", queryKey: "errorRateMetrics" },
     { event: "storage-info", queryKey: "storageInfoMetrics" },
@@ -44,7 +45,7 @@ export const useIngestionMetrics = () => {
         const eventSource = new EventSource("/api/ingestion-metrics/stream");
 
         for (const { event, queryKey } of EVENT_MAP) {
-            if (event === "ingestion") {
+            if (event === "ingestion-graph-metrics") {
                 eventSource.addEventListener(event, (e) => {
                     const liveDelta: IngestionGraphData = JSON.parse(e.data);
 
