@@ -16,6 +16,7 @@ const CHART_HEIGHT = 400;
 
 // automatically generates the colour based on golden angle formula
 const generateColour = (index: number) => `hsl(${(index * 137.5) % 360}, 70%, 50%)`;
+const formatTime = (v: number) => new Date(v).toLocaleTimeString();
 
 export default function IngestionGraph({ isLoading, isError }: IngestionGraphProps) {
     const [hiddenServices, setHiddenServices] = useState<Set<string>>(new Set());
@@ -52,6 +53,20 @@ export default function IngestionGraph({ isLoading, isError }: IngestionGraphPro
             }));
     }, [data, services, hiddenServices, serviceColours]);
 
+    const tickInterval = useMemo(() => data?.timestamps.filter((_, i) => i % 5 === 0) ?? [], [data?.timestamps]);
+    const xAxis = useMemo(
+        () => [
+            {
+                data: data?.timestamps ?? [],
+                scaleType: "time" as const,
+                valueFormatter: formatTime,
+                label: "Time",
+                tickInterval,
+            },
+        ],
+        [data?.timestamps, tickInterval],
+    );
+    const yAxis = useMemo(() => [{ min: 0, label: "Logs / sec" }], []);
     const isEmpty = !isLoading && !isError && services.length === 0;
 
     return (
@@ -88,16 +103,8 @@ export default function IngestionGraph({ isLoading, isError }: IngestionGraphPro
             {/* only show the graph if data and timestamps are valid */}
             {!isLoading && data && data.timestamps.length > 0 && (
                 <LineChart
-                    xAxis={[
-                        {
-                            data: data.timestamps,
-                            scaleType: "time",
-                            valueFormatter: (v) => new Date(v).toLocaleTimeString(),
-                            label: "Time",
-                            tickInterval: data.timestamps.filter((_, i) => i % 5 === 0), // longer lines at x axis only appear for every 5 seconds
-                        },
-                    ]}
-                    yAxis={[{ min: 0, label: "Logs / sec" }]} // set min to 0 so that y starts from 0
+                    xAxis={xAxis}
+                    yAxis={yAxis} // set min to 0 so that y starts from 0
                     series={series}
                     height={CHART_HEIGHT}
                 />
