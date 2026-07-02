@@ -15,7 +15,6 @@ const QUERY_KEYS = {
     topServiceErrorsStats: "topServiceErrorsStats",
     errorRateMetrics: "errorRateMetrics",
     storageInfoMetrics: "storageInfoMetrics",
-    dashboardConnectionError: "dashboardConnectionError",
 };
 
 const MAX_POINTS = 60;
@@ -33,13 +32,7 @@ export const useDashboard = () => {
     const eventSourceRef = useRef<EventSource | null>(null);
     const lastMessageRef = useRef<number>(Date.now());
     const [isLoading, setIsLoading] = useState<boolean>(false);
-
-    const { data: connectionError } = useQuery({
-        queryKey: [QUERY_KEYS.dashboardConnectionError],
-        queryFn: () => false,
-        initialData: false,
-        staleTime: Infinity,
-    });
+    const [isError, setIsError] = useState<boolean>(false);
 
     const openStream = useCallback(() => {
         // close existing connection before opening new conneciton
@@ -76,20 +69,20 @@ export const useDashboard = () => {
                     queryClient.setQueryData([queryKey], data);
                 }
 
-                queryClient.setQueryData([QUERY_KEYS.dashboardConnectionError], false);
+                setIsError(false);
                 lastMessageRef.current = Date.now();
             });
         }
 
         eventSource.onerror = () => {
             if (eventSourceRef.current?.readyState !== EventSource.OPEN) {
-                queryClient.setQueryData([QUERY_KEYS.dashboardConnectionError], true);
+                setIsError(true);
             }
         };
 
         eventSource.onopen = () => {
             lastMessageRef.current = Date.now(); // update watchdog clock
-            queryClient.setQueryData([QUERY_KEYS.dashboardConnectionError], false);
+            setIsError(false);
         };
 
         eventSourceRef.current = eventSource;
@@ -97,9 +90,11 @@ export const useDashboard = () => {
 
     const connect = useCallback(async () => {
         try {
-            queryClient.setQueryData([QUERY_KEYS.dashboardConnectionError], false);
+            const ingestionGraphMetrics = await fetchIngestionGraphMetrics();
+            queryClient.setQueryData([QUERY_KEYS.ingestionGraphMetrics], ingestionGraphMetrics);
+            setIsError(false);
         } catch {
-            queryClient.setQueryData([QUERY_KEYS.dashboardConnectionError], true);
+            setIsError(true);
         } finally {
             setIsLoading(false);
         }
@@ -113,7 +108,7 @@ export const useDashboard = () => {
         // watchdog: if no message received within threshold, assume connection is dead
         const interval = setInterval(() => {
             if (Date.now() - lastMessageRef.current > STALE_THRESHOLD_MS) {
-                queryClient.setQueryData([QUERY_KEYS.dashboardConnectionError], true);
+                setIsError(true);
             }
         }, 5000);
 
@@ -123,7 +118,7 @@ export const useDashboard = () => {
         };
     }, [connect]);
 
-    return { isLoading, isError: connectionError, refetch: connect };
+    return { isLoading, isError, refetch: connect };
 };
 
 export const useIngestionGraphMetrics = () => {
