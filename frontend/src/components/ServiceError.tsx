@@ -69,6 +69,10 @@ export default function ServiceError() {
         saveThresholds(updated);
     }, []);
 
+    const handleEditorClose = useCallback(() => {
+        setEditorOpen(false);
+    }, []);
+
     return (
         <Box sx={{ ...card, height: "100%" }}>
             {/* header */}
@@ -137,7 +141,7 @@ export default function ServiceError() {
             {/* threshold editor  */}
             <ThresholdEditor
                 open={editorOpen}
-                onClose={() => setEditorOpen(false)}
+                onClose={handleEditorClose}
                 thresholds={thresholds}
                 onChange={handleThresholdChange}
             />

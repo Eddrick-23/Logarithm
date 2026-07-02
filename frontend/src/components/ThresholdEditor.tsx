@@ -14,7 +14,7 @@ import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import CloseIcon from "@mui/icons-material/Close";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { MuiColorInput } from "mui-color-input";
 import { type Threshold } from "../types/Threshold";
 import { DEFAULT_THRESHOLDS, HEX_COLOUR_REGEX } from "../utils/utils";
@@ -28,7 +28,12 @@ interface ThresholdEditorProps {
 
 const MAX_BANDS = 7;
 
-export function ThresholdEditor({ open, onClose, thresholds, onChange }: ThresholdEditorProps) {
+export const ThresholdEditor = memo(function ThresholdEditor({
+    open,
+    onClose,
+    thresholds,
+    onChange,
+}: ThresholdEditorProps) {
     const [draft, setDraft] = useState<Threshold[]>(thresholds);
     const [errors, setErrors] = useState<Record<number, string>>({});
 
@@ -281,4 +286,4 @@ export function ThresholdEditor({ open, onClose, thresholds, onChange }: Thresho
             </DialogActions>
         </Dialog>
     );
-}
+});
