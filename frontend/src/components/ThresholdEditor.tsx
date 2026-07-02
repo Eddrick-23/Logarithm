@@ -28,12 +28,7 @@ interface ThresholdEditorProps {
 
 const MAX_BANDS = 7;
 
-export const ThresholdEditor = memo(function ThresholdEditor({
-    open,
-    onClose,
-    thresholds,
-    onChange,
-}: ThresholdEditorProps) {
+export default memo(function ThresholdEditor({ open, onClose, thresholds, onChange }: ThresholdEditorProps) {
     const [draft, setDraft] = useState<Threshold[]>(thresholds);
     const [errors, setErrors] = useState<Record<number, string>>({});
 

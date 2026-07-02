@@ -1,7 +1,6 @@
 import { Box, Typography, Grid, Skeleton } from "@mui/material";
 import { card, sectionLabel, statValue } from "../theme/tokens";
 import { formatNumber } from "../utils/utils";
-import type { LogRateStatistics } from "../types/Metric";
 import { useErrorRateMetrics, useLogRateStats, useStorageInfoMetrics } from "../hooks/useMetrics";
 import {
     ERROR_RATE_METRICS_REFETCH_INTERVAL_MS,
@@ -9,12 +8,13 @@ import {
     STORAGE_INFO_METRICS_REFETCH_INTERVAL_MS,
 } from "../api/metricsApi";
 import { LastUpdated } from "./LastUpdated";
+import { memo } from "react";
 
 interface ServiceOverviewProps {
     isLoading: boolean;
 }
 
-function StatCard({
+const StatCard = memo(function StatCard({
     label,
     value,
     unit,
@@ -48,9 +48,9 @@ function StatCard({
             <LastUpdated timestamp={lastUpdated} refreshIntervalMs={refetchIntervalMs} />
         </Box>
     );
-}
+});
 
-export default function ServiceOverview({ isLoading }: ServiceOverviewProps) {
+export default memo(function ServiceOverview({ isLoading }: ServiceOverviewProps) {
     const { data: logRateStats, dataUpdatedAt: logRateUpdatedAt } = useLogRateStats();
     const { data: errorRateMetrics, dataUpdatedAt: errorRateMetricsUpdatedAt } = useErrorRateMetrics();
     const { data: storageInfoMetrics, dataUpdatedAt: storageInfoMetricsUpdatedAt } = useStorageInfoMetrics();
@@ -153,4 +153,4 @@ export default function ServiceOverview({ isLoading }: ServiceOverviewProps) {
             </Grid>
         </Grid>
     );
-}
+});
