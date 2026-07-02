@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import { DEFAULT_THRESHOLDS } from "../../utils/utils";
 import type { Threshold } from "../../types/Threshold";
-import { ThresholdEditor } from "../../components/ThresholdEditor";
+import ThresholdEditor from "../../components/ThresholdEditor";
 
 // Stub MUI colour input since it does not work well in jsdom
 vi.mock("mui-color-input", () => ({
