@@ -81,6 +81,24 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 	}
 }
 
+// writeSSEEvent marshals data as JSON and writes it as a single SSE event
+// with the given event name, then flushes it to the client immediately.
+func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, event string, data any) error {
+	payload, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal %q: %w", event, err)
+	}
+
+	// SSE format: "event: <name>\ndata: <payload>\n\n"
+	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, payload); err != nil {
+		// client likely disconnected
+		return fmt.Errorf("failed to format %q: %w", event, err)
+	}
+
+	flusher.Flush()
+	return nil
+}
+
 func writeIngestionMetricsEvent(
 	ctx context.Context,
 	w http.ResponseWriter,
@@ -100,22 +118,12 @@ func writeIngestionMetricsEvent(
 		return lastSent, nil
 	}
 
-	data, err := json.Marshal(ingestionMetrics)
-	if err != nil {
-		logger.Error("failed to marshal ingestion metrics", "err", err)
-		return lastSent, err
-	}
-
-	// event: ingestion
-	// data: <payload>\n\n is the SSE wire protocol
-	if _, err := fmt.Fprintf(w, "event: ingestion\ndata: %s\n\n", data); err != nil {
-		// client likely disconnected
+	if err := writeSSEEvent(w, flusher, "ingestion", ingestionMetrics); err != nil {
 		return lastSent, err
 	}
 
 	// update last sent to be 1 second after the last timestamp recorded
 	newLastSent := time.UnixMilli(ingestionMetrics.Timestamps[len(ingestionMetrics.Timestamps)-1]).Add(time.Second)
-	flusher.Flush()
 	return newLastSent, nil
 }
 
@@ -132,21 +140,7 @@ func writeErrorRateMetricsEvent(
 		return err
 	}
 
-	data, err := json.Marshal(errorRateMetrics)
-	if err != nil {
-		logger.Error("failed to marshal error rate metrics", "err", err)
-		return err
-	}
-
-	// event: error-rate
-	// data: <payload>\n\n is the SSE wire protocol
-	if _, err := fmt.Fprintf(w, "event: error-rate\ndata: %s\n\n", data); err != nil {
-		// client likely disconnected
-		return err
-	}
-
-	flusher.Flush()
-	return nil
+	return writeSSEEvent(w, flusher, "error-rate", errorRateMetrics)
 }
 
 func writeTopServiceErrorsStatsEvent(
@@ -162,21 +156,7 @@ func writeTopServiceErrorsStatsEvent(
 		return err
 	}
 
-	data, err := json.Marshal(topServiceErrorsStats)
-	if err != nil {
-		logger.Error("failed to marshal top service error metrics", "err", err)
-		return err
-	}
-
-	// event: top-service-errors
-	// data: <payload>\n\n is the SSE wire protocol
-	if _, err := fmt.Fprintf(w, "event: top-service-errors\ndata: %s\n\n", data); err != nil {
-		// client likely disconnected
-		return err
-	}
-
-	flusher.Flush()
-	return nil
+	return writeSSEEvent(w, flusher, "top-service-errors", topServiceErrorsStats)
 }
 
 func writeStorageInfoEvent(
@@ -230,19 +210,5 @@ func writeStorageInfoEvent(
 		}
 	}
 
-	data, err := json.Marshal(card)
-	if err != nil {
-		logger.Error("failed to marshal storage info metrics", "err", err)
-		return err
-	}
-
-	// event: storage-info
-	// data: <payload>\n\n is the SSE wire protocol
-	if _, err := fmt.Fprintf(w, "event: storage-info\ndata: %s\n\n", data); err != nil {
-		// client likely disconnected
-		return err
-	}
-
-	flusher.Flush()
-	return nil
+	return writeSSEEvent(w, flusher, "storage-info", card)
 }
