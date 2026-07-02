@@ -48,10 +48,11 @@ func run(ctx context.Context, configPath string, interval int, duration time.Dur
 	}
 
 	if warmupDuration > 0 {
+		fmt.Printf("Starting warmup run for %s\n", warmupDuration)
 		if err := loadTestRunner.Warmup(ctx, warmupDuration); err != nil {
 			return err
 		}
-		fmt.Printf("warmup complete, resting for %d seconds", restDuration)
+		fmt.Printf("warmup complete, resting for %s\n", restDuration)
 
 		select {
 		case <-time.After(restDuration):

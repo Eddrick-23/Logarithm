@@ -18,7 +18,6 @@ var _ runner.Runner = (*httpRunner)(nil)
 
 type httpRunner struct {
 	cfg            *config.CleanConfig
-	attacker       *vegeta.Attacker
 	payloadFactory *PayloadFactory
 	outDir         string
 }
@@ -26,7 +25,6 @@ type httpRunner struct {
 func newHttpRunner(cfg *config.CleanConfig, payloadFactory *PayloadFactory, outDir string) (runner.Runner, error) {
 	return &httpRunner{
 		cfg:            cfg,
-		attacker:       vegeta.NewAttacker(),
 		payloadFactory: payloadFactory,
 		outDir:         outDir,
 	}, nil
@@ -49,10 +47,11 @@ func (h *httpRunner) CheckHealth() error {
 
 func (h *httpRunner) Warmup(ctx context.Context, duration time.Duration) error {
 	// Use the same targeter logic as the main run, but discard results
+	attacker := vegeta.NewAttacker()
 	rate := vegeta.Rate{Freq: h.cfg.Rps, Per: time.Second}
 	targeter := h.createTargeter()
 
-	for range h.attacker.Attack(targeter, rate, duration, "warmup") {
+	for range attacker.Attack(targeter, rate, duration, "warmup") {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -80,7 +79,8 @@ func (h *httpRunner) Run(ctx context.Context, duration time.Duration, logInterva
 
 	rate := vegeta.Rate{Freq: h.cfg.Rps, Per: time.Second}
 	targeter := h.createTargeter()
-	resultsChan := h.attacker.Attack(targeter, rate, duration, "http-test")
+	attacker := vegeta.NewAttacker()
+	resultsChan := attacker.Attack(targeter, rate, duration, "http-test")
 
 	var wg sync.WaitGroup
 	wg.Add(1)
