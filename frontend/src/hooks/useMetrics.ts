@@ -90,8 +90,22 @@ export const useDashboard = () => {
 
     const connect = useCallback(async () => {
         try {
-            const ingestionGraphMetrics = await fetchIngestionGraphMetrics();
+            // manually fetch all of the metrics to load the dashboard upon connect
+            const [ingestionGraphMetrics, storageInfoMetrics, logRateStats, topServiceErrorsStats, errorRateMetrics] =
+                await Promise.all([
+                    fetchIngestionGraphMetrics(),
+                    fetchStorageInfoMetrics(),
+                    fetchLogRateStats(),
+                    fetchTopServiceErrorsStats(),
+                    fetchErrorRateMetrics(),
+                ]);
+
             queryClient.setQueryData([QUERY_KEYS.ingestionGraphMetrics], ingestionGraphMetrics);
+            queryClient.setQueryData([QUERY_KEYS.storageInfoMetrics], storageInfoMetrics);
+            queryClient.setQueryData([QUERY_KEYS.logRateStats], logRateStats);
+            queryClient.setQueryData([QUERY_KEYS.topServiceErrorsStats], topServiceErrorsStats);
+            queryClient.setQueryData([QUERY_KEYS.errorRateMetrics], errorRateMetrics);
+
             setIsError(false);
         } catch {
             setIsError(true);
@@ -127,6 +141,7 @@ export const useIngestionGraphMetrics = () => {
         queryFn: fetchIngestionGraphMetrics,
         staleTime: Infinity, // SSE keeps it fresh, no need for TanStack Query to refetch
         refetchInterval: false,
+        enabled: false, // never auto-fetch since connect() seeds the data manually
     });
 };
 
@@ -136,6 +151,7 @@ export const useLogRateStats = () => {
         queryFn: fetchLogRateStats,
         staleTime: Infinity,
         refetchInterval: false,
+        enabled: false, // never auto-fetch since connect() seeds the data manually
     });
 };
 
@@ -145,6 +161,7 @@ export const useTopServiceErrorsStats = () => {
         queryFn: fetchTopServiceErrorsStats,
         staleTime: Infinity,
         refetchInterval: false,
+        enabled: false, // never auto-fetch since connect() seeds the data manually
     });
 };
 
@@ -154,6 +171,7 @@ export const useErrorRateMetrics = () => {
         queryFn: fetchErrorRateMetrics,
         staleTime: Infinity,
         refetchInterval: false,
+        enabled: false, // never auto-fetch since connect() seeds the data manually
     });
 };
 
@@ -163,5 +181,6 @@ export const useStorageInfoMetrics = () => {
         queryFn: fetchStorageInfoMetrics,
         staleTime: Infinity,
         refetchInterval: false,
+        enabled: false, // never auto-fetch since connect() seeds the data manually
     });
 };
