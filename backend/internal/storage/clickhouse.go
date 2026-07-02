@@ -376,33 +376,6 @@ func (s *ClickHouseStore) GetIngestionMetricsSince(ctx context.Context, since ti
 	numSeconds := int(end.Sub(start).Seconds())
 	result = core.NewIngestionMetricsResponse(rows, numSeconds)
 
-	// // query 2: log rate stats
-	// 	now := time.Now().UTC().Truncate(time.Second)
-
-	// 	queryString := fmt.Sprintf(`
-	// 	WITH
-	// 		current AS (
-	// 			SELECT sum(LogsCount) / 5 AS rate
-	// 			FROM %v
-	// 			WHERE Timestamp >= @now - INTERVAL 5 SECOND
-	// 		),
-	// 		baseline AS (
-	// 			SELECT sum(LogsCount) / 60 AS rate
-	// 			FROM %v
-	// 			WHERE Timestamp >= @now - INTERVAL 60 SECOND
-	// 		)
-	// 	SELECT
-	// 		current.rate AS CurrentRate,
-	// 		baseline.rate AS AvgRate,
-	// 		current.rate / nullIf(baseline.rate, 0) AS Ratio
-	// 	FROM current, baseline
-	// `, tbl, tbl)
-
-	// 	var row core.LogRateStatistics
-	// 	if err := s.conn.QueryRow(egCtx, queryString, clickhouse.Named("now", now)).ScanStruct(&row); err != nil {
-	// 		return fmt.Errorf("log rate stats: %w", err)
-	// 	}
-
 	return result, nil
 }
 
@@ -487,7 +460,7 @@ func (s *ClickHouseStore) GetLogRateStatistics(ctx context.Context) (core.LogRat
 	`, tbl, tbl)
 
 	var result core.LogRateStatistics
-	if err := s.conn.Select(ctx, &result, queryString, clickhouse.Named("now", now)); err != nil {
+	if err := s.conn.QueryRow(ctx, queryString, clickhouse.Named("now", now)).ScanStruct(&result); err != nil {
 		return core.LogRateStatistics{}, err
 	}
 
