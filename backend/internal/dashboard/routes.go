@@ -128,7 +128,7 @@ func handleLogs(logger *slog.Logger, logStore *storage.ClickHouseStore) http.Han
 			return
 		}
 
-		ctx := context.Background()
+		ctx := r.Context()
 		filter := core.LogQueryFilter{
 			StartTime:      startTime,
 			EndTime:        endTime,
@@ -188,7 +188,7 @@ func handleLogs(logger *slog.Logger, logStore *storage.ClickHouseStore) http.Han
 func handleDistinctServices(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
-		ctx := context.Background()
+		ctx := r.Context()
 
 		distinctServices, err := logStore.GetDistinctServices(ctx)
 		if err != nil {
@@ -215,7 +215,7 @@ func handleDistinctServices(logger *slog.Logger, logStore *storage.ClickHouseSto
 func handleLogRateStats(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
-		ctx := context.Background()
+		ctx := r.Context()
 
 		logRateStats, err := logStore.GetLogRateStatistics(ctx)
 		if err != nil {
@@ -238,7 +238,7 @@ func handleLogRateStats(logger *slog.Logger, logStore *storage.ClickHouseStore) 
 func handleErrorRateMetrics(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
-		ctx := context.Background()
+		ctx := r.Context()
 
 		errorRateMetrics, err := logStore.GetErrorRateMetrics(ctx)
 		if err != nil {
@@ -261,11 +261,11 @@ func handleErrorRateMetrics(logger *slog.Logger, logStore *storage.ClickHouseSto
 func handleIngestionGraphMetrics(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
-		ctx := context.Background()
+		ctx := r.Context()
 
 		ingestionGraphMetrics, err := logStore.GetIngestionGraphMetrics(ctx)
 		if err != nil {
-			logger.Error("failed to get logging metrics", "err", err)
+			logger.Error("failed to get ingestion graph metrics", "err", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -284,7 +284,7 @@ func handleIngestionGraphMetrics(logger *slog.Logger, logStore *storage.ClickHou
 func handleTopServiceErrors(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
-		ctx := context.Background()
+		ctx := r.Context()
 
 		topServiceErrorsStats, err := logStore.GetTopServiceErrorsStats(ctx)
 		if err != nil {
