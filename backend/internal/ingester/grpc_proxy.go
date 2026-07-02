@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/mem"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 const CodecName = "raw-bytes"
@@ -37,29 +38,41 @@ func (r *rawCodec) Name() string {
 
 // returns wireformat of v
 func (r *rawCodec) Marshal(v any) (mem.BufferSlice, error) {
-	out, ok := v.(*RawFrame)
-	if !ok {
-		return nil, fmt.Errorf("expected *rawFrame, got %T", v)
+	// fast path, any unregistered payloads (e.g. OTel payloads)
+	if out, ok := v.(*RawFrame); ok {
+		return mem.BufferSlice{mem.SliceBuffer(out.RawBytes)}, nil
+	}
+
+	// registered proto service (e.g. health check)
+	if pm, ok := v.(proto.Message); ok {
+		b, err := proto.Marshal(pm)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal proto message: %w", err)
+		}
+		return mem.BufferSlice{mem.SliceBuffer(b)}, nil
 	}
 
 	// wrap payload in a mem buffer slice
-	return mem.BufferSlice{mem.SliceBuffer(out.RawBytes)}, nil
+	return nil, fmt.Errorf("unsuported type %T", v)
 }
 
 // parses the wire format into v
 // we want to keep raw bytes to parse to rawFrame
 func (r *rawCodec) Unmarshal(data mem.BufferSlice, v any) error {
-	out, ok := v.(*RawFrame)
-	if !ok {
-		return fmt.Errorf("expected *rawFrame, got %T", v)
+	// fast path, any unregistered payloads (e.g. OTel payloads)
+	if out, ok := v.(*RawFrame); ok {
+		srcBytes := data.Materialize()
+		out.RawBytes = make([]byte, len(srcBytes))
+		copy(out.RawBytes, srcBytes)
+		return nil
 	}
 
-	// use materialise to concat all buffers to a single flat slice
-	// make a copy because data is freed when function exits
-	srcBytes := data.Materialize()
-	out.RawBytes = make([]byte, len(srcBytes))
-	copy(out.RawBytes, srcBytes)
-	return nil
+	// registered proto service (e.g. health check)
+	if pm, ok := v.(proto.Message); ok {
+		return proto.Unmarshal(data.Materialize(), pm)
+	}
+
+	return fmt.Errorf("unsupported type %T", v)
 }
 
 // since we don't define any protobuf messages and associated methods
