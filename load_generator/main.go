@@ -12,6 +12,7 @@ import (
 
 	"github.com/Eddrick-23/Logarithm/load_generator/attack"
 	"github.com/Eddrick-23/Logarithm/load_generator/config"
+	"github.com/Eddrick-23/Logarithm/load_generator/files"
 )
 
 func printJson(obj any) {
@@ -42,6 +43,9 @@ func run(ctx context.Context, configPath string, interval int, duration time.Dur
 	)
 
 	loadTestRunner, err := attack.NewRunner(cfg, outDir)
+	if err != nil {
+		return err
+	}
 
 	if err := loadTestRunner.CheckHealth(); err != nil {
 		return err
@@ -61,7 +65,15 @@ func run(ctx context.Context, configPath string, interval int, duration time.Dur
 		}
 	}
 
-	time.Sleep(restDuration)
+	// signal bash script that initialisation, healthchecks and warmup is done and ready to start main test
+	if err := files.CreateReadyFile(outDir, ".sampling_ready"); err != nil {
+		return err
+	}
+	defer func() {
+		if err := files.DeleteFile(outDir, ".sampling_ready"); err != nil {
+			fmt.Printf("failed to remove temporary signal file, %v", err)
+		}
+	}()
 
 	if err := loadTestRunner.Run(ctx, duration, time.Duration(interval)*time.Second); err != nil {
 		return err

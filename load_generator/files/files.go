@@ -99,3 +99,24 @@ func CreateResultFile(outDir string) (*os.File, error) {
 	}
 	return file, nil
 }
+
+// Write a signal file so bash script knows when load generation is completed
+func CreateReadyFile(outDir, filename string) error {
+	return os.WriteFile(filepath.Join(outDir, filename), []byte("ready"), 0644)
+}
+
+// Delete file if it exists. If file does not exist, returns nil error
+func DeleteFile(outDir, filename string) error {
+	path := filepath.Join(outDir, filename)
+	ok, err := FileExists(path)
+
+	if err != nil {
+		return err
+	}
+
+	if !ok {
+		return nil
+	}
+
+	return os.Remove(path)
+}
