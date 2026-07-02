@@ -4,6 +4,7 @@ import {
     fetchIngestionMetrics,
     fetchErrorRateMetrics,
     fetchStorageInfoMetrics,
+    fetchLogRateStats,
 } from "../api/metricsApi";
 import { useCallback, useEffect, useRef } from "react";
 import type { IngestionGraphData } from "../types/Metric";
@@ -129,6 +130,15 @@ export const useIngestionMetrics = () => {
         isError: query.isError || connectionError,
         refetch: connect,
     };
+};
+
+export const useLogRateStats = () => {
+    return useQuery({
+        queryKey: ["logRateStats"],
+        queryFn: fetchLogRateStats,
+        staleTime: Infinity,
+        refetchInterval: false,
+    });
 };
 
 export const useTopServiceErrorsStats = () => {

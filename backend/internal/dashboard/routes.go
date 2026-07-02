@@ -30,6 +30,7 @@ func AddRoutes(
 	mux.Handle("GET /api/top-service-errors", handleTopServiceErrors(logger, logStore))
 	mux.Handle("GET /api/ingestion-metrics", handleIngestionMetrics(logger, logStore))
 	mux.Handle("GET /api/ingestion-metrics/stream", handleIngestionMetricsStream(logger, logStore, appCtx))
+	mux.Handle("GET /api/log-rate-stats", handleLogRateStats(logger, logStore))
 	mux.Handle("GET /api/error-rate-metrics", handleErrorRateMetrics(logger, logStore))
 	mux.Handle("GET /api/storage-info", handleStorageInfo(logger, logStore))
 	mux.Handle("GET /api/config", handleConfig(logger, config))
@@ -204,6 +205,29 @@ func handleDistinctServices(logger *slog.Logger, logStore *storage.ClickHouseSto
 		w.WriteHeader(http.StatusOK)
 
 		err = json.NewEncoder(w).Encode(response)
+		if err != nil {
+			logger.Error("failed to write response", "err", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+	}
+}
+
+func handleLogRateStats(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		ctx := context.Background()
+
+		logRateStats, err := logStore.GetLogRateStatistics(ctx)
+		if err != nil {
+			logger.Error("failed to get log rate stats", "err", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		err = json.NewEncoder(w).Encode(logRateStats)
 		if err != nil {
 			logger.Error("failed to write response", "err", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
