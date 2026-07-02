@@ -11,6 +11,7 @@ import type { IngestionGraphData } from "../types/Metric";
 
 const MAX_POINTS = 60;
 const STALE_THRESHOLD_MS = 15000; // 15s stale time
+const DASHBOARD_CONNECTION_ERROR_QUERY_KEY = "dashboardConnectionError";
 const EVENT_MAP = [
     { event: "ingestion-graph-metrics", queryKey: "ingestionGraphMetrics" },
     { event: "log-rate-stats", queryKey: "logRateStats" },
@@ -19,7 +20,7 @@ const EVENT_MAP = [
     { event: "storage-info", queryKey: "storageInfoMetrics" },
 ]; // stores a map which contains event name and TanStack query key
 
-export const useIngestionMetrics = () => {
+export const useDashboard = () => {
     const queryClient = useQueryClient();
     const eventSourceRef = useRef<EventSource | null>(null);
     const lastMessageRef = useRef<number>(Date.now());
@@ -32,7 +33,7 @@ export const useIngestionMetrics = () => {
     });
 
     const { data: connectionError } = useQuery({
-        queryKey: ["ingestionMetricsConnectionError"],
+        queryKey: [DASHBOARD_CONNECTION_ERROR_QUERY_KEY],
         queryFn: () => false,
         initialData: false,
         staleTime: Infinity,
@@ -43,7 +44,7 @@ export const useIngestionMetrics = () => {
         eventSourceRef.current?.close();
         lastMessageRef.current = Date.now(); // reset watchdog clock on (re)connect
 
-        const eventSource = new EventSource("/api/ingestion-metrics/stream");
+        const eventSource = new EventSource("/api/dashboard/stream");
 
         for (const { event, queryKey } of EVENT_MAP) {
             if (event === "ingestion-graph-metrics") {
@@ -69,14 +70,14 @@ export const useIngestionMetrics = () => {
                         return { timestamps: nextTimestamps, metrics: nextMetrics };
                     });
 
-                    queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
+                    queryClient.setQueryData([DASHBOARD_CONNECTION_ERROR_QUERY_KEY], false);
                     lastMessageRef.current = Date.now();
                 });
             } else {
                 eventSource.addEventListener(event, (e) => {
                     const data = JSON.parse(e.data);
                     queryClient.setQueryData([queryKey], data);
-                    queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
+                    queryClient.setQueryData([DASHBOARD_CONNECTION_ERROR_QUERY_KEY], false);
                     lastMessageRef.current = Date.now();
                 });
             }
@@ -84,13 +85,13 @@ export const useIngestionMetrics = () => {
 
         eventSource.onerror = () => {
             if (eventSourceRef.current?.readyState !== EventSource.OPEN) {
-                queryClient.setQueryData(["ingestionMetricsConnectionError"], true);
+                queryClient.setQueryData([DASHBOARD_CONNECTION_ERROR_QUERY_KEY], true);
             }
         };
 
         eventSource.onopen = () => {
             lastMessageRef.current = Date.now(); // update watchdog clock
-            queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
+            queryClient.setQueryData([DASHBOARD_CONNECTION_ERROR_QUERY_KEY], false);
         };
 
         eventSourceRef.current = eventSource;
@@ -101,9 +102,9 @@ export const useIngestionMetrics = () => {
         try {
             const data = await fetchIngestionGraphMetrics();
             queryClient.setQueryData(["ingestionMetrics"], data);
-            queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
+            queryClient.setQueryData([DASHBOARD_CONNECTION_ERROR_QUERY_KEY], false);
         } catch {
-            queryClient.setQueryData(["ingestionMetricsConnectionError"], true);
+            queryClient.setQueryData([DASHBOARD_CONNECTION_ERROR_QUERY_KEY], true);
         }
         openStream();
     }, [queryClient, openStream]);
@@ -115,7 +116,7 @@ export const useIngestionMetrics = () => {
         // watchdog: if no message received within threshold, assume connection is dead
         const interval = setInterval(() => {
             if (Date.now() - lastMessageRef.current > STALE_THRESHOLD_MS) {
-                queryClient.setQueryData(["ingestionMetricsConnectionError"], true);
+                queryClient.setQueryData([DASHBOARD_CONNECTION_ERROR_QUERY_KEY], true);
             }
         }, 5000);
 

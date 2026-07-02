@@ -29,7 +29,7 @@ func AddRoutes(
 	mux.Handle("GET /api/services", handleDistinctServices(logger, logStore))
 	mux.Handle("GET /api/top-service-errors", handleTopServiceErrors(logger, logStore))
 	mux.Handle("GET /api/ingestion-graph-metrics", handleIngestionGraphMetrics(logger, logStore))
-	mux.Handle("GET /api/ingestion-metrics/stream", handleIngestionMetricsStream(logger, logStore, appCtx))
+	mux.Handle("GET /api/dashboard/stream", handleDashboardStream(logger, logStore, appCtx))
 	mux.Handle("GET /api/log-rate-stats", handleLogRateStats(logger, logStore))
 	mux.Handle("GET /api/error-rate-metrics", handleErrorRateMetrics(logger, logStore))
 	mux.Handle("GET /api/storage-info", handleStorageInfo(logger, logStore))

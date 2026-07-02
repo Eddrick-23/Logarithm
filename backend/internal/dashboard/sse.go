@@ -13,7 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHouseStore, appCtx context.Context) http.HandlerFunc {
+func handleDashboardStream(logger *slog.Logger, logStore *storage.ClickHouseStore, appCtx context.Context) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
@@ -42,7 +42,7 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 			select {
 			case <-r.Context().Done():
 				// Client closed the browser tab
-				logger.Debug("client disconnected from ingestion metrics stream")
+				logger.Debug("client disconnected from dashboard stream")
 				return
 
 			case <-appCtx.Done():
