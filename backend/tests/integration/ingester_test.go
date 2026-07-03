@@ -21,7 +21,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 )
@@ -85,8 +84,7 @@ func (m *MockProducer) PublishLiveTail(subject string, data []byte) error {
 
 func setupTestApp(producerErr error) (http.Handler, *MockProducer) {
 	mockProducer := &MockProducer{Err: producerErr}
-	mux := http.NewServeMux()
-	ingester.AddRoutes(mux, slog.Default(), mockProducer, "logs.")
+	mux := ingester.NewHTTPServer(slog.Default(), mockProducer)
 	return mux, mockProducer
 }
 
@@ -254,12 +252,7 @@ func setupGRPCTestApp(t *testing.T, producerErr error) (*grpc.Server, *bufconn.L
 	mockProducer := &MockProducer{Err: producerErr}
 	lis := bufconn.Listen(bufSize)
 
-	proxyHandler := ingester.NewProxyHandler(slog.Default(), mockProducer, "logs.")
-
-	server := grpc.NewServer(
-		grpc.ForceServerCodecV2(encoding.GetCodecV2(ingester.CodecName)),
-		grpc.UnknownServiceHandler(proxyHandler.StreamHandler),
-	)
+	server := ingester.NewGRPCServer(slog.Default(), mockProducer)
 
 	go func() {
 		if err := server.Serve(lis); err != nil {
@@ -377,4 +370,9 @@ func TestGRPCIngestEndpoint(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
+}
+
+// TODO add tests to assert health checking
+func TestGRPCHealthCheck(t *testing.T) {
+
 }
