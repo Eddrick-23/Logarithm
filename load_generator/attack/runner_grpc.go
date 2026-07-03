@@ -3,10 +3,13 @@ package attack
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/load_generator/config"
+	"github.com/Eddrick-23/Logarithm/load_generator/files"
 	"github.com/Eddrick-23/Logarithm/load_generator/runner"
+	"github.com/bojand/ghz/printer"
 	ghz "github.com/bojand/ghz/runner"
 	"github.com/jhump/protoreflect/desc"
 	"google.golang.org/grpc"
@@ -61,25 +64,73 @@ func (g *grpcRunner) CheckHealth() error {
 }
 
 func (g *grpcRunner) Warmup(ctx context.Context, duration time.Duration) error {
-	dataFunc := func(mtd *desc.MethodDescriptor, callData *ghz.CallData) []byte {
-		payload, err := g.payloadFactory.GenerateEncodedPayload()
-		if err != nil {
-			fmt.Printf("failed to generate payload: %v\n", err)
-			return nil
-		}
-		return payload
-	}
 	_, err := ghz.Run(
 		method,
 		g.cfg.TargetUrl,
 		ghz.WithInsecure(true),
 		ghz.WithRPS(uint(g.cfg.Rps)),
 		ghz.WithRunDuration(duration),
-		ghz.WithBinaryDataFunc(dataFunc),
+		ghz.WithBinaryDataFunc(dataFunc(g.payloadFactory)),
 	)
 	return err
 }
 
 func (g *grpcRunner) Run(ctx context.Context, duration time.Duration, logInterval time.Duration) error {
-	return nil
+	ticker := time.NewTicker(logInterval)
+	defer ticker.Stop()
+
+	// // signal go routine to shutdown
+	// done := make(chan struct{})
+	// defer close(done)
+
+	// TODO add go routine to log at regular intervals
+
+	report, err := ghz.Run(
+		method,
+		g.cfg.TargetUrl,
+		ghz.WithInsecure(true),
+		ghz.WithRPS(uint(g.cfg.Rps)),
+		ghz.WithRunDuration(duration),
+		ghz.WithBinaryDataFunc(dataFunc(g.payloadFactory)),
+	)
+
+	if err != nil {
+		return err
+	}
+
+	printer := printer.ReportPrinter{
+		Out:    os.Stdout,
+		Report: report,
+	}
+
+	printer.Print("pretty")
+
+	return g.storeReportInFile("results.json", report)
+}
+
+func (g *grpcRunner) storeReportInFile(filename string, report *ghz.Report) error {
+	resultsFile, err := files.CreateResultFile(g.outDir, filename)
+	if err != nil {
+		return fmt.Errorf("failed to create results file: %w", err)
+	}
+
+	reportBytes, err := report.MarshalJSON()
+	if err != nil {
+		return err
+	}
+
+	_, err = resultsFile.Write(reportBytes)
+
+	return err
+}
+
+func dataFunc(payloadFactory *PayloadFactory) func(mtd *desc.MethodDescriptor, callData *ghz.CallData) []byte {
+	return func(mtd *desc.MethodDescriptor, callData *ghz.CallData) []byte {
+		payload, err := payloadFactory.GenerateEncodedPayload()
+		if err != nil {
+			fmt.Printf("failed to generate payload: %v\n", err)
+			return nil
+		}
+		return payload
+	}
 }

@@ -64,7 +64,7 @@ func (h *httpRunner) Warmup(ctx context.Context, duration time.Duration) error {
 
 func (h *httpRunner) Run(ctx context.Context, duration time.Duration, logInterval time.Duration) error {
 	// set up output file
-	resultsFile, err := files.CreateResultFile(h.outDir) // create output file
+	resultsFile, err := files.CreateResultFile(h.outDir, "results.bin") // create output file
 	if err != nil {
 		return fmt.Errorf("failed to create results file: %w", err)
 	}
