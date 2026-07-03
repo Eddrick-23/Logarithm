@@ -14,7 +14,7 @@ import (
 func NewGRPCServer(logger *slog.Logger, producer transport.Producer) *grpc.Server {
 	const system = "" // means overall server status
 
-	proxyHandler := NewProxyHandler(logger, producer, transport.LogStreamSubject)
+	proxyHandler := newProxyHandler(logger, producer, transport.LogStreamSubject)
 
 	grpcServer := grpc.NewServer(
 		grpc.ForceServerCodecV2(encoding.GetCodecV2(CodecName)),

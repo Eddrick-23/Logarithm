@@ -80,21 +80,21 @@ func (r *rawCodec) Unmarshal(data mem.BufferSlice, v any) error {
 // By default, gRPC returns an UNIMPLEMENTED status code.
 // Instead we can implement an UnknownServiceHandler and hand the connection
 // stream directly to this handler.
-type ProxyHandler struct {
+type proxyHandler struct {
 	logger            *slog.Logger
 	producer          transport.Producer
 	natsSubjectPrefix string
 }
 
-func NewProxyHandler(logger *slog.Logger, producer transport.Producer, prefix string) *ProxyHandler {
-	return &ProxyHandler{
+func newProxyHandler(logger *slog.Logger, producer transport.Producer, prefix string) *proxyHandler {
+	return &proxyHandler{
 		logger:            logger,
 		producer:          producer,
 		natsSubjectPrefix: prefix,
 	}
 }
 
-func (p *ProxyHandler) StreamHandler(srv any, stream grpc.ServerStream) error {
+func (p *proxyHandler) StreamHandler(srv any, stream grpc.ServerStream) error {
 	frame := &RawFrame{}
 
 	if err := stream.RecvMsg(frame); err != nil {
