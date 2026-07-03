@@ -41,7 +41,7 @@ func (h *httpRunner) CheckHealth() error {
 		return fmt.Errorf("service returned unhealthy status: %d", resp.StatusCode)
 	}
 
-	fmt.Println("endpoint healthy")
+	fmt.Println("http server healthy")
 	return nil
 }
 
