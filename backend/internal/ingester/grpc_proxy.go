@@ -11,8 +11,12 @@ import (
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/mem"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
+// CodecName is the gRPC content-subtype used to select rawCodec on both the
+// client and server. Callers must set it via grpc.CallContentSubtype(ingester.CodecName)
+// when invoking RPCs against the server returned by NewGRPCServer.
 const CodecName = "raw-bytes"
 const zstdName = "zstd"
 const gzipName = "gzip"
@@ -23,43 +27,65 @@ func init() {
 	encoding.RegisterCompressor(&noopCompressor{gzipName})
 }
 
+// RawFrame is the gRPC message type used by the raw-bytes passthrough codec.
+// Unlike a typical generated proto message, RawFrame is never marshaled by
+// reflection. rawCodec copies the wire-format bytes into RawBytes directly,
+// so the ingester never has to know the shape of the underlying payload.
 type RawFrame struct {
 	RawBytes []byte
 }
 
-// no-op codec: instead of unmarshalling into proto.Message,
-// It copies the wire frame into a []byte
+// rawCodec copies raw wire bytes into a RawFrame for the ingest passthrough
+// path. For any other registered proto service on the server (e.g. the
+// gRPC health check), it falls back to standard proto marshal/unmarshal.
+// See Marshal/Unmarshal for the branching logic.
 type rawCodec struct{}
 
 func (r *rawCodec) Name() string {
 	return CodecName
 }
 
-// returns wireformat of v
+// Marshal returns the wire format of v. RawFrame values are passed through
+// unchanged (raw ingest path); any other proto.Message falls back to
+// standard proto marshaling (e.g. health check responses).
 func (r *rawCodec) Marshal(v any) (mem.BufferSlice, error) {
-	out, ok := v.(*RawFrame)
-	if !ok {
-		return nil, fmt.Errorf("expected *rawFrame, got %T", v)
+	// fast path, any unregistered payloads (e.g. OTel payloads)
+	if out, ok := v.(*RawFrame); ok {
+		return mem.BufferSlice{mem.SliceBuffer(out.RawBytes)}, nil
 	}
 
-	// wrap payload in a mem buffer slice
-	return mem.BufferSlice{mem.SliceBuffer(out.RawBytes)}, nil
+	// registered proto service (e.g. health check)
+	if pm, ok := v.(proto.Message); ok {
+		b, err := proto.Marshal(pm)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal proto message: %w", err)
+		}
+		return mem.BufferSlice{mem.SliceBuffer(b)}, nil
+	}
+
+	return nil, fmt.Errorf("unsupported type %T", v)
 }
 
-// parses the wire format into v
-// we want to keep raw bytes to parse to rawFrame
+// Unmarshal parses the wire format into v. For the raw ingest path, v is a
+// *RawFrame and we keep the bytes as is rather than decoding - the ingester
+// doesn't need to understand the payload shape. For any other registered
+// proto service (e.g. health check), v is a proto.Message and we decode
+// normally.
 func (r *rawCodec) Unmarshal(data mem.BufferSlice, v any) error {
-	out, ok := v.(*RawFrame)
-	if !ok {
-		return fmt.Errorf("expected *rawFrame, got %T", v)
+	// fast path, any unregistered payloads (e.g. OTel payloads)
+	if out, ok := v.(*RawFrame); ok {
+		srcBytes := data.Materialize()
+		out.RawBytes = make([]byte, len(srcBytes))
+		copy(out.RawBytes, srcBytes)
+		return nil
 	}
 
-	// use materialise to concat all buffers to a single flat slice
-	// make a copy because data is freed when function exits
-	srcBytes := data.Materialize()
-	out.RawBytes = make([]byte, len(srcBytes))
-	copy(out.RawBytes, srcBytes)
-	return nil
+	// registered proto service (e.g. health check)
+	if pm, ok := v.(proto.Message); ok {
+		return proto.Unmarshal(data.Materialize(), pm)
+	}
+
+	return fmt.Errorf("unsupported type %T", v)
 }
 
 // since we don't define any protobuf messages and associated methods
@@ -67,21 +93,21 @@ func (r *rawCodec) Unmarshal(data mem.BufferSlice, v any) error {
 // By default, gRPC returns an UNIMPLEMENTED status code.
 // Instead we can implement an UnknownServiceHandler and hand the connection
 // stream directly to this handler.
-type ProxyHandler struct {
+type proxyHandler struct {
 	logger            *slog.Logger
 	producer          transport.Producer
 	natsSubjectPrefix string
 }
 
-func NewProxyHandler(logger *slog.Logger, producer transport.Producer, prefix string) *ProxyHandler {
-	return &ProxyHandler{
+func newProxyHandler(logger *slog.Logger, producer transport.Producer, prefix string) *proxyHandler {
+	return &proxyHandler{
 		logger:            logger,
 		producer:          producer,
 		natsSubjectPrefix: prefix,
 	}
 }
 
-func (p *ProxyHandler) StreamHandler(srv any, stream grpc.ServerStream) error {
+func (p *proxyHandler) StreamHandler(srv any, stream grpc.ServerStream) error {
 	frame := &RawFrame{}
 
 	if err := stream.RecvMsg(frame); err != nil {
@@ -111,11 +137,10 @@ func (p *ProxyHandler) StreamHandler(srv any, stream grpc.ServerStream) error {
 	return stream.SendMsg(&RawFrame{RawBytes: []byte{}})
 }
 
-// detect gzip and zstd compression via byte sniffing
-// else it defaults to no compression.
-// This is due to grpc not exposing internal encoding information
-// of incoming payloads. However, since grpc automatically filters out unsupported encodings
-// via only registered compressors, we can safely assume what we receive is gzip, zstd, or fallback to
+// Detect gzip and zstd compression via byte sniffing else it defaults to no compression.
+// This is due to grpc not exposing internal encoding information of incoming payloads.
+// Since grpc automatically filters out unsupported encodings via only registered
+// compressors, we can safely assume what we receive is gzip, zstd, or fallback to
 // identity. This is similar with what we do for header checking on the http side.
 func detectCompression(b []byte) string {
 	if len(b) >= 4 &&

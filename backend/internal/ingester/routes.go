@@ -13,7 +13,19 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 )
 
-func AddRoutes(
+// NewHTTPServer constructs the ingester's HTTP handler, wiring the OTLP
+// log-ingestion routes defined in AddRoutes.
+func NewHTTPServer(logger *slog.Logger, producer transport.Producer) http.Handler {
+	mux := http.NewServeMux()
+	addRoutes(mux, logger, producer, transport.LogStreamSubjectPrefix)
+
+	var handler http.Handler = mux
+	// add middlewares if any
+
+	return handler
+}
+
+func addRoutes(
 	mux *http.ServeMux,
 	logger *slog.Logger,
 	producer transport.Producer,
