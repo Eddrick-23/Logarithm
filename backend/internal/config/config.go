@@ -49,6 +49,7 @@ type Config struct {
 	NatsLogStreamMaxBytes     ByteSize        `env:"NATS_LOG_STREAM_MAX_BYTES, default=50GB"`
 	NatsDLQMaxBytes           ByteSize        `env:"NATS_DLQ_MAX_BYTES, default=10GB"`
 	NatsConsumerMaxAckPending int             `env:"NATS_CONSUMER_MAX_ACK_PENDING, default=1000"`
+	WorkerName                string          `env:"WORKER_NAME, default=worker"`
 	WorkerLogLevel            string          `env:"WORKER_LOG_LEVEL, default=INFO"`
 	WorkerMaxBatch            int             `env:"WORKER_MAX_BATCH, default=10"`
 	WorkerMaxWait             time.Duration   `env:"WORKER_MAX_WAIT, default=2s"`

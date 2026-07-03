@@ -247,7 +247,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 
 	// Bind to the existing jetstream consumer and start consuming messages, mainly used to
 	// extract out the consumer info to be saved into db to be displayed on the frontend
-	jetStreamConsumer, err := broker.GetJetstreamConsumer(ctx, transport.LogStreamName, "worker")
+	jetStreamConsumer, err := broker.GetJetstreamConsumer(ctx, transport.LogStreamName, config.WorkerName)
 	if err != nil {
 		natsLogger.Error("failed to load jetstream consumer", "err", err)
 	}
