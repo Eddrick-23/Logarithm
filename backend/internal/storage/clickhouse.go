@@ -344,7 +344,8 @@ func (s *ClickHouseStore) GetIngestionGraphMetrics(ctx context.Context) (core.In
 	return core.NewIngestionGraphMetrics(rows, INGESTION_METRICS_DURATION*60), nil
 }
 
-// returns ingestion graph metrics from a certain time
+// returns ingestion graph metrics from a certain time,
+// function returns an empty struct if since is newer than the newest data in the database
 func (s *ClickHouseStore) GetIngestionGraphMetricsSince(ctx context.Context, since time.Time) (core.IngestionGraphMetrics, error) {
 	tbl, err := s.table(TableMetrics)
 	if err != nil {

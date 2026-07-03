@@ -135,9 +135,15 @@ func writeIngestionGraphAndLogRatesEvent(
 		return since, err
 	}
 
-	// update last sent to be 1 second after the last timestamp recorded
-	newLastSent := time.UnixMilli(ingestionGraphMetrics.Timestamps[len(ingestionGraphMetrics.Timestamps)-1]).Add(time.Second)
-	return newLastSent, nil
+	// if there are no new data since last poll, advance cursor to now so the window doesn't grow unbounded on subsequent polls
+	if len(ingestionGraphMetrics.Timestamps) == 0 {
+		return time.Now().UTC(), nil
+	}
+
+	// update the since timing to be 1 second after the last timestamp recorded in the ingestionGraphMetrics timestamps
+	// this is so that we do not resend the same data point on thee next poll
+	nextSince := time.UnixMilli(ingestionGraphMetrics.Timestamps[len(ingestionGraphMetrics.Timestamps)-1]).Add(time.Second)
+	return nextSince, nil
 }
 
 func writeErrorRateMetricsEvent(
