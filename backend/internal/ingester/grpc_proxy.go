@@ -63,8 +63,7 @@ func (r *rawCodec) Marshal(v any) (mem.BufferSlice, error) {
 		return mem.BufferSlice{mem.SliceBuffer(b)}, nil
 	}
 
-	// wrap payload in a mem buffer slice
-	return nil, fmt.Errorf("unsuported type %T", v)
+	return nil, fmt.Errorf("unsupported type %T", v)
 }
 
 // Unmarshal parses the wire format into v. For the raw ingest path, v is a
