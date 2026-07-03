@@ -64,14 +64,14 @@ func (h *httpRunner) Warmup(ctx context.Context, duration time.Duration) error {
 
 func (h *httpRunner) Run(ctx context.Context, duration time.Duration, logInterval time.Duration) error {
 	// set up output file
-	resultsFile, err := files.CreateResultFile(h.outDir) // create output file
+	resultsFile, err := files.CreateResultFile(h.outDir, "results.bin") // create output file
 	if err != nil {
 		return fmt.Errorf("failed to create results file: %w", err)
 	}
 	defer resultsFile.Close()
 	enc := vegeta.NewEncoder(resultsFile)
 
-	// run loop from main
+	// run main test loop
 	var metrics vegeta.Metrics //setup controllers and attackers
 
 	ticker := time.NewTicker(logInterval)
@@ -106,9 +106,8 @@ func (h *httpRunner) Run(ctx context.Context, duration time.Duration, logInterva
 				if err := enc.Encode(res); err != nil {
 					fmt.Printf("failed to write result bytes to results file: %v", err)
 				}
-			case <-ctx.Done():
-				fmt.Println("Timeout or cancelled, cleaning up...")
-				return
+
+				// not affected by ctx.Done. Let results chan drain fully so that workers can exit.
 			}
 		}
 	}()
