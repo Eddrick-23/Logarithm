@@ -1,6 +1,8 @@
 package attack
 
 import (
+	"fmt"
+
 	"github.com/Eddrick-23/Logarithm/load_generator/config"
 	"github.com/Eddrick-23/Logarithm/load_generator/runner"
 )
@@ -11,11 +13,12 @@ func NewRunner(cfg *config.CleanConfig, outDir string) (runner.Runner, error) {
 		return nil, err
 	}
 
-	// TODO switch statement for grpc and http protocols once config added
-	httpRunner, err := newHttpRunner(cfg, factory, outDir)
-	if err != nil {
-		return nil, err
+	switch cfg.Protocol {
+	case "http":
+		return newHttpRunner(cfg, factory, outDir), nil
+	case "grpc":
+		return newGRPCRunner(cfg, factory, outDir), nil
+	default:
+		return nil, fmt.Errorf("unsupported protocol %v", cfg.Protocol)
 	}
-
-	return httpRunner, nil
 }

@@ -22,12 +22,12 @@ type httpRunner struct {
 	outDir         string
 }
 
-func newHttpRunner(cfg *config.CleanConfig, payloadFactory *PayloadFactory, outDir string) (runner.Runner, error) {
+func newHttpRunner(cfg *config.CleanConfig, payloadFactory *PayloadFactory, outDir string) runner.Runner {
 	return &httpRunner{
 		cfg:            cfg,
 		payloadFactory: payloadFactory,
 		outDir:         outDir,
-	}, nil
+	}
 }
 
 func (h *httpRunner) CheckHealth() error {
