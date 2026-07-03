@@ -25,9 +25,10 @@ type BodyTokenFormat struct {
 type RawConfig struct {
 	Seed                 int             `json:"seed"`
 	PoolSize             int             `json:"poolSize"`
-	HealthUrl            string          `json:"healthUrl"`
+	Protocol             string          `json:"protocol"`
+	HttpMethod           string          `json:"http_method"`
+	HttpHealthUrl        string          `json:"http_healthUrl"`
 	TargetUrl            string          `json:"targetUrl"`
-	Method               string          `json:"method"`
 	ContentType          string          `json:"contentType"`
 	Encoding             string          `json:"encoding"`
 	Rps                  int             `json:"rps"`
@@ -42,6 +43,7 @@ type RawConfig struct {
 type CleanConfig struct {
 	Seed                 int             `json:"seed"`
 	PoolSize             int             `json:"poolSize"`
+	Protocol             string          `json:"protocol"`
 	HealthUrl            string          `json:"healthUrl"`
 	TargetUrl            string          `json:"targetUrl"`
 	ContentType          string          `json:"contentType"`
@@ -123,18 +125,22 @@ func cleanContentType(rawCfg *RawConfig) string {
 	}
 }
 
-func validateAndCleanConfig(rawCfg RawConfig) CleanConfig {
-	dist := cleanSeverityDistribution(&rawCfg)
-	poolSize := cleanPoolSize(&rawCfg)
-	encoding := cleanEncoding(&rawCfg)
-	contentType := cleanContentType(&rawCfg)
+// cleans up config to ensure valid severity-distribution,
+// poolSize, encoding and contentType. Invalid or missing fields
+// are set to defaults
+func cleanConfig(rawCfg *RawConfig) CleanConfig {
+	dist := cleanSeverityDistribution(rawCfg)
+	poolSize := cleanPoolSize(rawCfg)
+	encoding := cleanEncoding(rawCfg)
+	contentType := cleanContentType(rawCfg)
 	return CleanConfig{
 		Seed:                 rawCfg.Seed,
 		PoolSize:             poolSize,
-		HealthUrl:            rawCfg.HealthUrl,
+		Protocol:             rawCfg.Protocol,
+		Method:               rawCfg.HttpMethod,
+		HealthUrl:            rawCfg.HttpHealthUrl,
 		TargetUrl:            rawCfg.TargetUrl,
 		ContentType:          contentType,
-		Method:               rawCfg.Method,
 		Encoding:             encoding,
 		Rps:                  rawCfg.Rps,
 		BatchSize:            rawCfg.BatchSize,
@@ -146,6 +152,36 @@ func validateAndCleanConfig(rawCfg RawConfig) CleanConfig {
 	}
 }
 
+// Enforces that protocol provided is valid
+// Currently only http and grpc are provided
+func (r *RawConfig) validate() error {
+	switch r.Protocol {
+	case "http":
+		if r.HttpMethod == "" {
+			return fmt.Errorf("http protocol requires 'method' to be set (e.g., POST)")
+		}
+		if r.HttpHealthUrl == "" {
+			return fmt.Errorf("http protocol requires 'healthUrl' to be set")
+		}
+	case "grpc":
+		if r.HttpMethod != "" {
+			fmt.Println("Warning: 'method' is ignored when using grpc protocol")
+		}
+		if r.HttpHealthUrl != "" {
+			fmt.Println("Warning: 'healthUrl' is ignored when using grpc protocol")
+		}
+	default:
+		return fmt.Errorf("unsupported protocol: %s", r.Protocol)
+	}
+
+	return nil
+}
+
+// Parses given config from specified json file.
+// Validates enforced fields and cleans up malformed fields to ensure
+// compatibility with runners.
+// CleanConfig must always be compatible with any interfaces that use it
+// i.e. all fields are valid and present.
 func ParseConfig(configPath string) (*CleanConfig, error) {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -172,7 +208,11 @@ func ParseConfig(configPath string) (*CleanConfig, error) {
 		return nil, err
 	}
 
-	cfg := validateAndCleanConfig(rawCfg)
+	if err = rawCfg.validate(); err != nil {
+		return nil, err
+	}
+
+	cfg := cleanConfig(&rawCfg)
 
 	return &cfg, nil
 }

@@ -1,9 +1,10 @@
 {
   "seed": 42,
   "poolSize": 5000,
-  "healthUrl": "http://localhost:8090/health",
+  "protocol": "http",
+  "http_method": "POST",
+  "http_healthUrl": "http://localhost:8090/health",
   "targetUrl": "http://localhost:8090/v1/logs",
-  "method": "POST",
   "contentType": "proto",
   "encoding": "zstd",
   "rps": 10,
