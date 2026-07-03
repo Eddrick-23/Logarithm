@@ -1,22 +1,20 @@
 import { Box, Typography, Grid, Skeleton } from "@mui/material";
 import { card, sectionLabel, statValue } from "../theme/tokens";
 import { formatNumber } from "../utils/utils";
-import type { LogRateStatistics } from "../types/Metric";
-import { useErrorRateMetrics, useStorageInfoMetrics } from "../hooks/useMetrics";
+import { useErrorRateMetrics, useLogRateStats, useStorageInfoMetrics } from "../hooks/useMetrics";
 import {
     ERROR_RATE_METRICS_REFETCH_INTERVAL_MS,
     LOG_RATE_METRICS_REFETCH_INTERVAL_MS,
     STORAGE_INFO_METRICS_REFETCH_INTERVAL_MS,
 } from "../api/metricsApi";
 import { LastUpdated } from "./LastUpdated";
+import { memo } from "react";
 
 interface ServiceOverviewProps {
-    data?: LogRateStatistics;
     isLoading: boolean;
-    logRateUpdatedAt: number;
 }
 
-function StatCard({
+const StatCard = memo(function StatCard({
     label,
     value,
     unit,
@@ -50,25 +48,26 @@ function StatCard({
             <LastUpdated timestamp={lastUpdated} refreshIntervalMs={refetchIntervalMs} />
         </Box>
     );
-}
+});
 
-export default function ServiceOverview({ data, isLoading, logRateUpdatedAt }: ServiceOverviewProps) {
+export default memo(function ServiceOverview({ isLoading }: ServiceOverviewProps) {
+    const { data: logRateStats, dataUpdatedAt: logRateUpdatedAt } = useLogRateStats();
     const { data: errorRateMetrics, dataUpdatedAt: errorRateMetricsUpdatedAt } = useErrorRateMetrics();
     const { data: storageInfoMetrics, dataUpdatedAt: storageInfoMetricsUpdatedAt } = useStorageInfoMetrics();
 
     let logRate: string | number = 0;
-    if (data?.currentRate !== undefined) {
-        logRate = formatNumber(data.currentRate);
+    if (logRateStats?.currentRate !== undefined) {
+        logRate = formatNumber(logRateStats.currentRate);
     }
 
     // log rate conditional display
     let logDeltaText = "";
     let logDeltaColour = "text.secondary";
-    if (data?.avgRate === 0) {
+    if (logRateStats?.avgRate === 0) {
         logDeltaText = "No logs in the last 1 min";
         logDeltaColour = "error.main";
-    } else if (data?.ratio !== undefined) {
-        const percentChange = (data.ratio - 1) * 100;
+    } else if (logRateStats?.ratio !== undefined) {
+        const percentChange = (logRateStats.ratio - 1) * 100;
         const absChange = Math.abs(percentChange).toFixed(0);
 
         if (percentChange > 0) {
@@ -154,4 +153,4 @@ export default function ServiceOverview({ data, isLoading, logRateUpdatedAt }: S
             </Grid>
         </Grid>
     );
-}
+});

@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import IngestionGraph from "../../components/IngestionGraph";
+import { useIngestionGraphMetrics } from "../../hooks/useMetrics";
 
 // MUI X Charts' LineChart does heavy SVG/canvas work and isn't the focus of these tests
 // we will stub it out so tests run fast and we can assert on the props it receives instead.
@@ -13,6 +14,12 @@ vi.mock("@mui/x-charts/LineChart", () => ({
 vi.mock("./LastUpdated", () => ({
     LastUpdated: () => null,
 }));
+
+vi.mock("../../hooks/useMetrics", () => ({
+    useIngestionGraphMetrics: vi.fn(),
+}));
+
+const mockedUseIngestionGraphMetrics = vi.mocked(useIngestionGraphMetrics);
 
 const buildMetricsData = (services: string[], points = 5) => {
     const timestamps = Array.from({ length: points }, (_, i) => Date.now() - (points - i) * 1000);
@@ -40,9 +47,15 @@ const BASE_PROPS = {
     data: data,
 };
 
+// helper to stub the hook's return value for a given test
+const mockHookData = (data: ReturnType<typeof buildMetricsData> | undefined, dataUpdatedAt = Date.now()) => {
+    mockedUseIngestionGraphMetrics.mockReturnValue({ data, dataUpdatedAt } as any);
+};
+
 describe("IngestionGraph", () => {
     it("shows a skeleton while loading", () => {
-        const { container } = render(<IngestionGraph {...BASE_PROPS} data={undefined} isLoading={true} />);
+        mockHookData(undefined);
+        const { container } = render(<IngestionGraph {...BASE_PROPS} isLoading={true} />);
 
         // check that the loading skeleton appears and chart is not rendered
         expect(container.querySelector(".MuiSkeleton-root")).toBeInTheDocument();
@@ -50,20 +63,23 @@ describe("IngestionGraph", () => {
     });
 
     it("shows the error banner when isError is true and not loading", () => {
-        render(<IngestionGraph {...BASE_PROPS} data={undefined} isError={true} />);
+        mockHookData(undefined);
+        render(<IngestionGraph {...BASE_PROPS} isError={true} />);
 
         // check that chart is not rendered
         expect(screen.queryByTestId("line-chart")).not.toBeInTheDocument();
     });
 
     it("shows an empty-state message when there are no services and no error", () => {
-        render(<IngestionGraph {...BASE_PROPS} data={{ timestamps: [], metrics: {} }} />);
+        mockHookData({ timestamps: [], metrics: {} });
+        render(<IngestionGraph {...BASE_PROPS} />);
 
         expect(screen.getByText(/no logs received in the last 60 seconds/i)).toBeInTheDocument();
         expect(screen.queryByTestId("line-chart")).not.toBeInTheDocument();
     });
 
     it("renders the chart and filter checkboxes when data is present", () => {
+        mockHookData(data);
         render(<IngestionGraph {...BASE_PROPS} />);
 
         expect(screen.getByTestId("line-chart")).toBeInTheDocument();
@@ -76,6 +92,7 @@ describe("IngestionGraph", () => {
     });
 
     it("toggling a service checkbox hides it from the chart series", async () => {
+        mockHookData(data);
         render(<IngestionGraph {...BASE_PROPS} />);
 
         // all lines in chart is visible initially
@@ -87,6 +104,7 @@ describe("IngestionGraph", () => {
     });
 
     it('clicking "All" toggles every service checkbox', async () => {
+        mockHookData(data);
         render(<IngestionGraph {...BASE_PROPS} />);
 
         // initially all selected -> chart shows both series, total lines count should be 2
@@ -102,7 +120,8 @@ describe("IngestionGraph", () => {
     });
 
     it("does not render the chart when timestamps array is empty but metrics exist", () => {
-        render(<IngestionGraph {...BASE_PROPS} data={{ timestamps: [], metrics: { "auth-service": [] } }} />);
+        mockHookData({ timestamps: [], metrics: { "auth-service": [] } });
+        render(<IngestionGraph {...BASE_PROPS} />);
 
         expect(screen.queryByTestId("line-chart")).not.toBeInTheDocument();
     });

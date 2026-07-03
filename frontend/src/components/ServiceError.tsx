@@ -6,9 +6,9 @@ import type { Threshold } from "../types/Threshold";
 import { formatNumber, getSeverityColour, loadThresholds, saveThresholds } from "../utils/utils";
 import { TOP_SERVICE_ERRORS_STATS_REFETCH_INTERVAL_MS } from "../api/metricsApi";
 import { LastUpdated } from "./LastUpdated";
-import { useCallback, useState } from "react";
-import { ThresholdEditor } from "./ThresholdEditor";
-import { ThresholdLegend } from "./ThresholdLegend";
+import { memo, useCallback, useState } from "react";
+import ThresholdEditor from "./ThresholdEditor";
+import ThresholdLegend from "./ThresholdLegend";
 import SettingsIcon from "@mui/icons-material/Settings";
 
 const NUM_SERVICES = 5;
@@ -58,7 +58,7 @@ function ServiceErrorRow({ serviceName, totalErrors, errorRate, thresholds }: Se
     );
 }
 
-export default function ServiceError() {
+export default memo(function ServiceError() {
     const { data, isLoading, isError, dataUpdatedAt } = useTopServiceErrorsStats();
     const [thresholds, setThresholds] = useState<Threshold[]>(loadThresholds);
     const [editorOpen, setEditorOpen] = useState(false);
@@ -67,6 +67,10 @@ export default function ServiceError() {
         // update the state and store it in local storage so that it is kept between sessions
         setThresholds(updated);
         saveThresholds(updated);
+    }, []);
+
+    const handleEditorClose = useCallback(() => {
+        setEditorOpen(false);
     }, []);
 
     return (
@@ -137,10 +141,10 @@ export default function ServiceError() {
             {/* threshold editor  */}
             <ThresholdEditor
                 open={editorOpen}
-                onClose={() => setEditorOpen(false)}
+                onClose={handleEditorClose}
                 thresholds={thresholds}
                 onChange={handleThresholdChange}
             />
         </Box>
     );
-}
+});

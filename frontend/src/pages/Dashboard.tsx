@@ -3,7 +3,7 @@ import { Grid, Box, Stack, Typography, Button } from "@mui/material";
 import ServiceOverview from "../components/ServiceOverview";
 import ServiceError from "../components/ServiceError";
 import { pulseSx } from "../theme/tokens";
-import { useIngestionMetrics } from "../hooks/useMetrics";
+import { useDashboard } from "../hooks/useMetrics";
 import RefreshIcon from "@mui/icons-material/Refresh";
 
 const STATUS_CONFIG = {
@@ -19,7 +19,7 @@ function getStatus(isLoading: boolean, isError: boolean) {
 }
 
 export default function Dashboard() {
-    const { data, isLoading, isError, refetch, dataUpdatedAt: logRateUpdatedAt } = useIngestionMetrics();
+    const { isLoading, isError, refetch } = useDashboard();
     const status = getStatus(isLoading, isError);
 
     return (
@@ -68,18 +68,13 @@ export default function Dashboard() {
 
             {/* Stat cards */}
             <Box sx={{ mb: 2 }}>
-                <ServiceOverview data={data?.logStats} isLoading={isLoading} logRateUpdatedAt={logRateUpdatedAt} />
+                <ServiceOverview isLoading={isLoading} />
             </Box>
 
             {/* Chart + Latency */}
             <Grid container spacing={2} sx={{ mb: 2, alignItems: "stretch" }}>
                 <Grid size="grow">
-                    <IngestionGraph
-                        data={data?.graph}
-                        isLoading={isLoading}
-                        isError={isError}
-                        lastUpdatedAt={logRateUpdatedAt}
-                    />
+                    <IngestionGraph isLoading={isLoading} isError={isError} />
                 </Grid>
                 {/* for 1200px <= size < 1536px, size assigned is larger to fit the ServiceError without overflowing
                     for size >= 1536px, size assigned is smaller since there is sufficient space to fit ServiceError without overflowing */}
