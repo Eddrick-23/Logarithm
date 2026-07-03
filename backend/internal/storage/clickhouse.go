@@ -14,6 +14,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/pool"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 type LogStore interface {
@@ -545,4 +546,30 @@ func (s *ClickHouseStore) GetLogsStorageOutlook(ctx context.Context) (*core.Stor
 	result.IsSteadyState = false
 	result.ProjectedSteadyStateBytes = avgDailyBytes * LOGS_TTL_DAYS
 	return result, nil
+}
+
+func (s *ClickHouseStore) SaveConsumerInfo(ctx context.Context, info *jetstream.ConsumerInfo) error {
+	tbl, err := s.table(TableJetstreamConsumerMetrics)
+	if err != nil {
+		return fmt.Errorf("failed to get table: %v", err)
+	}
+
+	queryString := fmt.Sprintf(`
+		INSERT INTO %s (
+			Timestamp, ConsumerName, StreamName, 
+			NumAckPending, NumRedelivered, NumPending
+		) VALUES (
+			?, ?, ?, ?, ?, ?
+		)
+	`, tbl)
+
+	err = s.conn.Exec(ctx, queryString,
+		time.Now().UTC(),
+		info.Name,
+		info.Stream,
+		info.NumAckPending,
+		info.NumRedelivered,
+		info.NumPending,
+	)
+	return err
 }

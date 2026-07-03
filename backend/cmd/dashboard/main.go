@@ -245,6 +245,42 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		Handler: srv,
 	}
 
+	// Bind to the existing jetstream consumer and start consuming messages, mainly used to
+	// extract out the consumer info to be saved into db to be displayed on the frontend
+	jetStreamConsumer, err := broker.GetJetstreamConsumer(ctx, transport.LogStreamName, "worker")
+	if err != nil {
+		natsLogger.Error("failed to load jetstream consumer", "err", err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		ticker := time.NewTicker(15 * time.Second) // currently, it refetches info from consumer every 15 seconds
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				// attempt to extract jetstream consumer info
+				info, err := jetStreamConsumer.Info(ctx)
+				if err != nil {
+					natsLogger.Error("failed to get consumer info", "err", err)
+					continue
+				}
+
+				// attempt to save the info into the database
+				if err := logStore.SaveConsumerInfo(ctx, info); err != nil {
+					databaseLogger.Error("failed to write consumer info to database", "err", err)
+				} else {
+					natsLogger.Debug("successfully saved consumer info", "info", info.Name)
+				}
+
+			case <-ctx.Done():
+				natsLogger.Info("stopping consumer info polling")
+				return
+			}
+		}
+	})
+
 	go func() {
 		httpLogger.Info("listening", "addr", httpServer.Addr)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -252,11 +288,8 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		}
 	}()
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	go func() { // shutdown job
-		defer wg.Done()
+	wg.Go(func() {
+		// shutdown job
 		<-ctx.Done()
 
 		shutdownCtx := context.Background()
@@ -267,10 +300,9 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
 			httpLogger.Error("http server shutting down failed", "err", err)
 		}
-	}()
+	})
 
 	wg.Wait()
-
 	return nil
 }
 
