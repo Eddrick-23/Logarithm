@@ -14,6 +14,9 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// CodecName is the gRPC content-subtype used to select rawCodec on both the
+// client and server. Callers must set it via grpc.CallContentSubtype(ingester.CodecName)
+// when invoking RPCs against the server returned by NewGRPCServer.
 const CodecName = "raw-bytes"
 const zstdName = "zstd"
 const gzipName = "gzip"
@@ -24,19 +27,27 @@ func init() {
 	encoding.RegisterCompressor(&noopCompressor{gzipName})
 }
 
+// RawFrame is the gRPC message type used by the raw-bytes passthrough codec.
+// Unlike a typical generated proto message, RawFrame is never marshaled by
+// reflection. rawCodec copies the wire-format bytes into RawBytes directly,
+// so the ingester never has to know the shape of the underlying payload.
 type RawFrame struct {
 	RawBytes []byte
 }
 
-// no-op codec: instead of unmarshalling into proto.Message,
-// It copies the wire frame into a []byte
+// rawCodec copies raw wire bytes into a RawFrame for the ingest passthrough
+// path. For any other registered proto service on the server (e.g. the
+// gRPC health check), it falls back to standard proto marshal/unmarshal.
+// See Marshal/Unmarshal for the branching logic.
 type rawCodec struct{}
 
 func (r *rawCodec) Name() string {
 	return CodecName
 }
 
-// returns wireformat of v
+// Marshal returns the wire format of v. RawFrame values are passed through
+// unchanged (raw ingest path); any other proto.Message falls back to
+// standard proto marshaling (e.g. health check responses).
 func (r *rawCodec) Marshal(v any) (mem.BufferSlice, error) {
 	// fast path, any unregistered payloads (e.g. OTel payloads)
 	if out, ok := v.(*RawFrame); ok {
@@ -56,8 +67,11 @@ func (r *rawCodec) Marshal(v any) (mem.BufferSlice, error) {
 	return nil, fmt.Errorf("unsuported type %T", v)
 }
 
-// parses the wire format into v
-// we want to keep raw bytes to parse to rawFrame
+// Unmarshal parses the wire format into v. For the raw ingest path, v is a
+// *RawFrame and we keep the bytes as is rather than decoding - the ingester
+// doesn't need to understand the payload shape. For any other registered
+// proto service (e.g. health check), v is a proto.Message and we decode
+// normally.
 func (r *rawCodec) Unmarshal(data mem.BufferSlice, v any) error {
 	// fast path, any unregistered payloads (e.g. OTel payloads)
 	if out, ok := v.(*RawFrame); ok {
@@ -124,11 +138,10 @@ func (p *proxyHandler) StreamHandler(srv any, stream grpc.ServerStream) error {
 	return stream.SendMsg(&RawFrame{RawBytes: []byte{}})
 }
 
-// detect gzip and zstd compression via byte sniffing
-// else it defaults to no compression.
-// This is due to grpc not exposing internal encoding information
-// of incoming payloads. However, since grpc automatically filters out unsupported encodings
-// via only registered compressors, we can safely assume what we receive is gzip, zstd, or fallback to
+// Detect gzip and zstd compression via byte sniffing else it defaults to no compression.
+// This is due to grpc not exposing internal encoding information of incoming payloads.
+// Since grpc automatically filters out unsupported encodings via only registered
+// compressors, we can safely assume what we receive is gzip, zstd, or fallback to
 // identity. This is similar with what we do for header checking on the http side.
 func detectCompression(b []byte) string {
 	if len(b) >= 4 &&

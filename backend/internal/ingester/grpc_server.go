@@ -11,6 +11,11 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
+// NewGRPCServer constructs the ingester's gRPC server. It forces all RPCs
+// through the raw-bytes codec so that arbitrary client payloads are proxied
+// to NATS without proto schema validation, and it registers the standard
+// gRPC health checking service (grpc.health.v1.Health) which is reachable
+// via the ordinary proto codec fallback - see rawCodec.Marshal/Unmarshal.
 func NewGRPCServer(logger *slog.Logger, producer transport.Producer) *grpc.Server {
 	const system = "" // means overall server status
 
