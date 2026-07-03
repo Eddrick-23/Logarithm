@@ -22,11 +22,6 @@ export type ErrorRateMetrics = {
     currentRate: number;
 };
 
-export type GetIngestionMetricsResponse = {
-    graph: IngestionGraphData;
-    logStats: LogRateStatistics;
-};
-
 export type TopServiceErrorsStats = {
     serviceName: string;
     totalErrors: number;

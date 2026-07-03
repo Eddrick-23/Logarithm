@@ -12,7 +12,7 @@ type IngestionMetrics struct {
 
 type IngestionMetricsMap map[string][]IngestionMetrics
 
-type IngestionMetricsResponse struct {
+type IngestionGraphMetrics struct {
 	Timestamps []int64             `json:"timestamps"`
 	Metrics    IngestionMetricsMap `json:"metrics"`
 }
@@ -33,11 +33,6 @@ type LogRateStatistics struct {
 	Ratio       float64 `ch:"Ratio" json:"ratio"`
 }
 
-type IngestionMetricsEvent struct {
-	Graph    IngestionMetricsResponse `ch:"Graph" json:"graph"`
-	LogStats LogRateStatistics        `ch:"LogStats" json:"logStats"`
-}
-
 type ErrorRateMetrics struct {
 	CurrentRate float64 `ch:"CurrentRate" json:"currentRate"`
 }
@@ -52,9 +47,9 @@ func NewIngestionMetricsMap(rows []IngestionMetrics) IngestionMetricsMap {
 	return result
 }
 
-func NewIngestionMetricsResponse(rows []IngestionMetrics, numTimestamps int) IngestionMetricsResponse {
+func NewIngestionGraphMetrics(rows []IngestionMetrics, numTimestamps int) IngestionGraphMetrics {
 	if len(rows) == 0 {
-		return IngestionMetricsResponse{}
+		return IngestionGraphMetrics{}
 	}
 
 	timestamps := make([]int64, numTimestamps)
@@ -64,5 +59,5 @@ func NewIngestionMetricsResponse(rows []IngestionMetrics, numTimestamps int) Ing
 	}
 
 	ingestionMetricsMap := NewIngestionMetricsMap(rows)
-	return IngestionMetricsResponse{Timestamps: timestamps, Metrics: ingestionMetricsMap}
+	return IngestionGraphMetrics{Timestamps: timestamps, Metrics: ingestionMetricsMap}
 }

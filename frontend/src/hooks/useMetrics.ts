@@ -1,77 +1,116 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     fetchTopServiceErrorsStats,
-    fetchIngestionMetrics,
+    fetchIngestionGraphMetrics,
     fetchErrorRateMetrics,
     fetchStorageInfoMetrics,
+    fetchLogRateStats,
 } from "../api/metricsApi";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { IngestionGraphData } from "../types/Metric";
 
+const QUERY_KEYS = {
+    ingestionGraphMetrics: "ingestionGraphMetrics",
+    logRateStats: "logRateStats",
+    topServiceErrorsStats: "topServiceErrorsStats",
+    errorRateMetrics: "errorRateMetrics",
+    storageInfoMetrics: "storageInfoMetrics",
+};
+
+const MAX_POINTS = 60;
 const STALE_THRESHOLD_MS = 15000; // 15s stale time
 const EVENT_MAP = [
-    { event: "ingestion", queryKey: "ingestionMetrics" },
-    { event: "top-service-errors", queryKey: "topServiceErrorsStats" },
-    { event: "error-rate", queryKey: "errorRateMetrics" },
-    { event: "storage-info", queryKey: "storageInfoMetrics" },
+    { event: "ingestion-graph-metrics", queryKey: QUERY_KEYS.ingestionGraphMetrics },
+    { event: "log-rate-stats", queryKey: QUERY_KEYS.logRateStats },
+    { event: "top-service-errors", queryKey: QUERY_KEYS.topServiceErrorsStats },
+    { event: "error-rate", queryKey: QUERY_KEYS.errorRateMetrics },
+    { event: "storage-info", queryKey: QUERY_KEYS.storageInfoMetrics },
 ]; // stores a map which contains event name and TanStack query key
 
-export const useIngestionMetrics = () => {
+export const useDashboard = () => {
     const queryClient = useQueryClient();
     const eventSourceRef = useRef<EventSource | null>(null);
     const lastMessageRef = useRef<number>(Date.now());
-
-    const query = useQuery({
-        queryKey: ["ingestionMetrics"],
-        queryFn: fetchIngestionMetrics,
-        staleTime: Infinity, // SSE keeps it fresh, no need for TanStack Query to refetch
-        refetchInterval: false,
-    });
-
-    const { data: connectionError } = useQuery({
-        queryKey: ["ingestionMetricsConnectionError"],
-        queryFn: () => false,
-        initialData: false,
-        staleTime: Infinity,
-    });
+    const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [isError, setIsError] = useState<boolean>(false);
 
     const openStream = useCallback(() => {
         // close existing connection before opening new conneciton
         eventSourceRef.current?.close();
         lastMessageRef.current = Date.now(); // reset watchdog clock on (re)connect
 
-        const eventSource = new EventSource("/api/ingestion-metrics/stream");
+        const eventSource = new EventSource("/api/dashboard/stream");
 
         for (const { event, queryKey } of EVENT_MAP) {
             eventSource.addEventListener(event, (e) => {
-                const data = JSON.parse(e.data);
-                queryClient.setQueryData([queryKey], data);
-                queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
+                if (event === "ingestion-graph-metrics") {
+                    const liveDelta: IngestionGraphData = JSON.parse(e.data);
+
+                    queryClient.setQueryData([queryKey], (oldData: IngestionGraphData | undefined) => {
+                        if (!oldData) return liveDelta;
+
+                        const nextTimestamps = [...oldData.timestamps, ...liveDelta.timestamps].slice(-MAX_POINTS);
+                        const nextMetrics: Record<string, { logsCount: number }[]> = {};
+                        const allServices = Array.from(
+                            new Set([...Object.keys(oldData.metrics), ...Object.keys(liveDelta.metrics)]),
+                        );
+
+                        allServices.forEach((service) => {
+                            const oldVals = oldData.metrics[service] || [];
+                            const deltaVals =
+                                liveDelta.metrics[service] ?? Array(liveDelta.timestamps.length).fill({ logsCount: 0 });
+                            nextMetrics[service] = [...oldVals, ...deltaVals].slice(-MAX_POINTS);
+                        });
+
+                        return { timestamps: nextTimestamps, metrics: nextMetrics };
+                    });
+                } else {
+                    const data = JSON.parse(e.data);
+                    queryClient.setQueryData([queryKey], data);
+                }
+
+                setIsError(false);
                 lastMessageRef.current = Date.now();
             });
         }
 
         eventSource.onerror = () => {
             if (eventSourceRef.current?.readyState !== EventSource.OPEN) {
-                queryClient.setQueryData(["ingestionMetricsConnectionError"], true);
+                setIsError(true);
             }
         };
 
         eventSource.onopen = () => {
             lastMessageRef.current = Date.now(); // update watchdog clock
-            queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
+            setIsError(false);
         };
 
         eventSourceRef.current = eventSource;
     }, [queryClient]);
 
     const connect = useCallback(async () => {
-        // do REST fetch to pre load the data then (re)open SSE for live connection
         try {
-            const data = await fetchIngestionMetrics();
-            queryClient.setQueryData(["ingestionMetrics"], data);
-            queryClient.setQueryData(["ingestionMetricsConnectionError"], false);
+            // manually fetch all of the metrics to load the dashboard upon connect
+            const [ingestionGraphMetrics, storageInfoMetrics, logRateStats, topServiceErrorsStats, errorRateMetrics] =
+                await Promise.all([
+                    fetchIngestionGraphMetrics(),
+                    fetchStorageInfoMetrics(),
+                    fetchLogRateStats(),
+                    fetchTopServiceErrorsStats(),
+                    fetchErrorRateMetrics(),
+                ]);
+
+            queryClient.setQueryData([QUERY_KEYS.ingestionGraphMetrics], ingestionGraphMetrics);
+            queryClient.setQueryData([QUERY_KEYS.storageInfoMetrics], storageInfoMetrics);
+            queryClient.setQueryData([QUERY_KEYS.logRateStats], logRateStats);
+            queryClient.setQueryData([QUERY_KEYS.topServiceErrorsStats], topServiceErrorsStats);
+            queryClient.setQueryData([QUERY_KEYS.errorRateMetrics], errorRateMetrics);
+
+            setIsError(false);
         } catch {
-            queryClient.setQueryData(["ingestionMetricsConnectionError"], true);
+            setIsError(true);
+        } finally {
+            setIsLoading(false);
         }
         openStream();
     }, [queryClient, openStream]);
@@ -83,7 +122,7 @@ export const useIngestionMetrics = () => {
         // watchdog: if no message received within threshold, assume connection is dead
         const interval = setInterval(() => {
             if (Date.now() - lastMessageRef.current > STALE_THRESHOLD_MS) {
-                queryClient.setQueryData(["ingestionMetricsConnectionError"], true);
+                setIsError(true);
             }
         }, 5000);
 
@@ -93,36 +132,55 @@ export const useIngestionMetrics = () => {
         };
     }, [connect]);
 
-    return {
-        ...query,
-        isError: query.isError || connectionError,
-        refetch: connect,
-    };
+    return { isLoading, isError, refetch: connect };
+};
+
+export const useIngestionGraphMetrics = () => {
+    return useQuery({
+        queryKey: [QUERY_KEYS.ingestionGraphMetrics],
+        queryFn: fetchIngestionGraphMetrics,
+        staleTime: Infinity, // SSE keeps it fresh, no need for TanStack Query to refetch
+        refetchInterval: false,
+        enabled: false, // never auto-fetch since connect() seeds the data manually
+    });
+};
+
+export const useLogRateStats = () => {
+    return useQuery({
+        queryKey: [QUERY_KEYS.logRateStats],
+        queryFn: fetchLogRateStats,
+        staleTime: Infinity,
+        refetchInterval: false,
+        enabled: false, // never auto-fetch since connect() seeds the data manually
+    });
 };
 
 export const useTopServiceErrorsStats = () => {
     return useQuery({
-        queryKey: ["topServiceErrorsStats"],
+        queryKey: [QUERY_KEYS.topServiceErrorsStats],
         queryFn: fetchTopServiceErrorsStats,
         staleTime: Infinity,
         refetchInterval: false,
+        enabled: false, // never auto-fetch since connect() seeds the data manually
     });
 };
 
 export const useErrorRateMetrics = () => {
     return useQuery({
-        queryKey: ["errorRateMetrics"],
+        queryKey: [QUERY_KEYS.errorRateMetrics],
         queryFn: fetchErrorRateMetrics,
         staleTime: Infinity,
         refetchInterval: false,
+        enabled: false, // never auto-fetch since connect() seeds the data manually
     });
 };
 
 export const useStorageInfoMetrics = () => {
     return useQuery({
-        queryKey: ["storageInfoMetrics"],
+        queryKey: [QUERY_KEYS.storageInfoMetrics],
         queryFn: fetchStorageInfoMetrics,
         staleTime: Infinity,
         refetchInterval: false,
+        enabled: false, // never auto-fetch since connect() seeds the data manually
     });
 };

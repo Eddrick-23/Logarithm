@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import type { Threshold } from "../types/Threshold";
 import { Box, Typography } from "@mui/material";
 
@@ -6,9 +6,8 @@ interface ThresholdLegendProps {
     thresholds: Threshold[];
 }
 
-export function ThresholdLegend({ thresholds }: ThresholdLegendProps) {
+export default memo(function ThresholdLegend({ thresholds }: ThresholdLegendProps) {
     const sorted = useMemo(() => [...thresholds].sort((a, b) => b.min - a.min), [thresholds]);
-
     return (
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 1.5 }}>
             {sorted.map((t) => (
@@ -32,4 +31,4 @@ export function ThresholdLegend({ thresholds }: ThresholdLegendProps) {
             ))}
         </Box>
     );
-}
+});
