@@ -31,8 +31,8 @@ func newHttpRunner(cfg *config.CleanConfig, payloadFactory *PayloadFactory, outD
 }
 
 func (h *httpRunner) CheckHealth() error {
-	fmt.Println("checking health at: " + h.cfg.HealthUrl)
-	resp, err := http.Get(h.cfg.HealthUrl)
+	fmt.Println("checking health at: " + h.cfg.HttpHealthUrl)
+	resp, err := http.Get(h.cfg.HttpHealthUrl)
 	if err != nil {
 		return err
 	}
@@ -146,7 +146,7 @@ func (h *httpRunner) createTargeter() vegeta.Targeter {
 		h.writeHeaders(tgt)
 
 		tgt.Body = encoded
-		tgt.Method = h.cfg.Method
+		tgt.Method = h.cfg.HttpMethod
 		tgt.URL = h.cfg.TargetUrl
 		return nil
 	}

@@ -18,7 +18,6 @@ import (
 )
 
 const method string = "/opentelemetry.proto.collector.logs.v1.LogsService/Export"
-const workers int = 5 // TODO make configurable via config.json
 
 var _ runner.Runner = (*grpcRunner)(nil)
 
@@ -169,8 +168,8 @@ func (g *grpcRunner) attack(ctx context.Context, conn *grpc.ClientConn, duration
 	// start a worker pool that reads signals from jobs
 	// then sends an invoke call, passing result to the results channel
 	var wg sync.WaitGroup
-	wg.Add(workers) // assume 5 workers
-	for range workers {
+	wg.Add(g.cfg.GrpcWorkers) // assume 5 workers
+	for range g.cfg.GrpcWorkers {
 		go func() {
 			defer wg.Done()
 			for range jobs {

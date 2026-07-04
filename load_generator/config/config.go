@@ -28,6 +28,7 @@ type RawConfig struct {
 	Protocol             string          `json:"protocol"`
 	HttpMethod           string          `json:"http_method"`
 	HttpHealthUrl        string          `json:"http_healthUrl"`
+	GrpcWorkers          int             `json:"grpc_workers"`
 	TargetUrl            string          `json:"targetUrl"`
 	ContentType          string          `json:"contentType"`
 	Encoding             string          `json:"encoding"`
@@ -44,10 +45,11 @@ type CleanConfig struct {
 	Seed                 int             `json:"seed"`
 	PoolSize             int             `json:"poolSize"`
 	Protocol             string          `json:"protocol"`
-	HealthUrl            string          `json:"healthUrl"`
+	HttpMethod           string          `json:"method"`
+	HttpHealthUrl        string          `json:"healthUrl"`
+	GrpcWorkers          int             `json:"grpc_workers"`
 	TargetUrl            string          `json:"targetUrl"`
 	ContentType          string          `json:"contentType"`
-	Method               string          `json:"method"`
 	Encoding             string          `json:"encoding"`
 	Rps                  int             `json:"rps"`
 	BatchSize            int             `json:"batchSize"`
@@ -125,6 +127,18 @@ func cleanContentType(rawCfg *RawConfig) string {
 	}
 }
 
+func cleanGrpcWorkerCount(rawCfg *RawConfig) int {
+	const defaultCount = 5
+	workers := rawCfg.GrpcWorkers
+
+	if workers <= 0 && rawCfg.Protocol == "grpc" {
+		fmt.Printf("grpc load generation requires positive worker count, defaulting to %d", defaultCount)
+		return defaultCount
+	}
+
+	return workers
+}
+
 // cleans up config to ensure valid severity-distribution,
 // poolSize, encoding and contentType. Invalid or missing fields
 // are set to defaults
@@ -133,12 +147,14 @@ func cleanConfig(rawCfg *RawConfig) CleanConfig {
 	poolSize := cleanPoolSize(rawCfg)
 	encoding := cleanEncoding(rawCfg)
 	contentType := cleanContentType(rawCfg)
+	grpcWorkers := cleanGrpcWorkerCount(rawCfg)
 	return CleanConfig{
 		Seed:                 rawCfg.Seed,
 		PoolSize:             poolSize,
 		Protocol:             rawCfg.Protocol,
-		Method:               rawCfg.HttpMethod,
-		HealthUrl:            rawCfg.HttpHealthUrl,
+		GrpcWorkers:          grpcWorkers,
+		HttpMethod:           rawCfg.HttpMethod,
+		HttpHealthUrl:        rawCfg.HttpHealthUrl,
 		TargetUrl:            rawCfg.TargetUrl,
 		ContentType:          contentType,
 		Encoding:             encoding,
@@ -163,12 +179,15 @@ func (r *RawConfig) validate() error {
 		if r.HttpHealthUrl == "" {
 			return fmt.Errorf("http protocol requires 'healthUrl' to be set")
 		}
+		if r.GrpcWorkers != 0 {
+			return fmt.Errorf("Warning: 'grpc_workers is ignored when using http protocol")
+		}
 	case "grpc":
 		if r.HttpMethod != "" {
-			fmt.Println("Warning: 'method' is ignored when using grpc protocol")
+			fmt.Println("Warning: 'http_method' is ignored when using grpc protocol")
 		}
 		if r.HttpHealthUrl != "" {
-			fmt.Println("Warning: 'healthUrl' is ignored when using grpc protocol")
+			fmt.Println("Warning: 'http_healthUrl' is ignored when using grpc protocol")
 		}
 	default:
 		return fmt.Errorf("unsupported protocol: %s", r.Protocol)
