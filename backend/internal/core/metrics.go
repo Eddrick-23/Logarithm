@@ -38,9 +38,10 @@ type ErrorRateMetrics struct {
 }
 
 type NatsQueueDepthGraphMetrics struct {
-	Timestamps    []int64  `json:"timestamps"`
-	NumPending    []uint64 `json:"numPending"`
-	NumAckPending []uint64 `json:"numAckPending"`
+	Timestamps     []int64  `json:"timestamps"`
+	NumPending     []uint64 `json:"numPending"`
+	NumAckPending  []uint64 `json:"numAckPending"`
+	NumRedelivered []uint64 `json:"numRedelivered"`
 }
 
 func NewIngestionMetricsMap(rows []IngestionMetrics) IngestionMetricsMap {

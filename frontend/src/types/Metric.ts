@@ -36,4 +36,5 @@ export type NatsQueueDepthGraphMetrics = {
     timestamps: number[];
     numPending: number[];
     numAckPending: number[];
+    numRedelivered: number[];
 };

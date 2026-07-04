@@ -9,21 +9,32 @@ export default function NatsQueueDepth() {
     const xAxisData = useMemo(() => data?.timestamps.map((ts) => new Date(ts)) ?? [], [data]);
     const numPendingData = useMemo(() => [{ data: data?.numPending ?? [] }], [data]);
     const numAckPendingdData = useMemo(() => [{ data: data?.numAckPending ?? [] }], [data]);
+    const numRedeliveredData = useMemo(() => [{ data: data?.numRedelivered ?? [] }], [data]);
 
     return (
-        <Stack direction="row" spacing={2} sx={{ width: "100%" }}>
+        <Stack>
+            <Stack direction="row" spacing={2} sx={{ width: "100%" }}>
+                <NatsQueueDepthGraph
+                    title="Num Pending - number of logs waiting in the queue to be delivered"
+                    xAxisData={xAxisData}
+                    seriesData={numPendingData}
+                    isLoading={isLoading}
+                    isError={isError}
+                    dataUpdatedAt={dataUpdatedAt}
+                />
+                <NatsQueueDepthGraph
+                    title="Num Ack Pending - number of logs currently being processed"
+                    xAxisData={xAxisData}
+                    seriesData={numAckPendingdData}
+                    isLoading={isLoading}
+                    isError={isError}
+                    dataUpdatedAt={dataUpdatedAt}
+                />
+            </Stack>
             <NatsQueueDepthGraph
-                title="Num Pending - number of logs waiting in the queue to be delivered"
+                title="Num Redelivered - number of times logs has been resent"
                 xAxisData={xAxisData}
-                seriesData={numPendingData}
-                isLoading={isLoading}
-                isError={isError}
-                dataUpdatedAt={dataUpdatedAt}
-            />
-            <NatsQueueDepthGraph
-                title="Num Ack Pending - number of logs currently being processed"
-                xAxisData={xAxisData}
-                seriesData={numAckPendingdData}
+                seriesData={numRedeliveredData}
                 isLoading={isLoading}
                 isError={isError}
                 dataUpdatedAt={dataUpdatedAt}
