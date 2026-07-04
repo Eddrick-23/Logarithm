@@ -160,8 +160,8 @@ func (g *grpcRunner) Run(ctx context.Context, duration time.Duration, logInterva
 func (g *grpcRunner) attack(ctx context.Context, conn *grpc.ClientConn, duration time.Duration) <-chan *vegeta.Result {
 	pacer := vegeta.Rate{Freq: g.cfg.Rps, Per: time.Second}
 
-	jobs := make(chan struct{})
-	results := make(chan *vegeta.Result)
+	jobs := make(chan struct{}, g.cfg.GrpcWorkers*2)
+	results := make(chan *vegeta.Result, g.cfg.GrpcWorkers*2)
 
 	// start a worker pool that reads signals from jobs
 	// then sends an invoke call, passing result to the results channel
