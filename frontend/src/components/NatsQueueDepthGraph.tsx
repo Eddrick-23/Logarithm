@@ -48,7 +48,10 @@ export default function NatsQueueDepthGraph({
                     xAxis={[
                         { data: xAxisData, scaleType: "time", valueFormatter: (date) => date.toLocaleTimeString() },
                     ]}
-                    yAxis={[{ min: 0 }]}
+                    yAxis={[
+                        // set min difference between each number on y-axis to be 1 and round off all numbers on y-axis to whole numbers
+                        { min: 0, tickMinStep: 1, valueFormatter: (value: number) => Math.round(value).toString() },
+                    ]}
                     series={seriesData}
                     height={CHART_HEIGHT}
                 />
