@@ -37,6 +37,12 @@ type ErrorRateMetrics struct {
 	CurrentRate float64 `ch:"CurrentRate" json:"currentRate"`
 }
 
+type NatsQueueDepthGraphMetrics struct {
+	Timestamps    []int64  `json:"timestamps"`
+	NumPending    []uint64 `json:"numPending"`
+	NumAckPending []uint64 `json:"numAckPending"`
+}
+
 func NewIngestionMetricsMap(rows []IngestionMetrics) IngestionMetricsMap {
 	result := make(IngestionMetricsMap)
 	for _, row := range rows {

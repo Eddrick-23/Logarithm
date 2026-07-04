@@ -548,6 +548,51 @@ func (s *ClickHouseStore) GetLogsStorageOutlook(ctx context.Context) (*core.Stor
 	return result, nil
 }
 
+func (s *ClickHouseStore) GetNatsQueueDepthMetrics(ctx context.Context, durationMinutes int) (core.NatsQueueDepthGraphMetrics, error) {
+	tbl, err := s.table(TableJetstreamConsumerMetrics)
+	if err != nil {
+		return core.NatsQueueDepthGraphMetrics{}, fmt.Errorf("failed to get table: %v", err)
+	}
+
+	queryString := fmt.Sprintf(`
+		SELECT Timestamp, NumPending, NumAckPending
+		FROM %s
+		WHERE Timestamp >= now() - toIntervalMinute(@duration)
+		ORDER BY Timestamp ASC
+	`, tbl)
+
+	rows, err := s.conn.Query(ctx, queryString, clickhouse.Named("duration", durationMinutes))
+	if err != nil {
+		return core.NatsQueueDepthGraphMetrics{}, fmt.Errorf("failed to query consumer info: %v", err)
+	}
+	defer rows.Close()
+
+	response := core.NatsQueueDepthGraphMetrics{
+		Timestamps:    []int64{},
+		NumPending:    []uint64{},
+		NumAckPending: []uint64{},
+	}
+
+	for rows.Next() {
+		var timestamp time.Time
+		var numPending uint64
+		var numAckPending uint64
+
+		if err := rows.Scan(&timestamp, &numPending, &numAckPending); err != nil {
+			return core.NatsQueueDepthGraphMetrics{}, fmt.Errorf("failed to scan row: %v", err)
+		}
+		response.Timestamps = append(response.Timestamps, timestamp.UnixMilli())
+		response.NumPending = append(response.NumPending, numPending)
+		response.NumAckPending = append(response.NumAckPending, numAckPending)
+	}
+
+	if err := rows.Err(); err != nil {
+		return core.NatsQueueDepthGraphMetrics{}, fmt.Errorf("row iteration error: %v", err)
+	}
+
+	return response, nil
+}
+
 func (s *ClickHouseStore) SaveConsumerInfo(ctx context.Context, info *jetstream.ConsumerInfo) error {
 	tbl, err := s.table(TableJetstreamConsumerMetrics)
 	if err != nil {
