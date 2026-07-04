@@ -5,6 +5,7 @@ import {
     fetchErrorRateMetrics,
     fetchStorageInfoMetrics,
     fetchLogRateStats,
+    fetchNatsQueueDepthGraphMetrics,
 } from "../api/metricsApi";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { IngestionGraphData } from "../types/Metric";
@@ -15,6 +16,7 @@ const QUERY_KEYS = {
     topServiceErrorsStats: "topServiceErrorsStats",
     errorRateMetrics: "errorRateMetrics",
     storageInfoMetrics: "storageInfoMetrics",
+    natsQueueDepthGraphMetrics: "natsQueueDepthGraphMetrics",
 };
 
 const MAX_POINTS = 60;
@@ -182,5 +184,13 @@ export const useStorageInfoMetrics = () => {
         staleTime: Infinity,
         refetchInterval: false,
         enabled: false, // never auto-fetch since connect() seeds the data manually
+    });
+};
+
+export const useNatsQueueDepthGraphMetrics = () => {
+    return useQuery({
+        queryKey: [QUERY_KEYS.natsQueueDepthGraphMetrics],
+        queryFn: fetchNatsQueueDepthGraphMetrics,
+        refetchInterval: 15000, // refetch every 15 seconds since the difference in timings is 15 seconds
     });
 };

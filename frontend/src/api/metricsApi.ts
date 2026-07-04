@@ -5,6 +5,7 @@ import type {
     GetTopServiceErrorsStatsResponse,
     IngestionGraphData,
     LogRateStatistics,
+    NatsQueueDepthGraphMetrics,
 } from "../types/Metric";
 import type { StorageInfoMetrics } from "../types/Storage";
 
@@ -38,5 +39,10 @@ export const fetchTopServiceErrorsStats = async (): Promise<TopServiceErrorsStat
 
 export const fetchStorageInfoMetrics = async (): Promise<StorageInfoMetrics> => {
     const response = await axios.get<StorageInfoMetrics>("/api/storage-info");
+    return response.data;
+};
+
+export const fetchNatsQueueDepthGraphMetrics = async (): Promise<NatsQueueDepthGraphMetrics> => {
+    const response = await axios.get<NatsQueueDepthGraphMetrics>("/api/nats-queue-depth-metrics");
     return response.data;
 };
