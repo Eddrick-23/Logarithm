@@ -69,7 +69,7 @@ func (d *LogDecompressor) decompress(payload []byte, headers map[string][]string
 		encoding = vals[0]
 	}
 
-	if encoding == "" || encoding == "none" {
+	if encoding == "" || encoding == "none" || encoding == "identity" {
 		return payload, func() {}, nil
 	}
 

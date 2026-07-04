@@ -140,15 +140,20 @@ consumer, polled at 1-second intervals.
 
 ## Baseline Configuration
 
-All cross-milestone comparisons use a single fixed baseline config. **RPS is fixed between milestone runs** — the same config is used for M1, M2, and M3 so that latency deltas are attributable solely to code changes. `contentType` can be swapped between `proto` or `json` to marshal the payloads accordingly.
+All cross-milestone comparisons use a single fixed baseline config. **RPS is fixed between milestone runs** — the same config is used for M1, M2, and M3 so that latency deltas are attributable solely to code changes. 
+- `protocol` can be swapped between `http` or `grpc` to test the respective transport protocols.
+- `contentType` can be swapped between `proto` or `json` to marshal the payloads accordingly.
+- `grpcWorkers` is used for `grpc` protocol only and similarly `httpMethod` and `httpHealthUrl` is used for `http` protocol only. 
 
 ```json
 {
   "seed": 42,
   "poolSize": 500000,
-  "healthUrl": "http://HOST_IP:8090/health",
+  "protocol": "http",
+  "grpcWorkers": 5,
+  "httpMethod": "POST",
+  "httpHealthUrl": "http://HOST_IP:8090/health",
   "targetUrl": "http://HOST_IP:8090/ingest",
-  "method": "POST",
   "contentType":"proto",
   "encoding": "zstd",
   "rps": 1000,

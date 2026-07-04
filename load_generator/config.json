@@ -1,9 +1,11 @@
 {
   "seed": 42,
   "poolSize": 5000,
-  "healthUrl": "http://localhost:8090/health",
+  "protocol": "http",
+  "grpcWorkers": 5,
+  "httpMethod": "POST",
+  "httpHealthUrl": "http://localhost:8090/health",
   "targetUrl": "http://localhost:8090/v1/logs",
-  "method": "POST",
   "contentType": "proto",
   "encoding": "zstd",
   "rps": 10,

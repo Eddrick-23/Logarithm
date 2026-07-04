@@ -32,15 +32,28 @@ echo "Starting load generator..."
   -rest "$WARMUP_REST" &
 LOAD_GEN_PID=$!
 
-echo "Waiting through warmup phase (${WARMUP_DURATION}s + ${WARMUP_REST}s rest)..."
+READY_FILE="$DIR/.sampling_ready"
+echo "Waiting for load generator to finish startup and warmups"
 
-for ((i=1; i<=$WARMUP_DURATION+WARMUP_REST; i++)); do
-  if ! kill -0 $LOAD_GEN_PID 2>/dev/null; then
-      wait $LOAD_GEN_PID || EXIT_CODE=$?
-      echo "Error: Load generated process died early with exit code ${EXIT_CODE:-0}, aborting."
-      exit 1
-  fi
-  sleep 1
+TIMEOUT_SECONDS=$((10 + WARMUP_DURATION + WARMUP_REST))
+MAX_WAIT_MS=$((TIMEOUT_SECONDS * 1000))
+elapsed_ms=0
+
+while [ ! -f "$READY_FILE" ]; do
+    if ! kill -0 $LOAD_GEN_PID 2>/dev/null; then
+        wait $LOAD_GEN_PID || EXIT_CODE=$?
+        echo "Error: Load generated process died early with exit code ${EXIT_CODE:-0}, aborting."
+        exit 1
+    fi
+
+    if [ "$elapsed_ms" -ge "$MAX_WAIT_MS" ]; then
+        echo "Error: Timed out waiting for sampling phase to start (waited ${TIMEOUT_SECONDS}s)."
+        kill $LOAD_GEN_PID 2>/dev/null
+        exit 1
+    fi
+
+    sleep 0.5
+    elapsed_ms=$((elapsed_ms + 500))
 done
 
 # track nats queue depth
@@ -48,7 +61,7 @@ echo "timestamp,pending_messages" > "$DIR/queue_depth.csv"
 while true; do
     PENDING=$(curl -s "http://${TARGET_IP}:8222/jsz?stream=LOGS&consumers=true" | \
         jq -r '.account_details[].stream_detail[]? | select(.name=="LOGS") | .consumer_detail[]? | select(.name=="worker") | .num_pending // 0')
-    
+
     echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ"),${PENDING:-0}" >> "$DIR/queue_depth.csv"
     sleep 1
 done &
@@ -74,7 +87,7 @@ curl -so "$DIR/ingester_mutex.pb.gz" "$BASE_INGESTER/mutex?seconds=$SAMPLE_DURAT
 CURL_PID7=$!
 curl -so "$DIR/worker_mutex.pb.gz"   "$BASE_WORKER/mutex?seconds=$SAMPLE_DURATION" &
 CURL_PID8=$!
-wait $CURL_PID1 $CURL_PID2 $CURL_PID3 $CURL_PID4 $CURL_PID5 $CURL_PID6 $CURL_PID7 $CURL_PID8  
+wait $CURL_PID1 $CURL_PID2 $CURL_PID3 $CURL_PID4 $CURL_PID5 $CURL_PID6 $CURL_PID7 $CURL_PID8
 
 echo "Waiting for load generator to finish..."
 wait $LOAD_GEN_PID
