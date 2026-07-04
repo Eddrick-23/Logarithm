@@ -2,6 +2,7 @@
   "seed": 42,
   "poolSize": 5000,
   "protocol": "http",
+  "grpc_workers": 5,
   "http_method": "POST",
   "http_healthUrl": "http://localhost:8090/health",
   "targetUrl": "http://localhost:8090/v1/logs",

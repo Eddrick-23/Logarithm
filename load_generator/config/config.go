@@ -45,9 +45,9 @@ type CleanConfig struct {
 	Seed                 int             `json:"seed"`
 	PoolSize             int             `json:"poolSize"`
 	Protocol             string          `json:"protocol"`
+	GrpcWorkers          int             `json:"grpc_workers"`
 	HttpMethod           string          `json:"method"`
 	HttpHealthUrl        string          `json:"healthUrl"`
-	GrpcWorkers          int             `json:"grpc_workers"`
 	TargetUrl            string          `json:"targetUrl"`
 	ContentType          string          `json:"contentType"`
 	Encoding             string          `json:"encoding"`
