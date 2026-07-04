@@ -26,7 +26,6 @@ type PayloadFactory struct {
 }
 
 func NewPayloadFactory(cfg *config.CleanConfig) (*PayloadFactory, error) {
-	// Your existing setup logic for randPool, gzipPool, log record pool, etc.
 	var counter atomic.Uint64
 
 	fmt.Printf("setting up payload factory. Generating randomised pool of size: %v \n", cfg.PoolSize)
@@ -78,7 +77,6 @@ func NewPayloadFactory(cfg *config.CleanConfig) (*PayloadFactory, error) {
 }
 
 func (p *PayloadFactory) GenerateEncodedPayload() ([]byte, error) {
-	// Your existing generatePayload() + encodePayload() logic
 	raw, err := p.generatePayload()
 	if err != nil {
 		return nil, err
