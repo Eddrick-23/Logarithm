@@ -180,7 +180,7 @@ func (r *RawConfig) validate() error {
 			return fmt.Errorf("http protocol requires 'healthUrl' to be set")
 		}
 		if r.GrpcWorkers != 0 {
-			return fmt.Errorf("Warning: 'grpc_workers is ignored when using http protocol")
+			fmt.Println("Warning: 'grpc_workers is ignored when using http protocol")
 		}
 	case "grpc":
 		if r.HttpMethod != "" {
