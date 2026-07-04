@@ -11,12 +11,13 @@ import (
 	"github.com/Eddrick-23/Logarithm/load_generator/runner"
 	vegeta "github.com/tsenart/vegeta/v12/lib"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 )
 
-const method string = "opentelemetry.proto.collector.logs.v1.LogsService/Export"
+const method string = "/opentelemetry.proto.collector.logs.v1.LogsService/Export"
 const workers int = 5 // TODO make configurable via config.json
 
 var _ runner.Runner = (*grpcRunner)(nil)
@@ -239,11 +240,20 @@ func (g *grpcRunner) invoke(ctx context.Context, conn *grpc.ClientConn) *vegeta.
 
 	if err != nil {
 		st, _ := status.FromError(err)
-		res.Code = uint16(st.Code())
-		res.Error = st.Message()
+		res.Code = grpcCodeToHTTPish(st.Code())
+		res.Error = fmt.Sprintf("%s: %s", st.Code(), st.Message()) // store original grpc code
 	} else {
-		res.Code = uint16(0) //codes.OK
+		res.Code = grpcCodeToHTTPish(codes.OK)
 	}
 
 	return res
+}
+
+// helper to map grpc codes to "equivalent" http codes since vegeta is meant for http
+func grpcCodeToHTTPish(c codes.Code) uint16 {
+	if c == codes.OK {
+		return 200
+	}
+
+	return 500 // bundle everything else to 500
 }
