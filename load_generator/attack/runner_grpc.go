@@ -113,14 +113,12 @@ func (g *grpcRunner) Run(ctx context.Context, duration time.Duration, logInterva
 	resultsChan := g.attack(ctx, conn, duration)
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		var lastLatency time.Duration
 		for {
 			select {
 			case <-ticker.C:
-				fmt.Printf("[%s] Reqests sent: %-6d | Last Latency: %v\n",
+				fmt.Printf("[%s] Requests sent: %-6d | Last Latency: %v\n",
 					time.Now().Format("15:04:05"),
 					metrics.Requests,
 					lastLatency.String(),
@@ -141,7 +139,7 @@ func (g *grpcRunner) Run(ctx context.Context, duration time.Duration, logInterva
 			}
 
 		}
-	}()
+	})
 	wg.Wait()
 	metrics.Close()
 
@@ -213,7 +211,7 @@ func (g *grpcRunner) attack(ctx context.Context, conn *grpc.ClientConn, duration
 
 // invoke sends one encoded payload, and times a single invoke call,
 // so we are able to time request-response latency.
-// Results are attatched in *vegeta.Result
+// Results are attached in *vegeta.Result
 func (g *grpcRunner) invoke(ctx context.Context, conn *grpc.ClientConn) *vegeta.Result {
 	payload, err := g.payloadFactory.GenerateEncodedPayload()
 	if err != nil {

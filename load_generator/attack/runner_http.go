@@ -83,14 +83,12 @@ func (h *httpRunner) Run(ctx context.Context, duration time.Duration, logInterva
 	resultsChan := attacker.Attack(targeter, rate, duration, "http-test")
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		var lastLatency time.Duration
 		for {
 			select {
 			case <-ticker.C:
-				fmt.Printf("[%s] Reqests sent: %-6d | Last Latency: %v\n",
+				fmt.Printf("[%s] Requests sent: %-6d | Last Latency: %v\n",
 					time.Now().Format("15:04:05"),
 					metrics.Requests,
 					lastLatency.String(),
@@ -110,7 +108,7 @@ func (h *httpRunner) Run(ctx context.Context, duration time.Duration, logInterva
 				// not affected by ctx.Done. Let results chan drain fully so that workers can exit.
 			}
 		}
-	}()
+	})
 	wg.Wait()
 	metrics.Close()
 
