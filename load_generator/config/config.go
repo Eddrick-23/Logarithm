@@ -26,9 +26,9 @@ type RawConfig struct {
 	Seed                 int             `json:"seed"`
 	PoolSize             int             `json:"poolSize"`
 	Protocol             string          `json:"protocol"`
-	HttpMethod           string          `json:"http_method"`
-	HttpHealthUrl        string          `json:"http_healthUrl"`
-	GrpcWorkers          int             `json:"grpc_workers"`
+	GrpcWorkers          int             `json:"grpcWorkers"`
+	HttpMethod           string          `json:"httpMethod"`
+	HttpHealthUrl        string          `json:"httpHealthUrl"`
 	TargetUrl            string          `json:"targetUrl"`
 	ContentType          string          `json:"contentType"`
 	Encoding             string          `json:"encoding"`
@@ -45,9 +45,9 @@ type CleanConfig struct {
 	Seed                 int             `json:"seed"`
 	PoolSize             int             `json:"poolSize"`
 	Protocol             string          `json:"protocol"`
-	GrpcWorkers          int             `json:"grpc_workers"`
-	HttpMethod           string          `json:"method"`
-	HttpHealthUrl        string          `json:"healthUrl"`
+	GrpcWorkers          int             `json:"grpcWorkers"`
+	HttpMethod           string          `json:"httpMethod"`
+	HttpHealthUrl        string          `json:"httpHealthUrl"`
 	TargetUrl            string          `json:"targetUrl"`
 	ContentType          string          `json:"contentType"`
 	Encoding             string          `json:"encoding"`
