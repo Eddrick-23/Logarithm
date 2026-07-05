@@ -5,6 +5,7 @@ import ServiceError from "../components/ServiceError";
 import { pulseSx } from "../theme/tokens";
 import { useDashboard } from "../hooks/useMetrics";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import NatsQueueDepth from "../components/NatsQueueDepth";
 
 const STATUS_CONFIG = {
     live: { label: "LIVE", colour: "success.main" },
@@ -82,6 +83,9 @@ export default function Dashboard() {
                     <ServiceError />
                 </Grid>
             </Grid>
+
+            {/* nats queue depth graphs */}
+            <NatsQueueDepth />
         </Box>
     );
 }

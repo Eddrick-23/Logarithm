@@ -333,3 +333,12 @@ func (nb *NatsBroker) TailLiveLogs(ctx context.Context, subject string, maxBatch
 
 	return logCh, cleanup, nil
 }
+
+func (nb *NatsBroker) GetJetstreamConsumer(ctx context.Context, streamName string, consumerName string) (jetstream.Consumer, error) {
+	consumer, err := nb.js.Consumer(ctx, streamName, consumerName)
+	if err != nil {
+		nb.logger.Error("failed to get jetstream consumer", "jetstream consumer", err)
+		return nil, err
+	}
+	return consumer, nil
+}

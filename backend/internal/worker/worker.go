@@ -9,6 +9,8 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 )
 
+const WorkerName = "worker"
+
 // ConsumeCallback returns the message handler used by the log consumer.
 //
 // Incoming OTLP logs are flattened, grouped by service, published to the

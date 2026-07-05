@@ -37,6 +37,21 @@ type ErrorRateMetrics struct {
 	CurrentRate float64 `ch:"CurrentRate" json:"currentRate"`
 }
 
+type NatsQueueDepthConsumerInfo struct {
+	Name           string `json:"name"`
+	Stream         string `json:"streamName"`
+	NumPending     uint64 `json:"numPending"`
+	NumAckPending  uint64 `json:"numAckPending"`
+	NumRedelivered uint64 `json:"numRedelivered"`
+}
+
+type NatsQueueDepthGraphMetrics struct {
+	Timestamps     []int64  `json:"timestamps"`
+	NumPending     []uint64 `json:"numPending"`
+	NumAckPending  []uint64 `json:"numAckPending"`
+	NumRedelivered []uint64 `json:"numRedelivered"`
+}
+
 func NewIngestionMetricsMap(rows []IngestionMetrics) IngestionMetricsMap {
 	result := make(IngestionMetricsMap)
 	for _, row := range rows {
