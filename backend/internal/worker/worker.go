@@ -31,19 +31,28 @@ type Config struct {
 	Transformer   Transformer
 	Publisher     Publisher
 	EstimatedRows int
-	// TODO specify num workers
+	NumWorkers    int
 }
 
 func NewWorkerPool(cfg Config) *WorkerPool {
-	const numWorkers int = 3
-	jobs := make(chan func(), numWorkers)
+	if cfg.EstimatedRows <= 0 {
+		cfg.Logger.Warn("Estimated rows must be positive, defaulting to 1000")
+		cfg.EstimatedRows = 1000
+	}
+
+	if cfg.NumWorkers <= 0 {
+		cfg.Logger.Warn("NumWorkers must be positive, defaulting to 1")
+		cfg.NumWorkers = 1
+	}
+
+	jobs := make(chan func(), cfg.NumWorkers)
 
 	// worker will take in functions from the chan and call them
-	// error handling is managed within the function
-	// fanning in i.e. combining results, is handled within the function
+	// error handling is managed within the function.
+	// Fanning in i.e. combining results, is handled within the function
 	// via appending to the same appender
-	for i := range numWorkers {
-		logger := cfg.Logger.With("component", "worker"+strconv.Itoa(i))
+	for i := range cfg.NumWorkers {
+		logger := cfg.Logger.With("component", "PoolWorker"+strconv.Itoa(i+1))
 		go func() {
 			for job := range jobs {
 				runSafely(logger, job)
@@ -59,7 +68,7 @@ func NewWorkerPool(cfg Config) *WorkerPool {
 		cfg.Transformer,
 		cfg.Publisher,
 		cfg.EstimatedRows,
-		numWorkers,
+		cfg.NumWorkers,
 		jobs,
 	}
 }

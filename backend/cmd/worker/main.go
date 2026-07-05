@@ -129,6 +129,7 @@ func run(ctx context.Context, w io.Writer) error {
 		Transformer:   flattener,
 		Publisher:     liveTailPublisher,
 		EstimatedRows: config.WorkerRowsPerBatch,
+		NumWorkers:    config.WorkerCount,
 	})
 
 	consumeCallback, err := workPool.ConsumeCallback()
