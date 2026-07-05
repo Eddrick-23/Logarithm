@@ -12,16 +12,17 @@ export default function NatsQueueDepth() {
     const numRedeliveredData = useMemo(() => [{ data: data?.numRedelivered ?? [] }], [data]);
 
     return (
-        <Stack>
+        <Stack spacing={2}>
+            <NatsQueueDepthGraph
+                title="Num Pending - number of logs waiting in the queue to be delivered"
+                xAxisData={xAxisData}
+                seriesData={numPendingData}
+                isLoading={isLoading}
+                isError={isError}
+                dataUpdatedAt={dataUpdatedAt}
+            />
+
             <Stack direction="row" spacing={2} sx={{ width: "100%" }}>
-                <NatsQueueDepthGraph
-                    title="Num Pending - number of logs waiting in the queue to be delivered"
-                    xAxisData={xAxisData}
-                    seriesData={numPendingData}
-                    isLoading={isLoading}
-                    isError={isError}
-                    dataUpdatedAt={dataUpdatedAt}
-                />
                 <NatsQueueDepthGraph
                     title="Num Ack Pending - number of logs currently being processed"
                     xAxisData={xAxisData}
@@ -30,15 +31,15 @@ export default function NatsQueueDepth() {
                     isError={isError}
                     dataUpdatedAt={dataUpdatedAt}
                 />
+                <NatsQueueDepthGraph
+                    title="Num Redelivered - number of times logs has been resent"
+                    xAxisData={xAxisData}
+                    seriesData={numRedeliveredData}
+                    isLoading={isLoading}
+                    isError={isError}
+                    dataUpdatedAt={dataUpdatedAt}
+                />
             </Stack>
-            <NatsQueueDepthGraph
-                title="Num Redelivered - number of times logs has been resent"
-                xAxisData={xAxisData}
-                seriesData={numRedeliveredData}
-                isLoading={isLoading}
-                isError={isError}
-                dataUpdatedAt={dataUpdatedAt}
-            />
         </Stack>
     );
 }
