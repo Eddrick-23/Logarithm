@@ -33,6 +33,7 @@ func AddRoutes(
 	mux.Handle("GET /api/log-rate-stats", handleLogRateStats(logger, logStore))
 	mux.Handle("GET /api/error-rate-metrics", handleErrorRateMetrics(logger, logStore))
 	mux.Handle("GET /api/storage-info", handleStorageInfo(logger, logStore))
+	mux.Handle("GET /api/nats-queue-depth-metrics", handleNatsQueueDepthMetrics(logger, logStore))
 	mux.Handle("GET /api/config", handleConfig(logger, config))
 	mux.Handle("GET /ws/logs/tail", handleLiveTail(logger, broker, config))
 }
@@ -315,6 +316,21 @@ func handleStorageInfo(logger *slog.Logger, logStore *storage.ClickHouseStore) h
 		}
 
 		writeJSON(w, logger, http.StatusOK, card)
+	}
+}
+
+func handleNatsQueueDepthMetrics(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		// retrieve nats queue depth metrics in the past 15 minutes
+		natsQueueDepthMetrics, err := logStore.GetNatsQueueDepthMetrics(ctx, 15)
+		if err != nil {
+			writeError(w, logger, err, "failed to get nats queue depth metrics", "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		writeJSON(w, logger, http.StatusOK, natsQueueDepthMetrics)
 	}
 }
 
