@@ -34,15 +34,24 @@ type Config struct {
 	NumWorkers    int
 }
 
+const (
+	defaultEstimatedRows = 1000
+	defaultNumWorkers    = 1
+)
+
 func NewWorkerPool(cfg Config) *WorkerPool {
+	if cfg.Logger == nil {
+		cfg.Logger = slog.Default()
+	}
+
 	if cfg.EstimatedRows <= 0 {
 		cfg.Logger.Warn("Estimated rows must be positive, defaulting to 1000")
-		cfg.EstimatedRows = 1000
+		cfg.EstimatedRows = defaultEstimatedRows
 	}
 
 	if cfg.NumWorkers <= 0 {
 		cfg.Logger.Warn("NumWorkers must be positive, defaulting to 1")
-		cfg.NumWorkers = 1
+		cfg.NumWorkers = defaultNumWorkers
 	}
 
 	jobs := make(chan func(), cfg.NumWorkers)

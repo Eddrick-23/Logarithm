@@ -21,24 +21,20 @@ func TestLiveTailPublisherConcurrentEnqueue(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			success := publisher.Enqueue("test-subject", msg)
 			assert.True(t, success, "enqueue should succeed")
-		}()
+		})
 	}
 
 	wg.Wait()
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-producer.publishCh
 	}
 
-	producer.mu.Lock()
-	defer producer.mu.Unlock()
-	assert.Equal(t, 10, producer.publishCount, "All 10 messages should be published successfully")
+	assert.Equal(t, 10, producer.GetPublishLiveTailCount(), "All 10 messages should be published successfully")
 }
 
 func TestLiveTailPublisherBackPressure(t *testing.T) {
