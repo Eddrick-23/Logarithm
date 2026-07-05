@@ -7,7 +7,6 @@ import {
     fetchLogRateStats,
 } from "../api/metricsApi";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { IngestionGraphData } from "../types/Metric";
 
 const QUERY_KEYS = {
     ingestionGraphMetrics: "ingestionGraphMetrics",
@@ -17,7 +16,6 @@ const QUERY_KEYS = {
     storageInfoMetrics: "storageInfoMetrics",
 };
 
-const MAX_POINTS = 60;
 const STALE_THRESHOLD_MS = 15000; // 15s stale time
 const EVENT_MAP = [
     { event: "ingestion-graph-metrics", queryKey: QUERY_KEYS.ingestionGraphMetrics },
@@ -43,32 +41,8 @@ export const useDashboard = () => {
 
         for (const { event, queryKey } of EVENT_MAP) {
             eventSource.addEventListener(event, (e) => {
-                if (event === "ingestion-graph-metrics") {
-                    const liveDelta: IngestionGraphData = JSON.parse(e.data);
-
-                    queryClient.setQueryData([queryKey], (oldData: IngestionGraphData | undefined) => {
-                        if (!oldData) return liveDelta;
-
-                        const nextTimestamps = [...oldData.timestamps, ...liveDelta.timestamps].slice(-MAX_POINTS);
-                        const nextMetrics: Record<string, { logsCount: number }[]> = {};
-                        const allServices = Array.from(
-                            new Set([...Object.keys(oldData.metrics), ...Object.keys(liveDelta.metrics)]),
-                        );
-
-                        allServices.forEach((service) => {
-                            const oldVals = oldData.metrics[service] || [];
-                            const deltaVals =
-                                liveDelta.metrics[service] ?? Array(liveDelta.timestamps.length).fill({ logsCount: 0 });
-                            nextMetrics[service] = [...oldVals, ...deltaVals].slice(-MAX_POINTS);
-                        });
-
-                        return { timestamps: nextTimestamps, metrics: nextMetrics };
-                    });
-                } else {
-                    const data = JSON.parse(e.data);
-                    queryClient.setQueryData([queryKey], data);
-                }
-
+                const data = JSON.parse(e.data);
+                queryClient.setQueryData([queryKey], data);
                 setIsError(false);
                 lastMessageRef.current = Date.now();
             });
