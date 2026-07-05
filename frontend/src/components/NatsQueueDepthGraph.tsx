@@ -19,6 +19,9 @@ interface NatsQueueDepthGraphProps {
     dataUpdatedAt: number;
 }
 
+// set min difference between each number on y-axis to be 1 and round off all numbers on y-axis to whole numbers
+const yAxis = [{ min: 0, tickMinStep: 1, valueFormatter: (value: number) => Math.round(value).toString() }];
+
 export default function NatsQueueDepthGraph({
     title,
     xAxisData,
@@ -45,13 +48,15 @@ export default function NatsQueueDepthGraph({
 
             {!isLoading && xAxisData && xAxisData.length > 0 && (
                 <LineChart
+                    skipAnimation
                     xAxis={[
-                        { data: xAxisData, scaleType: "time", valueFormatter: (date) => date.toLocaleTimeString() },
+                        {
+                            data: xAxisData,
+                            scaleType: "time",
+                            valueFormatter: (date) => date.toLocaleTimeString(),
+                        },
                     ]}
-                    yAxis={[
-                        // set min difference between each number on y-axis to be 1 and round off all numbers on y-axis to whole numbers
-                        { min: 0, tickMinStep: 1, valueFormatter: (value: number) => Math.round(value).toString() },
-                    ]}
+                    yAxis={yAxis}
                     series={seriesData}
                     height={CHART_HEIGHT}
                 />
