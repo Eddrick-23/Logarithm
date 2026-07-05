@@ -270,8 +270,6 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 				// attempt to save the info into the database
 				if err := logStore.SaveConsumerInfo(ctx, info); err != nil {
 					databaseLogger.Error("failed to write consumer info to database", "err", err)
-				} else {
-					natsLogger.Debug("successfully saved consumer info", "info", info.Name)
 				}
 
 			case <-ctx.Done():
