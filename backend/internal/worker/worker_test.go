@@ -184,7 +184,17 @@ func TestConsumeCallback(t *testing.T) {
 				return &validReq, nil
 			})
 
-			callback, err := ConsumeCallback(slog.Default(), store, &NoOpDecompressor{}, decoder, &NoOpTransformer{}, &NoOpPublisher{}, 10)
+			workPool := NewWorkerPool(Config{
+				Logger:        slog.Default(),
+				Store:         store,
+				Decompressor:  &NoOpDecompressor{},
+				Decoder:       decoder,
+				Transformer:   &NoOpTransformer{},
+				Publisher:     &NoOpPublisher{},
+				EstimatedRows: 10,
+			})
+
+			callback, err := workPool.ConsumeCallback()
 
 			require.NoError(t, err, "error creating consume callback")
 

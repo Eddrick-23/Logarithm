@@ -121,8 +121,17 @@ func run(ctx context.Context, w io.Writer) error {
 
 	decoder := worker.NewLogDecoder()
 	flattener := worker.NewLogTransformer(logger)
+	workPool := worker.NewWorkerPool(worker.Config{
+		Logger:        workerLogger,
+		Store:         store,
+		Decompressor:  decompressor,
+		Decoder:       decoder,
+		Transformer:   flattener,
+		Publisher:     liveTailPublisher,
+		EstimatedRows: config.WorkerRowsPerBatch,
+	})
 
-	consumeCallback, err := worker.ConsumeCallback(workerLogger, store, decompressor, decoder, flattener, liveTailPublisher, config.WorkerRowsPerBatch)
+	consumeCallback, err := workPool.ConsumeCallback()
 	if err != nil {
 		return err
 	}

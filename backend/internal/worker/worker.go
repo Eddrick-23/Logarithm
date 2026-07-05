@@ -9,21 +9,48 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 )
 
-// ConsumeCallback returns the message handler used by the log consumer.
-//
-// Incoming OTLP logs are flattened, grouped by service, published to the
-// live-tail stream on a file and forget basis, and bulk inserted into storage.
-// Storage insertion failures are returned; live-tail publish failures are
-// logged and ignored.
-func ConsumeCallback(logger *slog.Logger, store storage.LogStore, decompressor Decompressor,
-	decoder Decoder, transformer Transformer, publisher Publisher, estRows int) (func([]transport.Message) error, error) {
+type WorkerPool struct {
+	logger        *slog.Logger
+	store         storage.LogStore
+	decompressor  Decompressor
+	decoder       Decoder
+	transformer   Transformer
+	publisher     Publisher
+	estimatedRows int
+	// TODO init worker pool
+}
+
+type Config struct {
+	Logger        *slog.Logger
+	Store         storage.LogStore
+	Decompressor  Decompressor
+	Decoder       Decoder
+	Transformer   Transformer
+	Publisher     Publisher
+	EstimatedRows int
+	// TODO specify num workers
+}
+
+func NewWorkerPool(cfg Config) *WorkerPool {
+	return &WorkerPool{
+		cfg.Logger,
+		cfg.Store,
+		cfg.Decompressor,
+		cfg.Decoder,
+		cfg.Transformer,
+		cfg.Publisher,
+		cfg.EstimatedRows,
+	}
+}
+
+func (w *WorkerPool) ConsumeCallback() (func([]transport.Message) error, error) {
 	return func(messages []transport.Message) error {
 		if len(messages) == 0 {
 			return nil
 		}
 
-		appender := store.FastInsert(estRows)
-		processMessages(logger, decompressor, decoder, messages, transformer, publisher, appender)
+		appender := w.store.FastInsert(w.estimatedRows)
+		processMessages(w.logger, w.decompressor, w.decoder, messages, w.transformer, w.publisher, appender)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
@@ -31,6 +58,24 @@ func ConsumeCallback(logger *slog.Logger, store storage.LogStore, decompressor D
 		return appender.Flush(ctx)
 	}, nil
 }
+
+// TODO remove once implemented
+// func ConsumeCallbackOld(logger *slog.Logger, store storage.LogStore, decompressor Decompressor,
+// 	decoder Decoder, transformer Transformer, publisher Publisher, estRows int) (func([]transport.Message) error, error) {
+// 	return func(messages []transport.Message) error {
+// 		if len(messages) == 0 {
+// 			return nil
+// 		}
+
+// 		appender := store.FastInsert(estRows)
+// 		processMessages(logger, decompressor, decoder, messages, transformer, publisher, appender)
+
+// 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+// 		defer cancel()
+
+// 		return appender.Flush(ctx)
+// 	}, nil
+// }
 
 func processMessages(logger *slog.Logger, decompressor Decompressor, decoder Decoder, messages []transport.Message,
 	transformer Transformer, publisher Publisher, appender storage.LogAppender) {
