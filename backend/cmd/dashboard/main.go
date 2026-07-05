@@ -18,6 +18,7 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/dashboard"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
+	"github.com/Eddrick-23/Logarithm/internal/worker"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -247,7 +248,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 
 	// Bind to the existing jetstream consumer and start consuming messages, mainly used to
 	// extract out the consumer info to be saved into db to be displayed on the frontend
-	jetStreamConsumer, err := broker.GetJetstreamConsumer(ctx, transport.LogStreamName, config.WorkerName)
+	jetStreamConsumer, err := broker.GetJetstreamConsumer(ctx, transport.LogStreamName, worker.WorkerName)
 	if err != nil {
 		natsLogger.Error("failed to load jetstream consumer", "err", err)
 	}
