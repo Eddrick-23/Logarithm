@@ -34,8 +34,8 @@ func gzipCompress(tb testing.TB, data []byte) []byte {
 	return buf.Bytes()
 }
 
-func makeMessages(t *testing.T, payloads [][]byte, headers map[string][]string) []transport.Message {
-	t.Helper()
+func makeMessages(tb testing.TB, payloads [][]byte, headers map[string][]string) []transport.Message {
+	tb.Helper()
 	msgs := make([]transport.Message, len(payloads))
 
 	for i, p := range payloads {
@@ -61,7 +61,7 @@ func makeHeaders(contentType string, contentEncoding string) map[string][]string
 	return headers
 }
 
-func newBaseRequest(t *testing.T) plogotlp.ExportRequest {
+func newBaseRequest(tb testing.TB) plogotlp.ExportRequest {
 	inputJSON := `{
 				"resourceLogs": [{
 					"resource": {
@@ -79,6 +79,6 @@ func newBaseRequest(t *testing.T) plogotlp.ExportRequest {
 
 	req := plogotlp.NewExportRequest()
 	err := req.UnmarshalJSON([]byte(inputJSON))
-	require.NoError(t, err, "invalid inputJSON provided")
+	require.NoError(tb, err, "invalid inputJSON provided")
 	return req
 }

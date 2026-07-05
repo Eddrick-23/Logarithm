@@ -40,7 +40,7 @@ func (m *MockLogAppender) GetAppendCount() int {
 
 // MockLogStore
 type MockLogStore struct {
-	Appender *MockLogAppender
+	Appender storage.LogAppender
 }
 
 func (m *MockLogStore) FastInsert(preSize int) storage.LogAppender {

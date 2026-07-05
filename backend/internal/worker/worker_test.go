@@ -390,7 +390,8 @@ func TestConsumeCallback_AllMessagesProcessedAcrossRegions(t *testing.T) {
 		"every message should be flattended exactly once, regardless of splitting")
 }
 
-// every flatten call causes a panic
+// custom mock that controls panics using a boolean field
+// Used only here
 type PanicTransformer struct {
 	panicDuringFlatten bool
 }
