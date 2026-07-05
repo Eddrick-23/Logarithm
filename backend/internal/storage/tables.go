@@ -6,10 +6,11 @@ import (
 )
 
 const (
-	TableLogs            = "logs"
-	TableMetrics         = "metrics"    // 1 second bucket
-	TableMetrics1m       = "metrics_1m" // 1 minute bucket
-	TableServiceRegistry = "service_registry"
+	TableLogs                     = "logs"
+	TableMetrics                  = "metrics"    // 1 second bucket
+	TableMetrics1m                = "metrics_1m" // 1 minute bucket
+	TableServiceRegistry          = "service_registry"
+	TableJetstreamConsumerMetrics = "jetstream_consumer_metrics"
 )
 
 // add new constants here
@@ -18,6 +19,7 @@ var allTables = []string{
 	TableMetrics,
 	TableMetrics1m,
 	TableServiceRegistry,
+	TableJetstreamConsumerMetrics,
 }
 
 var validTableName = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)

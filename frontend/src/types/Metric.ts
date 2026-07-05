@@ -31,3 +31,10 @@ export type TopServiceErrorsStats = {
 export type GetTopServiceErrorsStatsResponse = {
     data: TopServiceErrorsStats[];
 };
+
+export type NatsQueueDepthGraphMetrics = {
+    timestamps: number[];
+    numPending: number[];
+    numAckPending: number[];
+    numRedelivered: number[];
+};

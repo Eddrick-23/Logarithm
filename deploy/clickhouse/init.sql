@@ -104,3 +104,18 @@ SELECT
     max(Timestamp) AS LastSeen
 FROM logarithm.logs
 GROUP BY ServiceName;
+
+CREATE TABLE IF NOT EXISTS logarithm.jetstream_consumer_metrics (
+    Timestamp DateTime('UTC'),
+    ConsumerName LowCardinality(String),
+    StreamName LowCardinality(String),
+    NumAckPending UInt64,
+    NumRedelivered UInt64,
+    NumPending UInt64,
+)
+ENGINE = MergeTree()
+PARTITION BY toYYYYMMDD(Timestamp)
+ORDER BY (StreamName, ConsumerName, Timestamp)
+
+-- Auto-delete old jetstream consumer metrics to save disk space
+TTL Timestamp + INTERVAL 1 HOUR;

@@ -11,6 +11,8 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 )
 
+const WorkerName = "worker"
+
 type WorkerPool struct {
 	logger        *slog.Logger
 	store         storage.LogStore
