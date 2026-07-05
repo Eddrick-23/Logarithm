@@ -3,6 +3,8 @@ package worker
 import (
 	"context"
 	"log/slog"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/storage"
@@ -17,7 +19,8 @@ type WorkerPool struct {
 	transformer   Transformer
 	publisher     Publisher
 	estimatedRows int
-	// TODO init worker pool
+	numWorkers    int
+	jobs          chan func()
 }
 
 type Config struct {
@@ -32,6 +35,22 @@ type Config struct {
 }
 
 func NewWorkerPool(cfg Config) *WorkerPool {
+	const numWorkers int = 3
+	jobs := make(chan func(), numWorkers)
+
+	// worker will take in functions from the chan and call them
+	// error handling is managed within the function
+	// fanning in i.e. combining results, is handled within the function
+	// via appending to the same appender
+	for i := range numWorkers {
+		logger := cfg.Logger.With("component", "worker"+strconv.Itoa(i))
+		go func() {
+			for job := range jobs {
+				runSafely(logger, job)
+			}
+		}()
+	}
+
 	return &WorkerPool{
 		cfg.Logger,
 		cfg.Store,
@@ -40,7 +59,14 @@ func NewWorkerPool(cfg Config) *WorkerPool {
 		cfg.Transformer,
 		cfg.Publisher,
 		cfg.EstimatedRows,
+		numWorkers,
+		jobs,
 	}
+}
+
+func (w *WorkerPool) Close() {
+	// closes job channel so worker goroutines can exit
+	close(w.jobs)
 }
 
 func (w *WorkerPool) ConsumeCallback() (func([]transport.Message) error, error) {
@@ -50,7 +76,25 @@ func (w *WorkerPool) ConsumeCallback() (func([]transport.Message) error, error) 
 		}
 
 		appender := w.store.FastInsert(w.estimatedRows)
-		processMessages(w.logger, w.decompressor, w.decoder, messages, w.transformer, w.publisher, appender)
+		intervals := splitMessages(len(messages), w.numWorkers)
+		var wg sync.WaitGroup
+		wg.Add(len(intervals))
+
+		for _, iv := range intervals {
+			w.jobs <- func() {
+				defer wg.Done()
+				processMessages(
+					w.logger,
+					w.decompressor,
+					w.decoder,
+					messages[iv.start:iv.end],
+					w.transformer,
+					w.publisher,
+					appender,
+				)
+			}
+		}
+		wg.Wait()
 
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
@@ -59,23 +103,49 @@ func (w *WorkerPool) ConsumeCallback() (func([]transport.Message) error, error) 
 	}, nil
 }
 
-// TODO remove once implemented
-// func ConsumeCallbackOld(logger *slog.Logger, store storage.LogStore, decompressor Decompressor,
-// 	decoder Decoder, transformer Transformer, publisher Publisher, estRows int) (func([]transport.Message) error, error) {
-// 	return func(messages []transport.Message) error {
-// 		if len(messages) == 0 {
-// 			return nil
-// 		}
+// allows recovery of goroutine worker if it panics while running the job
+func runSafely(logger *slog.Logger, job func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("panic in worker job", "panic", r)
+		}
+	}()
 
-// 		appender := store.FastInsert(estRows)
-// 		processMessages(logger, decompressor, decoder, messages, transformer, publisher, appender)
+	job()
+}
 
-// 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-// 		defer cancel()
+// represents start(inclusive), end(exclusive): [start, end)
+type interval struct {
+	start, end int
+}
 
-// 		return appender.Flush(ctx)
-// 	}, nil
-// }
+// splitMessages divides numMessagse into at most numWorkers contiguous,
+// non-overlapping regions. Sizes differ by at most one message, with
+// remainder distributed across the different regions. Returns index
+// bounds wrapped in an interval struct.
+func splitMessages(numMessages, numWorkers int) []interval {
+	numWorkers = min(numMessages, numWorkers)
+
+	if numWorkers <= 0 {
+		return nil
+	}
+
+	intervals := make([]interval, numWorkers)
+	base := numMessages / numWorkers
+	remainder := numMessages % numWorkers
+
+	start := 0
+	for i := 0; i < numWorkers; i++ {
+		size := base
+		if i < remainder {
+			size++
+		}
+		intervals[i] = interval{start: start, end: start + size}
+		start += size
+	}
+
+	return intervals
+}
 
 func processMessages(logger *slog.Logger, decompressor Decompressor, decoder Decoder, messages []transport.Message,
 	transformer Transformer, publisher Publisher, appender storage.LogAppender) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ClickHouse/ch-go"
@@ -36,8 +37,10 @@ type LogAppender interface {
 type batchAppender struct {
 	store *ClickHouseStore
 	batch *columnBatch
+	mu    sync.Mutex
 }
 
+// Appends a row entry. This operation is thread safe.
 func (b *batchAppender) Append(
 	timestamp, observedTimestamp time.Time,
 	severityNumber uint8,
@@ -46,6 +49,9 @@ func (b *batchAppender) Append(
 	logAttrKeys, logAttrValues, resAttrKeys, resAttrValues []string,
 	logFields LogFields,
 ) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	b.batch.Timestamps.Append(timestamp)
 	b.batch.ObservedTimestamps.Append(observedTimestamp)
 	b.batch.SeverityNumbers.Append(severityNumber)
@@ -219,6 +225,7 @@ func (c *columnBatch) Capacity() int {
 // Then call the Flush() interface method to perform the insert.
 // This avoids intermediate allocations and fills out ch-go's internal
 // column buffers directly.
+// The Append operations are safe to call concurrently.
 func (s *ClickHouseStore) FastInsert(preSize int) LogAppender {
 	colBatch := s.batchPool.Get()
 	colBatch.Reset()
