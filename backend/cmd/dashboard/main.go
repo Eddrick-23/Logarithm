@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/config"
+	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/dashboard"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
@@ -268,8 +269,18 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 					continue
 				}
 
+				natsQueueDepthConsumerInfo := core.NatsQueueDepthConsumerInfo{
+					Name:           info.Name,
+					Stream:         info.Stream,
+					NumPending:     info.NumPending,
+					NumAckPending:  uint64(info.NumAckPending),
+					NumRedelivered: uint64(info.NumRedelivered),
+				}
+
+				logger.Info("help ", "test", info)
+
 				// attempt to save the info into the database
-				if err := logStore.SaveConsumerInfo(ctx, info); err != nil {
+				if err := logStore.SaveConsumerInfo(ctx, natsQueueDepthConsumerInfo); err != nil {
 					databaseLogger.Error("failed to write consumer info to database", "err", err)
 				}
 

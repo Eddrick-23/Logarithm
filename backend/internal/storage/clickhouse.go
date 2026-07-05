@@ -14,7 +14,6 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/pool"
-	"github.com/nats-io/nats.go/jetstream"
 )
 
 type LogStore interface {
@@ -596,7 +595,7 @@ func (s *ClickHouseStore) GetNatsQueueDepthMetrics(ctx context.Context, duration
 	return response, nil
 }
 
-func (s *ClickHouseStore) SaveConsumerInfo(ctx context.Context, info *jetstream.ConsumerInfo) error {
+func (s *ClickHouseStore) SaveConsumerInfo(ctx context.Context, info core.NatsQueueDepthConsumerInfo) error {
 	tbl, err := s.table(TableJetstreamConsumerMetrics)
 	if err != nil {
 		return fmt.Errorf("failed to get table: %v", err)
