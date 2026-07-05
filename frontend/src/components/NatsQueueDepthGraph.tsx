@@ -30,6 +30,8 @@ export default function NatsQueueDepthGraph({
     isError,
     dataUpdatedAt,
 }: NatsQueueDepthGraphProps) {
+    const hasData = xAxisData && xAxisData.length > 0;
+
     return (
         <Box sx={{ ...card, flex: 1 }}>
             <Typography sx={sectionLabel}>{title}</Typography>
@@ -46,7 +48,14 @@ export default function NatsQueueDepthGraph({
                 </Box>
             )}
 
-            {!isLoading && xAxisData && xAxisData.length > 0 && (
+            {!isLoading && !isError && !hasData && (
+                <Box sx={{ my: 2 }}>
+                    <Alert severity="info">No data yet.</Alert>
+                </Box>
+            )}
+
+            {/* after a while, there will be data recorded to be displayed */}
+            {!isLoading && hasData && (
                 <LineChart
                     skipAnimation
                     xAxis={[

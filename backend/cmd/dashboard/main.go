@@ -277,8 +277,6 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 					NumRedelivered: uint64(info.NumRedelivered),
 				}
 
-				logger.Info("help ", "test", info)
-
 				// attempt to save the info into the database
 				if err := logStore.SaveConsumerInfo(ctx, natsQueueDepthConsumerInfo); err != nil {
 					databaseLogger.Error("failed to write consumer info to database", "err", err)
