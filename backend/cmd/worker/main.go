@@ -131,6 +131,7 @@ func run(ctx context.Context, w io.Writer) error {
 		EstimatedRows: config.WorkerRowsPerBatch,
 		NumWorkers:    config.WorkerCount,
 	})
+	defer workPool.Close()
 
 	consumeCallback, err := workPool.ConsumeCallback()
 	if err != nil {
