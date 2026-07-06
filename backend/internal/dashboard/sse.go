@@ -36,8 +36,6 @@ func handleDashboardStream(logger *slog.Logger, logStore *storage.ClickHouseStor
 		defer ticker30s.Stop()
 		defer ticker15m.Stop()
 
-		lastSent := time.Now().UTC().Truncate(time.Second)
-
 		for {
 			select {
 			case <-r.Context().Done():
@@ -52,11 +50,9 @@ func handleDashboardStream(logger *slog.Logger, logStore *storage.ClickHouseStor
 
 			case <-ticker5s.C:
 				// ingestion graph refreshes every 5s
-				newLastSent, err := writeIngestionGraphAndLogRatesEvent(r.Context(), w, flusher, logger, logStore, lastSent)
-				if err != nil {
+				if err := writeIngestionGraphAndLogRatesEvent(r.Context(), w, flusher, logger, logStore); err != nil {
 					return
 				}
-				lastSent = newLastSent
 
 			case <-ticker15s.C:
 				// error rate metrics refreshes every 15s
@@ -104,16 +100,15 @@ func writeIngestionGraphAndLogRatesEvent(
 	flusher http.Flusher,
 	logger *slog.Logger,
 	logStore *storage.ClickHouseStore,
-	since time.Time,
-) (time.Time, error) {
+) error {
 	var ingestionGraphMetrics core.IngestionGraphMetrics
 	var logRateStats core.LogRateStatistics
 
 	eg, egCtx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
 		var err error
-		// retrieve metrics from last seen timing
-		ingestionGraphMetrics, err = logStore.GetIngestionGraphMetricsSince(egCtx, since)
+		// retrieve metrics from the past minute
+		ingestionGraphMetrics, err = logStore.GetIngestionGraphMetrics(egCtx)
 		return err
 	})
 	eg.Go(func() error {
@@ -124,26 +119,18 @@ func writeIngestionGraphAndLogRatesEvent(
 
 	if err := eg.Wait(); err != nil {
 		logger.Error("failed to fetch ingestion graph / log rate stats", "error", err)
-		return since, err
+		return err
 	}
 
 	if err := writeSSEEvent(w, flusher, "ingestion-graph-metrics", ingestionGraphMetrics); err != nil {
-		return since, err
+		return err
 	}
 
 	if err := writeSSEEvent(w, flusher, "log-rate-stats", logRateStats); err != nil {
-		return since, err
+		return err
 	}
 
-	// if there are no new data since last poll, advance cursor to now so the window doesn't grow unbounded on subsequent polls
-	if len(ingestionGraphMetrics.Timestamps) == 0 {
-		return time.Now().UTC(), nil
-	}
-
-	// update the since timing to be 1 second after the last timestamp recorded in the ingestionGraphMetrics timestamps
-	// this is so that we do not resend the same data point on thee next poll
-	nextSince := time.UnixMilli(ingestionGraphMetrics.Timestamps[len(ingestionGraphMetrics.Timestamps)-1]).Add(time.Second)
-	return nextSince, nil
+	return nil
 }
 
 func writeErrorRateMetricsEvent(

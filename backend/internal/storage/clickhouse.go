@@ -344,42 +344,6 @@ func (s *ClickHouseStore) GetIngestionGraphMetrics(ctx context.Context) (core.In
 	return core.NewIngestionGraphMetrics(rows, INGESTION_METRICS_DURATION*60), nil
 }
 
-// returns ingestion graph metrics from a certain time,
-// function returns an empty struct if since is newer than the newest data in the database
-func (s *ClickHouseStore) GetIngestionGraphMetricsSince(ctx context.Context, since time.Time) (core.IngestionGraphMetrics, error) {
-	tbl, err := s.table(TableMetrics)
-	if err != nil {
-		return core.IngestionGraphMetrics{}, err
-	}
-
-	var result core.IngestionGraphMetrics
-	end := time.Now().UTC().Truncate(time.Second)
-	start := since
-	if !start.Before(end) {
-		// error handling in case start timing is after end
-		return core.IngestionGraphMetrics{}, nil
-	}
-
-	whereClause := `WHERE Timestamp >= @start AND Timestamp < @end
-					GROUP BY ServiceName, Timestamp
-					ORDER BY ServiceName, Timestamp ASC
-					WITH FILL
-						FROM @start
-    					TO @end
-						STEP toIntervalSecond(1)`
-	queryString := fmt.Sprintf("SELECT Timestamp, ServiceName, sum(LogsCount) AS LogsCount FROM %v %v ", tbl, whereClause)
-
-	var rows []core.IngestionMetrics
-	if err := s.conn.Select(ctx, &rows, queryString, clickhouse.Named("start", start), clickhouse.Named("end", end)); err != nil {
-		return core.IngestionGraphMetrics{}, err
-	}
-
-	numSeconds := int(end.Sub(start).Seconds())
-	result = core.NewIngestionGraphMetrics(rows, numSeconds)
-
-	return result, nil
-}
-
 func (s *ClickHouseStore) GetErrorRateMetrics(ctx context.Context) (core.ErrorRateMetrics, error) {
 	tbl, err := s.table(TableMetrics)
 	if err != nil {
