@@ -144,6 +144,7 @@ func BenchmarkConsumeCallback(b *testing.B) {
 				EstimatedRows: numMessages * 2,
 				NumWorkers:    n,
 			})
+			require.NoError(b, err)
 			defer wp.Close()
 
 			callback, err := wp.ConsumeCallback()
