@@ -68,6 +68,7 @@ func TestValidate(t *testing.T) {
 		WorkerMaxBatch:            1000,
 		WorkerMaxWait:             2 * time.Second,
 		WorkerBackoff:             []time.Duration{1 * time.Second},
+		WorkerCount:               1,
 		WorkerLiveTailCount:       3,
 		WorkerLiveTailQueueSize:   10000,
 		WorkerRowsPerBatch:        1000,
@@ -78,6 +79,9 @@ func TestValidate(t *testing.T) {
 
 	invalidConfigMaxAckPending := validConfig
 	invalidConfigMaxAckPending.NatsConsumerMaxAckPending = 500
+
+	invalidConfigWorkerCount := validConfig
+	invalidConfigWorkerCount.WorkerCount = 0
 
 	invalidConfigLiveTailWorkers := validConfig
 	invalidConfigLiveTailWorkers.WorkerLiveTailCount = 0
@@ -107,6 +111,11 @@ func TestValidate(t *testing.T) {
 		{
 			name:          "invalid config max ack pending too low",
 			input:         invalidConfigMaxAckPending,
+			expectedError: true,
+		},
+		{
+			name:          "invalid config worker pool count",
+			input:         invalidConfigWorkerCount,
 			expectedError: true,
 		},
 		{

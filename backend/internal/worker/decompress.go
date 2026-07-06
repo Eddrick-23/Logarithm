@@ -28,8 +28,31 @@ type LogDecompressor struct {
 	gzipPool    sync.Pool
 }
 
-func NewLogDecompressor() (*LogDecompressor, error) {
-	zstdDecoder, err := zstd.NewReader(nil)
+type decompressorConfig struct {
+	zstdOpts []zstd.DOption
+}
+
+type DecompressorOption func(*decompressorConfig)
+
+// Set zstdConcurrencyLimit to bound number of possible workers when running decodes.
+// This is useful when having multiple workers to reduce context switching.
+// Setting to 0 uses zstd defaults: min(4, GOMAXPROCS) as per zstd docs.
+func WithZstdConcurrencyLimit(limit int) DecompressorOption {
+	return func(dc *decompressorConfig) {
+		if limit > 0 {
+			dc.zstdOpts = append(dc.zstdOpts, zstd.WithDecoderConcurrency(limit))
+		}
+	}
+}
+
+func NewLogDecompressor(opts ...DecompressorOption) (*LogDecompressor, error) {
+	cfg := &decompressorConfig{}
+
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
+	zstdDecoder, err := zstd.NewReader(nil, cfg.zstdOpts...)
 	if err != nil {
 		return nil, err
 	}

@@ -6,10 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
 
@@ -141,9 +143,153 @@ func TestProcessMessages(t *testing.T) {
 			transformer := &MockTransformer{}
 			processMessages(slog.Default(), tc.decompressor, tc.decoder, tc.messages,
 				transformer, &NoOpPublisher{}, appender)
-			assert.Equal(t, tc.expectedFlattens, transformer.flattenCount)
+			assert.Equal(t, tc.expectedFlattens, transformer.GetFlattenCount())
 		})
 	}
+}
+
+func TestNewWorkerPool(t *testing.T) {
+	factory := func() (Decompressor, error) {
+		return &NoOpDecompressor{}, nil
+	}
+	tests := []struct {
+		name               string
+		config             Config
+		expectedRows       int
+		expectedNumWorkers int
+	}{
+		{
+			name: "Positive EstimatedRows and NumWorkers",
+			config: Config{
+				Logger:        slog.Default(),
+				DecompFactory: factory,
+				EstimatedRows: 10000,
+				NumWorkers:    3,
+			},
+			expectedRows:       10000,
+			expectedNumWorkers: 3,
+		},
+		{
+			name: "Zero EstimatedRows and NumWorkers fall back to defaults",
+			config: Config{
+				Logger:        slog.Default(),
+				DecompFactory: factory,
+				EstimatedRows: 0,
+				NumWorkers:    0,
+			},
+			expectedRows:       defaultEstimatedRows,
+			expectedNumWorkers: defaultNumWorkers,
+		},
+		{
+			name: "nil logger falls back to default logger",
+			config: Config{
+				DecompFactory: factory,
+				EstimatedRows: 10000,
+				NumWorkers:    3,
+			},
+			expectedRows:       10000,
+			expectedNumWorkers: 3,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			wp, err := NewWorkerPool(tc.config)
+			require.NoError(t, err)
+			defer wp.Close()
+
+			assert.Equal(t, tc.expectedRows, wp.estimatedRows)
+			assert.Equal(t, tc.expectedNumWorkers, wp.numWorkers)
+		})
+	}
+}
+
+func TestSplitMessages(t *testing.T) {
+	tests := []struct {
+		name        string
+		numMessages int
+		numWorkers  int
+		expected    []interval
+	}{
+		{
+			name:        "even split",
+			numMessages: 6,
+			numWorkers:  3,
+			expected:    []interval{{0, 2}, {2, 4}, {4, 6}},
+		},
+		{
+			name:        "remainder distributed equally to front regions",
+			numMessages: 5,
+			numWorkers:  3,
+			expected:    []interval{{0, 2}, {2, 4}, {4, 5}},
+		},
+		{
+			name:        "single message single worker",
+			numMessages: 1,
+			numWorkers:  1,
+			expected:    []interval{{0, 1}},
+		},
+		{
+			name:        "zero message returns nil",
+			numMessages: 0,
+			numWorkers:  3,
+			expected:    nil,
+		},
+		{
+			name:        "zero workers returns nil",
+			numMessages: 5,
+			numWorkers:  0,
+			expected:    nil,
+		},
+		{
+			name:        "single worker takes everything",
+			numMessages: 7,
+			numWorkers:  1,
+			expected:    []interval{{0, 7}},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := splitMessages(tc.numMessages, tc.numWorkers)
+
+			assert.Equal(t, tc.expected, result)
+
+			if result != nil {
+				// test invariants
+				// interval.start <= interval.end
+				// should be contiguous [start, end)
+				// must cover entire region 0...len(messages)
+				lastEnd := 0
+				for i, iv := range result {
+					assert.Equal(t, lastEnd, iv.start, "regiond %d should start where previous ended", i)
+					assert.LessOrEqual(t, iv.start, iv.end)
+					lastEnd = iv.end
+				}
+
+				assert.Equal(t, tc.numMessages, lastEnd, "region should cover all messages")
+			}
+		})
+	}
+}
+
+func TestRunSafely(t *testing.T) {
+	t.Run("panic is recovered, does not propagate", func(t *testing.T) {
+		assert.NotPanics(t, func() {
+			runSafely(slog.Default(), func() {
+				panic("panic in job")
+			})
+		})
+	})
+
+	t.Run("normal job executes", func(t *testing.T) {
+		ran := false
+		runSafely(slog.Default(), func() {
+			ran = true
+		})
+
+		assert.True(t, ran)
+	})
 }
 
 func TestConsumeCallback(t *testing.T) {
@@ -183,8 +329,23 @@ func TestConsumeCallback(t *testing.T) {
 			decoder := DecoderFunc(func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
 				return &validReq, nil
 			})
+			factory := func() (Decompressor, error) {
+				return &NoOpDecompressor{}, nil
+			}
 
-			callback, err := ConsumeCallback(slog.Default(), store, &NoOpDecompressor{}, decoder, &NoOpTransformer{}, &NoOpPublisher{}, 10)
+			workPool, err := NewWorkerPool(Config{
+				Logger:        slog.Default(),
+				Store:         store,
+				DecompFactory: factory,
+				Decoder:       decoder,
+				Transformer:   &NoOpTransformer{},
+				Publisher:     &NoOpPublisher{},
+				EstimatedRows: 10,
+			})
+			require.NoError(t, err)
+			defer workPool.Close()
+
+			callback, err := workPool.ConsumeCallback()
 
 			require.NoError(t, err, "error creating consume callback")
 
@@ -196,5 +357,123 @@ func TestConsumeCallback(t *testing.T) {
 				require.NoError(t, err)
 			}
 		})
+	}
+}
+
+func TestConsumeCallback_AllMessagesProcessedAcrossRegions(t *testing.T) {
+	validReq := newBaseRequest(t)
+	validReqBytes, err := validReq.MarshalProto()
+	require.NoError(t, err)
+
+	const numMessages = 37 // force imperfect division to test distribution correctness
+	payloads := make([][]byte, numMessages)
+
+	for i := range payloads {
+		payloads[i] = validReqBytes
+	}
+
+	messages := makeMessages(t, payloads, makeHeaders("application/x-protobuf", ""))
+
+	appender := &MockLogAppender{flushErr: nil}
+	store := &MockLogStore{Appender: appender}
+	decoder := DecoderFunc(func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
+		return &validReq, nil
+	})
+	transformer := &MockTransformer{}
+	factory := func() (Decompressor, error) {
+		return &NoOpDecompressor{}, nil
+	}
+
+	wp, err := NewWorkerPool(Config{
+		Logger:        slog.Default(),
+		Store:         store,
+		DecompFactory: factory,
+		Decoder:       decoder,
+		Transformer:   transformer,
+		Publisher:     &NoOpPublisher{},
+		EstimatedRows: numMessages,
+		NumWorkers:    3,
+	})
+	require.NoError(t, err)
+	defer wp.Close()
+
+	callback, err := wp.ConsumeCallback()
+	require.NoError(t, err)
+
+	require.NoError(t, callback(messages))
+	assert.Equal(t, numMessages, transformer.GetFlattenCount(),
+		"every message should be flattened exactly once, regardless of splitting")
+}
+
+// custom mock that controls panics using a boolean field
+// Used only here
+type PanicTransformer struct {
+	panicDuringFlatten bool
+}
+
+func (p *PanicTransformer) Flatten(resourceLogs plog.ResourceLogs, publisher Publisher, appender storage.LogAppender) {
+	if p.panicDuringFlatten {
+		panic("panic during flatten")
+	}
+}
+
+func TestConsumeCallback_SurvivesTransformerPanic(t *testing.T) {
+	validReq := newBaseRequest(t)
+	validReqBytes, err := validReq.MarshalProto()
+	require.NoError(t, err)
+
+	const numMessages = 10
+	payloads := make([][]byte, numMessages)
+	for i := range payloads {
+		payloads[i] = validReqBytes
+	}
+	messages := makeMessages(t, payloads, makeHeaders("application/x-protobuf", ""))
+
+	appender := &MockLogAppender{}
+	store := &MockLogStore{Appender: appender}
+	decoder := DecoderFunc(func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
+		return &validReq, nil
+	})
+
+	panicTransformer := &PanicTransformer{panicDuringFlatten: true}
+	factory := func() (Decompressor, error) {
+		return &NoOpDecompressor{}, nil
+	}
+
+	wp, err := NewWorkerPool(Config{
+		Logger:        slog.Default(),
+		Store:         store,
+		DecompFactory: factory,
+		Decoder:       decoder,
+		Transformer:   panicTransformer,
+		Publisher:     &NoOpPublisher{},
+		EstimatedRows: numMessages,
+		NumWorkers:    1,
+	})
+	require.NoError(t, err)
+	defer wp.Close()
+
+	callback, err := wp.ConsumeCallback()
+	require.NoError(t, err)
+
+	// Test that a panic does not crash the callback
+	done := make(chan error, 1)
+	go func() { done <- callback(messages) }()
+
+	select {
+	case <-done:
+		// callback returned, internal wg.Done() fired correctly even though the job panicked
+	case <-time.After(2 * time.Second):
+		t.Fatal("ConsumeCallback did not return in time, likely issue with panic recovery")
+	}
+
+	// Test that worker pool still available despite a job panicking
+	panicTransformer.panicDuringFlatten = false
+	go func() { done <- callback(messages) }()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("ConsumeCallback did not return in time, go routine might have closed due to previous panic")
 	}
 }
