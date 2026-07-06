@@ -12,6 +12,12 @@ import {
     InputAdornment,
     IconButton,
     CircularProgress,
+    TableContainer,
+    Table,
+    TableHead,
+    TableRow,
+    TableCell,
+    TableBody,
 } from "@mui/material";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { card, pulseSx, sectionLabel } from "../theme/tokens";
@@ -21,7 +27,6 @@ import SearchIcon from "@mui/icons-material/Search";
 import ClearIcon from "@mui/icons-material/Clear";
 import type { FlatLogRecord, LogType } from "../types/Log";
 import { useDistinctServices } from "../hooks/useDistinctServices";
-import TailLogRow, { columnWidths } from "./TailLogRow";
 import ErrorBanner from "./ErrorBanner";
 import { decodeMulti, ExtensionCodec } from "@msgpack/msgpack";
 
@@ -59,6 +64,15 @@ const SEVERITY_NORMALISE_MAP: Record<string, LogType> = {
     warn: "warn", // by default OTEL uses "warn" instead of "warning" but we support both
     error: "error",
     fatal: "fatal",
+};
+
+const severityStyles: Record<LogType, { bg: string; text: string }> = {
+    trace: { bg: "rgba(189, 189, 189, 0.15)", text: "#bdbdbd" }, // Grey
+    debug: { bg: "rgba(100, 181, 246, 0.15)", text: "#64b5f6" }, // Blue
+    info: { bg: "rgba(102, 187, 106, 0.15)", text: "success.main" }, // Green
+    warn: { bg: "rgba(255, 167, 38, 0.15)", text: "warning.main" }, // Orange
+    error: { bg: "rgba(239, 83, 80, 0.15)", text: "error.main" }, // Red
+    fatal: { bg: "rgba(171, 71, 188, 0.15)", text: "#ab47bc" }, // Purple
 };
 
 const parseSeverity = (severityText: string | null | undefined): LogType => {
@@ -119,6 +133,8 @@ export default function LiveTailLogs() {
                 for (const record of decodeMulti(buf, { extensionCodec })) {
                     batch.push(record as FlatLogRecord);
                 }
+                console.log(batch.length);
+                console.log(batch);
             } catch {
                 console.error("failed to parse websocket message", e.data);
                 return;
@@ -373,76 +389,64 @@ export default function LiveTailLogs() {
                     </Box>
                 )}
 
-                {/* Table Headers */}
-                <Box
-                    sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        pb: 1.5,
-                        borderBottom: "1px solid rgba(255,255,255,0.05)",
-                        gap: 1,
-                    }}
-                >
-                    <Typography
-                        sx={{
-                            width: columnWidths.time,
-                            textAlign: "left",
-                            fontSize: 13,
-                            color: "text.secondary",
-                            fontWeight: 600,
-                        }}
-                    >
-                        TIME
-                    </Typography>
-                    <Typography
-                        sx={{
-                            width: columnWidths.service,
-                            textAlign: "left",
-                            fontSize: 13,
-                            color: "text.secondary",
-                            fontWeight: 600,
-                        }}
-                    >
-                        SERVICE
-                    </Typography>
-                    <Typography
-                        sx={{
-                            width: columnWidths.severity,
-                            textAlign: "left",
-                            fontSize: 13,
-                            color: "text.secondary",
-                            fontWeight: 600,
-                        }}
-                    >
-                        SEVERITY
-                    </Typography>
-                    <Typography
-                        sx={{ flexGrow: 1, textAlign: "left", fontSize: 13, color: "text.secondary", fontWeight: 600 }}
-                    >
-                        BODY
-                    </Typography>
-                </Box>
-
-                {/* Logs List */}
-                <Box>
-                    {filteredLogs
-                        .slice(0, MAX_DISPLAY_LOGS)
-                        .map(({ serviceName, timestamp, severityText, body }, index) => (
-                            <TailLogRow
-                                key={`${serviceName}-${timestamp}-${index}`}
-                                time={new Date(timestamp).toLocaleString()}
-                                service={serviceName}
-                                severity={parseSeverity(severityText)}
-                                message={body}
-                            />
-                        ))}
-
-                    {filteredLogs.length === 0 && (
-                        <Box sx={{ textAlign: "center", py: 3, color: "text.secondary" }}>
-                            <Typography variant="body2">No logs match your filters</Typography>
-                        </Box>
-                    )}
-                </Box>
+                <TableContainer>
+                    <Table>
+                        <TableHead>
+                            <TableRow>
+                                {/* width set to 1% so that the columns will only span the length it occupies */}
+                                <TableCell sx={{ color: "text.secondary", width: "1%" }}>TIME</TableCell>
+                                <TableCell sx={{ color: "text.secondary", width: "1%" }}>SERVICE</TableCell>
+                                <TableCell sx={{ color: "text.secondary", width: "1%" }}>SEVERITY</TableCell>
+                                <TableCell sx={{ color: "text.secondary" }}>BODY</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {filteredLogs.length === 0 ? (
+                                <TableRow>
+                                    <TableCell colSpan={4} align="center" sx={{ color: "text.disabled", py: 4 }}>
+                                        No logs match your filters
+                                    </TableCell>
+                                </TableRow>
+                            ) : (
+                                filteredLogs.slice(0, MAX_DISPLAY_LOGS).map((log) => {
+                                    const severity = parseSeverity(log.severityText);
+                                    return (
+                                        <TableRow key={`${log.spanId}-${log.timestamp}`}>
+                                            <TableCell sx={{ fontWeight: "bold", whiteSpace: "nowrap" }}>
+                                                {new Date(log.timestamp).toLocaleString()}
+                                            </TableCell>
+                                            <TableCell sx={{ color: "text.disabled", whiteSpace: "nowrap" }}>
+                                                {log.serviceName}
+                                            </TableCell>
+                                            <TableCell>
+                                                <Box
+                                                    sx={{
+                                                        display: "inline-block",
+                                                        backgroundColor: severityStyles[severity].bg,
+                                                        borderRadius: 1,
+                                                        px: 1,
+                                                        py: 0.25,
+                                                    }}
+                                                >
+                                                    <Typography
+                                                        sx={{
+                                                            fontSize: 11,
+                                                            fontWeight: "bold",
+                                                            color: severityStyles[severity].text,
+                                                        }}
+                                                    >
+                                                        {severity.toUpperCase()}
+                                                    </Typography>
+                                                </Box>
+                                            </TableCell>
+                                            <TableCell sx={{ color: "text.disabled" }}>{log.body}</TableCell>
+                                        </TableRow>
+                                    );
+                                })
+                            )}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
             </Box>
         </>
     );
