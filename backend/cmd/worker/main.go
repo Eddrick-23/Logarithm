@@ -109,26 +109,31 @@ func run(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("failed to ensure dlq stream: %w", err)
 	}
 
-	decompressor, err := worker.NewLogDecompressor()
-	if err != nil {
-		return fmt.Errorf("failed to create log decompressor: %w", err)
-	}
-
 	liveTailPublisher := worker.NewLiveTailPublisher(publishLogger, natsBroker, config.WorkerLiveTailCount, config.WorkerLiveTailQueueSize)
 	defer liveTailPublisher.Close()
 
 	decoder := worker.NewLogDecoder()
 	flattener := worker.NewLogTransformer(logger)
-	workPool := worker.NewWorkerPool(worker.Config{
+	factory := func() (worker.Decompressor, error) {
+		if config.WorkerCount == 1 {
+			return worker.NewLogDecompressor()
+		} else {
+			return worker.NewLogDecompressor(worker.WithZstdConcurrencyLimit(1))
+		}
+	}
+	workPool, err := worker.NewWorkerPool(worker.Config{
 		Logger:        workerLogger,
 		Store:         store,
-		Decompressor:  decompressor,
+		DecompFactory: factory,
 		Decoder:       decoder,
 		Transformer:   flattener,
 		Publisher:     liveTailPublisher,
 		EstimatedRows: config.WorkerRowsPerBatch,
 		NumWorkers:    config.WorkerCount,
 	})
+	if err != nil {
+		return fmt.Errorf("workerPool construction failed: %w", err)
+	}
 	defer workPool.Close()
 
 	consumeCallback, err := workPool.ConsumeCallback()

@@ -123,17 +123,21 @@ func BenchmarkConsumeCallback(b *testing.B) {
 		b.Run(fmt.Sprintf("workers=%d", n), func(b *testing.B) {
 			store := &MockLogStore{Appender: &LockFreeAppender{}}
 
-			decompressor, err := NewLogDecompressor()
-			require.NoError(b, err)
-
+			factory := func() (Decompressor, error) {
+				if n == 1 {
+					return NewLogDecompressor()
+				} else {
+					return NewLogDecompressor(WithZstdConcurrencyLimit(1))
+				}
+			}
 			decoder := NewLogDecoder()
 
 			transformer := NewLogTransformer(slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-			wp := NewWorkerPool(Config{
+			wp, err := NewWorkerPool(Config{
 				Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 				Store:         store,
-				Decompressor:  decompressor,
+				DecompFactory: factory,
 				Decoder:       decoder,
 				Transformer:   transformer,
 				Publisher:     &NoOpPublisher{},

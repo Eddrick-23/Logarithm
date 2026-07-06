@@ -149,6 +149,9 @@ func TestProcessMessages(t *testing.T) {
 }
 
 func TestNewWorkerPool(t *testing.T) {
+	factory := func() (Decompressor, error) {
+		return &NoOpDecompressor{}, nil
+	}
 	tests := []struct {
 		name               string
 		config             Config
@@ -159,6 +162,7 @@ func TestNewWorkerPool(t *testing.T) {
 			name: "Positive EstimatedRows and NumWorkers",
 			config: Config{
 				Logger:        slog.Default(),
+				DecompFactory: factory,
 				EstimatedRows: 10000,
 				NumWorkers:    3,
 			},
@@ -169,6 +173,7 @@ func TestNewWorkerPool(t *testing.T) {
 			name: "Zero EstimatedRows and NumWorkers fall back to defaults",
 			config: Config{
 				Logger:        slog.Default(),
+				DecompFactory: factory,
 				EstimatedRows: 0,
 				NumWorkers:    0,
 			},
@@ -178,6 +183,7 @@ func TestNewWorkerPool(t *testing.T) {
 		{
 			name: "nil logger falls back to default logger",
 			config: Config{
+				DecompFactory: factory,
 				EstimatedRows: 10000,
 				NumWorkers:    3,
 			},
@@ -188,7 +194,8 @@ func TestNewWorkerPool(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			wp := NewWorkerPool(tc.config)
+			wp, err := NewWorkerPool(tc.config)
+			require.NoError(t, err)
 			defer wp.Close()
 
 			assert.Equal(t, tc.expectedRows, wp.estimatedRows)
@@ -322,16 +329,21 @@ func TestConsumeCallback(t *testing.T) {
 			decoder := DecoderFunc(func(payload []byte, headers map[string][]string) (*plogotlp.ExportRequest, error) {
 				return &validReq, nil
 			})
+			factory := func() (Decompressor, error) {
+				return &NoOpDecompressor{}, nil
+			}
 
-			workPool := NewWorkerPool(Config{
+			workPool, err := NewWorkerPool(Config{
 				Logger:        slog.Default(),
 				Store:         store,
-				Decompressor:  &NoOpDecompressor{},
+				DecompFactory: factory,
 				Decoder:       decoder,
 				Transformer:   &NoOpTransformer{},
 				Publisher:     &NoOpPublisher{},
 				EstimatedRows: 10,
 			})
+			require.NoError(t, err)
+			defer workPool.Close()
 
 			callback, err := workPool.ConsumeCallback()
 
@@ -368,18 +380,21 @@ func TestConsumeCallback_AllMessagesProcessedAcrossRegions(t *testing.T) {
 		return &validReq, nil
 	})
 	transformer := &MockTransformer{}
+	factory := func() (Decompressor, error) {
+		return &NoOpDecompressor{}, nil
+	}
 
-	wp := NewWorkerPool(Config{
+	wp, err := NewWorkerPool(Config{
 		Logger:        slog.Default(),
 		Store:         store,
-		Decompressor:  &NoOpDecompressor{},
+		DecompFactory: factory,
 		Decoder:       decoder,
 		Transformer:   transformer,
 		Publisher:     &NoOpPublisher{},
 		EstimatedRows: numMessages,
 		NumWorkers:    3,
 	})
-
+	require.NoError(t, err)
 	defer wp.Close()
 
 	callback, err := wp.ConsumeCallback()
@@ -421,17 +436,21 @@ func TestConsumeCallback_SurvivesTransformerPanic(t *testing.T) {
 	})
 
 	panicTransformer := &PanicTransformer{panicDuringFlatten: true}
+	factory := func() (Decompressor, error) {
+		return &NoOpDecompressor{}, nil
+	}
 
-	wp := NewWorkerPool(Config{
+	wp, err := NewWorkerPool(Config{
 		Logger:        slog.Default(),
 		Store:         store,
-		Decompressor:  &NoOpDecompressor{},
+		DecompFactory: factory,
 		Decoder:       decoder,
 		Transformer:   panicTransformer,
 		Publisher:     &NoOpPublisher{},
 		EstimatedRows: numMessages,
 		NumWorkers:    1,
 	})
+	require.NoError(t, err)
 	defer wp.Close()
 
 	callback, err := wp.ConsumeCallback()

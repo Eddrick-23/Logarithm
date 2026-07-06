@@ -13,22 +13,24 @@ import (
 
 const WorkerName = "worker"
 
+type DecompressorFactory func() (Decompressor, error)
+type job func(Decompressor)
+
 type WorkerPool struct {
 	logger        *slog.Logger
 	store         storage.LogStore
-	decompressor  Decompressor
 	decoder       Decoder
 	transformer   Transformer
 	publisher     Publisher
 	estimatedRows int
 	numWorkers    int
-	jobs          chan func()
+	jobs          chan job
 }
 
 type Config struct {
 	Logger        *slog.Logger
 	Store         storage.LogStore
-	Decompressor  Decompressor
+	DecompFactory DecompressorFactory
 	Decoder       Decoder
 	Transformer   Transformer
 	Publisher     Publisher
@@ -41,7 +43,7 @@ const (
 	defaultNumWorkers    = 1
 )
 
-func NewWorkerPool(cfg Config) *WorkerPool {
+func NewWorkerPool(cfg Config) (*WorkerPool, error) {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
@@ -56,7 +58,7 @@ func NewWorkerPool(cfg Config) *WorkerPool {
 		cfg.NumWorkers = defaultNumWorkers
 	}
 
-	jobs := make(chan func(), cfg.NumWorkers)
+	jobs := make(chan job, cfg.NumWorkers)
 
 	// worker will take in functions from the chan and call them
 	// error handling is managed within the function.
@@ -64,9 +66,13 @@ func NewWorkerPool(cfg Config) *WorkerPool {
 	// via appending to the same appender
 	for i := range cfg.NumWorkers {
 		logger := cfg.Logger.With("component", "PoolWorker"+strconv.Itoa(i+1))
+		decompressor, err := cfg.DecompFactory()
+		if err != nil {
+			return nil, err
+		}
 		go func() {
 			for job := range jobs {
-				runSafely(logger, job)
+				runSafely(logger, func() { job(decompressor) })
 			}
 		}()
 	}
@@ -74,14 +80,13 @@ func NewWorkerPool(cfg Config) *WorkerPool {
 	return &WorkerPool{
 		cfg.Logger,
 		cfg.Store,
-		cfg.Decompressor,
 		cfg.Decoder,
 		cfg.Transformer,
 		cfg.Publisher,
 		cfg.EstimatedRows,
 		cfg.NumWorkers,
 		jobs,
-	}
+	}, nil
 }
 
 func (w *WorkerPool) Close() {
@@ -101,11 +106,11 @@ func (w *WorkerPool) ConsumeCallback() (func([]transport.Message) error, error) 
 		wg.Add(len(intervals))
 
 		for _, iv := range intervals {
-			w.jobs <- func() {
+			w.jobs <- func(decompressor Decompressor) {
 				defer wg.Done()
 				processMessages(
 					w.logger,
-					w.decompressor,
+					decompressor,
 					w.decoder,
 					messages[iv.start:iv.end],
 					w.transformer,
