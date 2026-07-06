@@ -53,7 +53,8 @@ type Config struct {
 	WorkerMaxBatch            int             `env:"WORKER_MAX_BATCH, default=10"`
 	WorkerMaxWait             time.Duration   `env:"WORKER_MAX_WAIT, default=2s"`
 	WorkerBackoff             []time.Duration `env:"WORKER_BACKOFF, default=5s,30s,60s,300s,3600s"`
-	WorkerLiveTailCount       int             `env:"WORKER_LIVE_TAIL_Count, default=3"`
+	WorkerCount               int             `env:"WORKER_COUNT, default=1"`
+	WorkerLiveTailCount       int             `env:"WORKER_LIVE_TAIL_COUNT, default=3"`
 	WorkerLiveTailQueueSize   int             `env:"WORKER_LIVE_TAIL_QUEUE_SIZE, default=10000"`
 	WorkerRowsPerBatch        int             `env:"WORKER_ROWS_PER_BATCH, default=1000"`
 	SeedSystem                bool            `env:"SEED_SYSTEM, default=false"`
@@ -101,8 +102,15 @@ func (c *Config) validate() error {
 			safeLimit,
 		)
 	}
+
+	if c.WorkerCount <= 0 {
+		return fmt.Errorf("WORKER_COUNT (%d) must be a positive number. Recommended (1)",
+			c.WorkerLiveTailCount,
+		)
+	}
+
 	if c.WorkerLiveTailCount <= 0 {
-		return fmt.Errorf("WORKER_LIVE_TAIL (%d) must be a positive number for the live tail feature to work. Recommended (3)",
+		return fmt.Errorf("WORKER_LIVE_TAIL_COUNT (%d) must be a positive number for the live tail feature to work. Recommended (3)",
 			c.WorkerLiveTailCount,
 		)
 	}

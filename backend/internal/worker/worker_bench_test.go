@@ -2,11 +2,14 @@ package worker
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/core"
+	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/stretchr/testify/require"
 )
 
@@ -79,5 +82,84 @@ func BenchmarkDecompressorGzip(b *testing.B) {
 			b.Fatal(err)
 		}
 		cleanup()
+	}
+}
+
+// used only here to isolate parallel processing of incoming payloads
+type LockFreeAppender struct{}
+
+func (l *LockFreeAppender) Append(
+	timestamp, observedTimestamp time.Time,
+	severityNumber uint8,
+	traceId [16]byte,
+	spanId [8]byte,
+	logAttrKeys, logAttrValues, resAttrKeys, resAttrValues []string,
+	logFields storage.LogFields,
+) {
+	// do nothing
+}
+
+func (l *LockFreeAppender) Flush(ctx context.Context) error {
+	return nil
+}
+
+func BenchmarkConsumeCallback(b *testing.B) {
+	validReq := newBaseRequest(b)
+	validReqBytes, err := validReq.MarshalProto()
+	require.NoError(b, err)
+	compressedBytes := zstdCompress(b, validReqBytes)
+
+	const numMessages = 300000
+	payloads := make([][]byte, numMessages)
+	for i := range payloads {
+		payloads[i] = compressedBytes
+	}
+
+	messages := makeMessages(b, payloads, makeHeaders("application/x-protobuf", "zstd"))
+
+	workerCounts := []int{1, 3, 5}
+
+	for _, n := range workerCounts {
+		b.Run(fmt.Sprintf("workers=%d", n), func(b *testing.B) {
+			store := &MockLogStore{Appender: &LockFreeAppender{}}
+
+			factory := func() (Decompressor, error) {
+				if n == 1 {
+					return NewLogDecompressor()
+				} else {
+					return NewLogDecompressor(WithZstdConcurrencyLimit(1))
+				}
+			}
+			decoder := NewLogDecoder()
+
+			transformer := NewLogTransformer(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+			wp, err := NewWorkerPool(Config{
+				Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+				Store:         store,
+				DecompFactory: factory,
+				Decoder:       decoder,
+				Transformer:   transformer,
+				Publisher:     &NoOpPublisher{},
+				EstimatedRows: numMessages * 2,
+				NumWorkers:    n,
+			})
+			require.NoError(b, err)
+			defer wp.Close()
+
+			callback, err := wp.ConsumeCallback()
+			require.NoError(b, err)
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for b.Loop() {
+				err := callback(messages)
+
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
