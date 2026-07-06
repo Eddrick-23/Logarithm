@@ -280,7 +280,10 @@ export default function LiveTailLogs() {
                 {/* Filters Row */}
                 <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
                     <FormControl variant="outlined" sx={{ width: 200 }}>
+                        <InputLabel shrink>Services</InputLabel>
+                        {/* value in InputLabel must match label in Select */}
                         <Select
+                            label="Services"
                             multiple
                             displayEmpty
                             value={services}
@@ -306,7 +309,10 @@ export default function LiveTailLogs() {
                     </FormControl>
 
                     <FormControl variant="outlined" sx={{ width: 160 }}>
+                        <InputLabel shrink>Severities</InputLabel>
+                        {/* value in InputLabel must match label in Select */}
                         <Select
+                            label="Severities"
                             multiple
                             displayEmpty
                             value={severities}
