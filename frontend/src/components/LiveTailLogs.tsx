@@ -18,6 +18,8 @@ import {
     TableRow,
     TableCell,
     TableBody,
+    Checkbox,
+    ListItemText,
 } from "@mui/material";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { card, pulseSx, sectionLabel } from "../theme/tokens";
@@ -89,8 +91,8 @@ export default function LiveTailLogs() {
     const reconnectAttempts = useRef(0);
     const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [logs, setLogs] = useState<FlatLogRecord[]>([]);
-    const [severity, setSeverity] = useState<LogType | "all-severities">("all-severities");
-    const [service, setService] = useState<string>("all-services");
+    const [severities, setSeverities] = useState<LogType[]>([]); // empty indicates all severities selected
+    const [services, setServices] = useState<string[]>([]); // empty indicates all services selected
     const [searchInput, setSearchInput] = useState<string>("");
     const [debouncedSearch, setDebouncedSearch] = useState<string>("");
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
@@ -133,8 +135,6 @@ export default function LiveTailLogs() {
                 for (const record of decodeMulti(buf, { extensionCodec })) {
                     batch.push(record as FlatLogRecord);
                 }
-                console.log(batch.length);
-                console.log(batch);
             } catch {
                 console.error("failed to parse websocket message", e.data);
                 return;
@@ -222,12 +222,14 @@ export default function LiveTailLogs() {
         connect();
     };
 
-    const handleServiceChange = (event: SelectChangeEvent) => {
-        setService(event.target.value);
+    const handleServiceChange = (event: SelectChangeEvent<string[]>) => {
+        const value = event.target.value;
+        setServices(typeof value === "string" ? value.split(",") : value);
     };
 
-    const handleSeverityChange = (event: SelectChangeEvent) => {
-        setSeverity(event.target.value as LogType | "all-severities");
+    const handleSeverityChange = (event: SelectChangeEvent<LogType[]>) => {
+        const value = event.target.value;
+        setSeverities(typeof value === "string" ? (value.split(",") as LogType[]) : value);
     };
 
     const handleClear = () => {
@@ -235,8 +237,8 @@ export default function LiveTailLogs() {
     };
 
     const filteredLogs = logs.filter((log) => {
-        if (service !== "all-services" && log.serviceName !== service) return false;
-        if (severity !== "all-severities" && parseSeverity(log.severityText) !== severity) return false;
+        if (services.length > 0 && !services.includes(log.serviceName)) return false;
+        if (severities.length > 0 && !severities.includes(parseSeverity(log.severityText))) return false;
 
         if (debouncedSearch.trim()) {
             const lower = debouncedSearch.toLowerCase();
@@ -277,38 +279,50 @@ export default function LiveTailLogs() {
 
                 {/* Filters Row */}
                 <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
-                    <FormControl variant="outlined" sx={{ minWidth: 130 }}>
-                        <InputLabel>Services</InputLabel>
+                    <FormControl variant="outlined" sx={{ width: 200 }}>
                         <Select
-                            value={service}
+                            multiple
+                            displayEmpty
+                            value={services}
                             size="small"
-                            label="Services"
                             onChange={handleServiceChange}
                             disabled={isLoading}
                             aria-label="services"
+                            renderValue={(selected) =>
+                                selected.length === 0
+                                    ? isLoading
+                                        ? "Loading..."
+                                        : "All services"
+                                    : selected.join(", ")
+                            }
                         >
-                            <MenuItem value="all-services">{isLoading ? "Loading..." : "All services"}</MenuItem>{" "}
                             {(serviceOptions?.services || []).map((serviceOption) => (
                                 <MenuItem key={serviceOption} value={serviceOption}>
-                                    {serviceOption}
+                                    <Checkbox checked={services.includes(serviceOption)} size="small" />
+                                    <ListItemText primary={serviceOption} />
                                 </MenuItem>
                             ))}
                         </Select>
                     </FormControl>
 
-                    <FormControl variant="outlined" sx={{ minWidth: 130 }}>
-                        <InputLabel>Severity level</InputLabel>
+                    <FormControl variant="outlined" sx={{ width: 160 }}>
                         <Select
-                            value={severity}
+                            multiple
+                            displayEmpty
+                            value={severities}
                             size="small"
-                            label="Severity level"
                             onChange={handleSeverityChange}
                             aria-label="severity level"
+                            renderValue={(selected) =>
+                                selected.length === 0
+                                    ? "All severities"
+                                    : selected.map((s) => s.toUpperCase()).join(", ")
+                            }
                         >
-                            <MenuItem value="all-severities">All severities</MenuItem>
                             {LOG_TYPES.map((type) => (
                                 <MenuItem key={type} value={type}>
-                                    {type.toUpperCase()}
+                                    <Checkbox checked={severities.includes(type)} size="small" />
+                                    <ListItemText primary={type.toUpperCase()} />
                                 </MenuItem>
                             ))}
                         </Select>
