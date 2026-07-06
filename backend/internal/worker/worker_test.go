@@ -224,7 +224,7 @@ func TestSplitMessages(t *testing.T) {
 			expected:    []interval{{0, 2}, {2, 4}, {4, 5}},
 		},
 		{
-			name:        "single message singel worker",
+			name:        "single message single worker",
 			numMessages: 1,
 			numWorkers:  1,
 			expected:    []interval{{0, 1}},
@@ -402,7 +402,7 @@ func TestConsumeCallback_AllMessagesProcessedAcrossRegions(t *testing.T) {
 
 	require.NoError(t, callback(messages))
 	assert.Equal(t, numMessages, transformer.GetFlattenCount(),
-		"every message should be flattended exactly once, regardless of splitting")
+		"every message should be flattened exactly once, regardless of splitting")
 }
 
 // custom mock that controls panics using a boolean field

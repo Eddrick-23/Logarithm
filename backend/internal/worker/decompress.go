@@ -36,7 +36,7 @@ type DecompressorOption func(*decompressorConfig)
 
 // Set zstdConcurrencyLimit to bound number of possible workers when running decodes.
 // This is useful when having multiple workers to reduce context switching.
-// Setting to 0 uses zstd defualts: min(4, GOMAXPROCS) as per zstd docs.
+// Setting to 0 uses zstd defaults: min(4, GOMAXPROCS) as per zstd docs.
 func WithZstdConcurrencyLimit(limit int) DecompressorOption {
 	return func(dc *decompressorConfig) {
 		if limit > 0 {

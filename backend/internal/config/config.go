@@ -53,7 +53,7 @@ type Config struct {
 	WorkerMaxBatch            int             `env:"WORKER_MAX_BATCH, default=10"`
 	WorkerMaxWait             time.Duration   `env:"WORKER_MAX_WAIT, default=2s"`
 	WorkerBackoff             []time.Duration `env:"WORKER_BACKOFF, default=5s,30s,60s,300s,3600s"`
-	WorkerCount               int             `env:"WORKER_COUNT, default=3"`
+	WorkerCount               int             `env:"WORKER_COUNT, default=1"`
 	WorkerLiveTailCount       int             `env:"WORKER_LIVE_TAIL_COUNT, default=3"`
 	WorkerLiveTailQueueSize   int             `env:"WORKER_LIVE_TAIL_QUEUE_SIZE, default=10000"`
 	WorkerRowsPerBatch        int             `env:"WORKER_ROWS_PER_BATCH, default=1000"`

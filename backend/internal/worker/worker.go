@@ -144,10 +144,10 @@ type interval struct {
 	start, end int
 }
 
-// splitMessages divides numMessagse into at most numWorkers contiguous,
+// splitMessages divides numMessage into at most numWorkers contiguous,
 // non-overlapping regions. Sizes differ by at most one message, with
-// remainder distributed across the different regions. Returns index
-// bounds wrapped in an interval struct.
+// remainder distributed across the different regions, filled front to back.
+// Returns index bounds wrapped in an interval struct.
 func splitMessages(numMessages, numWorkers int) []interval {
 	numWorkers = min(numMessages, numWorkers)
 
