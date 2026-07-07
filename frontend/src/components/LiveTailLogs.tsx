@@ -403,7 +403,13 @@ export default function LiveTailLogs() {
                                 </TableRow>
                             ) : (
                                 filteredLogs.slice(0, MAX_DISPLAY_LOGS).map((log) => {
-                                    return <TailLogRow log={log} />;
+                                    return (
+                                        <TailLogRow
+                                            key={`${log.spanId}-${log.timestamp}`}
+                                            log={log}
+                                            searchQuery={debouncedSearch}
+                                        />
+                                    );
                                 })
                             )}
                         </TableBody>

@@ -2,14 +2,55 @@ import { Box, TableCell, TableRow, Typography } from "@mui/material";
 import type { FlatLogRecord } from "../types/Log";
 import { parseSeverity, severityStyles } from "../utils/severity";
 
+interface HighlightedBodyProps {
+    text: string;
+    query?: string;
+}
 interface TailLogRowProps {
     log: FlatLogRecord;
+    searchQuery?: string;
 }
 
-export default function TailLogRow({ log }: TailLogRowProps) {
+// prevents special characters in search input (".", "*", "(") from breaking regex
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function HighlightedBody({ text, query }: HighlightedBodyProps) {
+    // if there is no query or query is just spaces, return text
+    if (!query || !query.trim()) return <>{text}</>;
+
+    const escaped = escapeRegExp(query.trim()); // sanitise the query
+    const parts = text.split(new RegExp(`(${escaped})`, "gi")); // g match every occurence, i makes it case-insensitive
+
+    return (
+        <>
+            {parts.map((part, i) =>
+                part.toLowerCase() === query.trim().toLowerCase() ? (
+                    <Box
+                        key={i}
+                        component="mark"
+                        sx={{
+                            backgroundColor: "rgba(250, 204, 21, 0.35)",
+                            color: "inherit",
+                            borderRadius: "3px",
+                            px: "2px",
+                        }}
+                    >
+                        {part}
+                    </Box>
+                ) : (
+                    <span key={i}>{part}</span>
+                ),
+            )}
+        </>
+    );
+}
+
+export default function TailLogRow({ log, searchQuery }: TailLogRowProps) {
     const severity = parseSeverity(log.severityText);
     return (
-        <TableRow key={`${log.spanId}-${log.timestamp}`}>
+        <TableRow>
             <TableCell sx={{ fontWeight: "bold", whiteSpace: "nowrap" }}>
                 {new Date(log.timestamp).toLocaleString()}
             </TableCell>
@@ -35,7 +76,9 @@ export default function TailLogRow({ log }: TailLogRowProps) {
                     </Typography>
                 </Box>
             </TableCell>
-            <TableCell sx={{ color: "text.disabled" }}>{log.body}</TableCell>
+            <TableCell sx={{ color: "text.disabled" }}>
+                <HighlightedBody text={log.body} query={searchQuery} />
+            </TableCell>
         </TableRow>
     );
 }
