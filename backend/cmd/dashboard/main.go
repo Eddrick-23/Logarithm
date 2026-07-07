@@ -252,6 +252,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	jetStreamConsumer, err := broker.GetJetstreamConsumer(ctx, transport.LogStreamName, worker.WorkerName)
 	if err != nil {
 		natsLogger.Error("failed to load jetstream consumer", "err", err)
+		return err
 	}
 
 	var wg sync.WaitGroup
