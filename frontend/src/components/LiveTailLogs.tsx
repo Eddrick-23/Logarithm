@@ -3,27 +3,28 @@ import {
     Typography,
     Stack,
     Button,
-    Select,
-    MenuItem,
-    TextField,
     type SelectChangeEvent,
-    FormControl,
-    InputLabel,
-    InputAdornment,
-    IconButton,
     CircularProgress,
+    TableContainer,
+    Table,
+    TableHead,
+    TableRow,
+    TableCell,
+    TableBody,
 } from "@mui/material";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { card, pulseSx, sectionLabel } from "../theme/tokens";
 import PauseIcon from "@mui/icons-material/Pause";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import SearchIcon from "@mui/icons-material/Search";
-import ClearIcon from "@mui/icons-material/Clear";
 import type { FlatLogRecord, LogType } from "../types/Log";
 import { useDistinctServices } from "../hooks/useDistinctServices";
-import TailLogRow, { columnWidths } from "./TailLogRow";
 import ErrorBanner from "./ErrorBanner";
 import { decodeMulti, ExtensionCodec } from "@msgpack/msgpack";
+import { parseSeverity } from "../utils/severity";
+import TailLogRow from "./TailLogRow";
+import SearchField from "./SearchField";
+import SeverityDropdown from "./SeverityDropdown";
+import ServiceDropdown from "./ServiceDropdown";
 
 // Create a custom extension codec to handle Go's msgp time.Time (type 5)
 const extensionCodec = new ExtensionCodec();
@@ -45,39 +46,17 @@ extensionCodec.register({
 
 type ConnectionStatus = "connecting" | "connected" | "error";
 
-const LOG_TYPES: LogType[] = ["trace", "debug", "info", "warn", "error", "fatal"];
 const MAX_GLOBAL_LOGS = 300;
 const MAX_DISPLAY_LOGS = 15;
 const WEBSOCKET_NORMAL_CLOSURE = 1000;
-const DEBOUNCE_TIMEOUT = 300;
-
-const SEVERITY_NORMALISE_MAP: Record<string, LogType> = {
-    trace: "trace",
-    debug: "debug",
-    info: "info",
-    warning: "warn", // logs coming in have severity text of WARNING
-    warn: "warn", // by default OTEL uses "warn" instead of "warning" but we support both
-    error: "error",
-    fatal: "fatal",
-};
-
-const parseSeverity = (severityText: string | null | undefined): LogType => {
-    // guard in case log has no severity text
-    if (!severityText) return "info";
-    // strip numbered variants: "DEBUG2" -> "debug", "WARN3" -> "warn"
-    const base = severityText.replace(/\d+$/, "").toLowerCase();
-    // fallback to info if we get an unsupported severity name
-    return SEVERITY_NORMALISE_MAP[base] ?? "info";
-};
 
 export default function LiveTailLogs() {
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectAttempts = useRef(0);
     const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [logs, setLogs] = useState<FlatLogRecord[]>([]);
-    const [severity, setSeverity] = useState<LogType | "all-severities">("all-severities");
-    const [service, setService] = useState<string>("all-services");
-    const [searchInput, setSearchInput] = useState<string>("");
+    const [severities, setSeverities] = useState<LogType[]>([]); // empty indicates all severities selected
+    const [services, setServices] = useState<string[]>([]); // empty indicates all services selected
     const [debouncedSearch, setDebouncedSearch] = useState<string>("");
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
     const [isPaused, setIsPaused] = useState<boolean>(false);
@@ -181,12 +160,6 @@ export default function LiveTailLogs() {
         isPausedRef.current = isPaused;
     }, [isPaused]);
 
-    useEffect(() => {
-        // set a delay until the user stops entering any search input
-        const timer = setTimeout(() => setDebouncedSearch(searchInput), DEBOUNCE_TIMEOUT);
-        return () => clearTimeout(timer);
-    }, [searchInput]);
-
     const handlePause = () => {
         setIsPaused(true);
     };
@@ -206,30 +179,33 @@ export default function LiveTailLogs() {
         connect();
     };
 
-    const handleServiceChange = (event: SelectChangeEvent) => {
-        setService(event.target.value);
-    };
+    const handleServiceChange = useCallback(
+        (event: SelectChangeEvent<string[]>) => {
+            const value = event.target.value;
+            setServices(typeof value === "string" ? value.split(",") : value);
+        },
+        [serviceOptions],
+    );
 
-    const handleSeverityChange = (event: SelectChangeEvent) => {
-        setSeverity(event.target.value as LogType | "all-severities");
-    };
+    const handleSeverityChange = useCallback((event: SelectChangeEvent<LogType[]>) => {
+        const value = event.target.value;
+        setSeverities(typeof value === "string" ? (value.split(",") as LogType[]) : value);
+    }, []);
 
-    const handleClear = () => {
-        setSearchInput("");
-    };
+    const filteredLogs = useMemo(() => {
+        return logs.filter((log) => {
+            if (services.length > 0 && !services.includes(log.serviceName)) return false;
+            if (severities.length > 0 && !severities.includes(parseSeverity(log.severityText))) return false;
 
-    const filteredLogs = logs.filter((log) => {
-        if (service !== "all-services" && log.serviceName !== service) return false;
-        if (severity !== "all-severities" && parseSeverity(log.severityText) !== severity) return false;
+            if (debouncedSearch.trim()) {
+                const lower = debouncedSearch.toLowerCase();
+                const bodyMatch = log.body.toLowerCase().includes(lower);
+                if (!bodyMatch) return false;
+            }
 
-        if (debouncedSearch.trim()) {
-            const lower = debouncedSearch.toLowerCase();
-            const bodyMatch = log.body.toLowerCase().includes(lower);
-            if (!bodyMatch) return false;
-        }
-
-        return true;
-    });
+            return true;
+        });
+    }, [logs, services, severities, debouncedSearch]);
 
     return (
         <>
@@ -261,65 +237,15 @@ export default function LiveTailLogs() {
 
                 {/* Filters Row */}
                 <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
-                    <FormControl variant="outlined" sx={{ minWidth: 130 }}>
-                        <InputLabel>Services</InputLabel>
-                        <Select
-                            value={service}
-                            size="small"
-                            label="Services"
-                            onChange={handleServiceChange}
-                            disabled={isLoading}
-                            aria-label="services"
-                        >
-                            <MenuItem value="all-services">{isLoading ? "Loading..." : "All services"}</MenuItem>{" "}
-                            {(serviceOptions?.services || []).map((serviceOption) => (
-                                <MenuItem key={serviceOption} value={serviceOption}>
-                                    {serviceOption}
-                                </MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-
-                    <FormControl variant="outlined" sx={{ minWidth: 130 }}>
-                        <InputLabel>Severity level</InputLabel>
-                        <Select
-                            value={severity}
-                            size="small"
-                            label="Severity level"
-                            onChange={handleSeverityChange}
-                            aria-label="severity level"
-                        >
-                            <MenuItem value="all-severities">All severities</MenuItem>
-                            {LOG_TYPES.map((type) => (
-                                <MenuItem key={type} value={type}>
-                                    {type.toUpperCase()}
-                                </MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-
-                    <TextField
-                        value={searchInput}
-                        onChange={(e) => setSearchInput(e.target.value)}
-                        placeholder="Search body..."
-                        size="small"
-                        slotProps={{
-                            input: {
-                                startAdornment: (
-                                    <InputAdornment position="start">
-                                        <SearchIcon color="action" />
-                                    </InputAdornment>
-                                ),
-                                endAdornment: searchInput && (
-                                    <InputAdornment position="end">
-                                        <IconButton onClick={handleClear} edge="end" size="small">
-                                            <ClearIcon />
-                                        </IconButton>
-                                    </InputAdornment>
-                                ),
-                            },
-                        }}
+                    <ServiceDropdown
+                        services={services}
+                        onChange={handleServiceChange}
+                        isLoading={isLoading}
+                        serviceOptions={serviceOptions?.services || []}
                     />
+
+                    <SeverityDropdown severities={severities} onChange={handleSeverityChange} />
+                    <SearchField onDebouncedChange={setDebouncedSearch} />
                 </Stack>
 
                 {/* WebSocket Error Alert Bar */}
@@ -373,76 +299,38 @@ export default function LiveTailLogs() {
                     </Box>
                 )}
 
-                {/* Table Headers */}
-                <Box
-                    sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        pb: 1.5,
-                        borderBottom: "1px solid rgba(255,255,255,0.05)",
-                        gap: 1,
-                    }}
-                >
-                    <Typography
-                        sx={{
-                            width: columnWidths.time,
-                            textAlign: "left",
-                            fontSize: 13,
-                            color: "text.secondary",
-                            fontWeight: 600,
-                        }}
-                    >
-                        TIME
-                    </Typography>
-                    <Typography
-                        sx={{
-                            width: columnWidths.service,
-                            textAlign: "left",
-                            fontSize: 13,
-                            color: "text.secondary",
-                            fontWeight: 600,
-                        }}
-                    >
-                        SERVICE
-                    </Typography>
-                    <Typography
-                        sx={{
-                            width: columnWidths.severity,
-                            textAlign: "left",
-                            fontSize: 13,
-                            color: "text.secondary",
-                            fontWeight: 600,
-                        }}
-                    >
-                        SEVERITY
-                    </Typography>
-                    <Typography
-                        sx={{ flexGrow: 1, textAlign: "left", fontSize: 13, color: "text.secondary", fontWeight: 600 }}
-                    >
-                        BODY
-                    </Typography>
-                </Box>
-
-                {/* Logs List */}
-                <Box>
-                    {filteredLogs
-                        .slice(0, MAX_DISPLAY_LOGS)
-                        .map(({ serviceName, timestamp, severityText, body }, index) => (
-                            <TailLogRow
-                                key={`${serviceName}-${timestamp}-${index}`}
-                                time={new Date(timestamp).toLocaleString()}
-                                service={serviceName}
-                                severity={parseSeverity(severityText)}
-                                message={body}
-                            />
-                        ))}
-
-                    {filteredLogs.length === 0 && (
-                        <Box sx={{ textAlign: "center", py: 3, color: "text.secondary" }}>
-                            <Typography variant="body2">No logs match your filters</Typography>
-                        </Box>
-                    )}
-                </Box>
+                <TableContainer>
+                    <Table>
+                        <TableHead>
+                            <TableRow>
+                                {/* width set to 1% so that the columns will only span the length it occupies */}
+                                <TableCell sx={{ color: "text.secondary", width: "1%" }}>TIME</TableCell>
+                                <TableCell sx={{ color: "text.secondary", width: "1%" }}>SERVICE</TableCell>
+                                <TableCell sx={{ color: "text.secondary", width: "1%" }}>SEVERITY</TableCell>
+                                <TableCell sx={{ color: "text.secondary" }}>BODY</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {filteredLogs.length === 0 ? (
+                                <TableRow>
+                                    <TableCell colSpan={4} align="center" sx={{ color: "text.disabled", py: 4 }}>
+                                        No logs match your filters
+                                    </TableCell>
+                                </TableRow>
+                            ) : (
+                                filteredLogs.slice(0, MAX_DISPLAY_LOGS).map((log) => {
+                                    return (
+                                        <TailLogRow
+                                            key={`${log.spanId}-${log.timestamp}`}
+                                            log={log}
+                                            searchQuery={debouncedSearch}
+                                        />
+                                    );
+                                })
+                            )}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
             </Box>
         </>
     );

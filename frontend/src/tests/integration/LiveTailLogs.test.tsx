@@ -284,7 +284,7 @@ describe("LiveTailLogs — filters", () => {
 
         act(() => vi.advanceTimersByTime(300));
 
-        expect(screen.getByText("Auth info log")).toBeInTheDocument();
+        expect(screen.getByText((_, element) => element?.textContent === "Auth info log")).toBeInTheDocument();
         expect(screen.queryByText("Payment error log")).not.toBeInTheDocument();
     });
 
