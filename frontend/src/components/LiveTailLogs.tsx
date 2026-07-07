@@ -5,12 +5,9 @@ import {
     Button,
     Select,
     MenuItem,
-    TextField,
     type SelectChangeEvent,
     FormControl,
     InputLabel,
-    InputAdornment,
-    IconButton,
     CircularProgress,
     TableContainer,
     Table,
@@ -25,14 +22,13 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { card, pulseSx, sectionLabel } from "../theme/tokens";
 import PauseIcon from "@mui/icons-material/Pause";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import SearchIcon from "@mui/icons-material/Search";
-import ClearIcon from "@mui/icons-material/Clear";
 import type { FlatLogRecord, LogType } from "../types/Log";
 import { useDistinctServices } from "../hooks/useDistinctServices";
 import ErrorBanner from "./ErrorBanner";
 import { decodeMulti, ExtensionCodec } from "@msgpack/msgpack";
 import { parseSeverity } from "../utils/severity";
 import TailLogRow from "./TailLogRow";
+import SearchField from "./SearchField";
 
 // Create a custom extension codec to handle Go's msgp time.Time (type 5)
 const extensionCodec = new ExtensionCodec();
@@ -58,7 +54,6 @@ const LOG_TYPES: LogType[] = ["trace", "debug", "info", "warn", "error", "fatal"
 const MAX_GLOBAL_LOGS = 300;
 const MAX_DISPLAY_LOGS = 15;
 const WEBSOCKET_NORMAL_CLOSURE = 1000;
-const DEBOUNCE_TIMEOUT = 300;
 
 export default function LiveTailLogs() {
     const wsRef = useRef<WebSocket | null>(null);
@@ -67,7 +62,6 @@ export default function LiveTailLogs() {
     const [logs, setLogs] = useState<FlatLogRecord[]>([]);
     const [severities, setSeverities] = useState<LogType[]>([]); // empty indicates all severities selected
     const [services, setServices] = useState<string[]>([]); // empty indicates all services selected
-    const [searchInput, setSearchInput] = useState<string>("");
     const [debouncedSearch, setDebouncedSearch] = useState<string>("");
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
     const [isPaused, setIsPaused] = useState<boolean>(false);
@@ -171,12 +165,6 @@ export default function LiveTailLogs() {
         isPausedRef.current = isPaused;
     }, [isPaused]);
 
-    useEffect(() => {
-        // set a delay until the user stops entering any search input
-        const timer = setTimeout(() => setDebouncedSearch(searchInput), DEBOUNCE_TIMEOUT);
-        return () => clearTimeout(timer);
-    }, [searchInput]);
-
     const handlePause = () => {
         setIsPaused(true);
     };
@@ -204,10 +192,6 @@ export default function LiveTailLogs() {
     const handleSeverityChange = (event: SelectChangeEvent<LogType[]>) => {
         const value = event.target.value;
         setSeverities(typeof value === "string" ? (value.split(",") as LogType[]) : value);
-    };
-
-    const handleClear = () => {
-        setSearchInput("");
     };
 
     const filteredLogs = logs.filter((log) => {
@@ -308,28 +292,7 @@ export default function LiveTailLogs() {
                         </Select>
                     </FormControl>
 
-                    <TextField
-                        value={searchInput}
-                        onChange={(e) => setSearchInput(e.target.value)}
-                        placeholder="Search body..."
-                        size="small"
-                        slotProps={{
-                            input: {
-                                startAdornment: (
-                                    <InputAdornment position="start">
-                                        <SearchIcon color="action" />
-                                    </InputAdornment>
-                                ),
-                                endAdornment: searchInput && (
-                                    <InputAdornment position="end">
-                                        <IconButton onClick={handleClear} edge="end" size="small">
-                                            <ClearIcon />
-                                        </IconButton>
-                                    </InputAdornment>
-                                ),
-                            },
-                        }}
-                    />
+                    <SearchField onDebouncedChange={setDebouncedSearch} />
                 </Stack>
 
                 {/* WebSocket Error Alert Bar */}
