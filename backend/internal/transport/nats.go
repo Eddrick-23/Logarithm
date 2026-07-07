@@ -335,10 +335,42 @@ func (nb *NatsBroker) TailLiveLogs(ctx context.Context, subject string, maxBatch
 }
 
 func (nb *NatsBroker) GetJetstreamConsumer(ctx context.Context, streamName string, consumerName string) (jetstream.Consumer, error) {
-	consumer, err := nb.js.Consumer(ctx, streamName, consumerName)
-	if err != nil {
-		nb.logger.Error("failed to get jetstream consumer", "jetstream consumer", err)
-		return nil, err
+	const (
+		retryAttempts = 5
+		baseDelay     = time.Second
+		maxDelay      = 15 * time.Second
+	)
+
+	var consumer jetstream.Consumer
+	var err error
+
+	for i := range retryAttempts {
+		consumer, err = nb.js.Consumer(ctx, streamName, consumerName)
+		if err == nil {
+			return consumer, nil
+		}
+
+		nb.logger.Warn(
+			fmt.Sprintf("failed to get jetstream consumer, attempt %d/%d", i+1, retryAttempts),
+			"jetstream consumer", err,
+		)
+		delay := calculateExponentialBackoff(i, baseDelay, maxDelay)
+
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("context cancelled while retrying consumer fetch: %w", ctx.Err())
+		case <-time.After(delay): // wait for delay duration to elapse
+		}
 	}
-	return consumer, nil
+
+	return nil, fmt.Errorf("failed to get jetstream consumer %q on stream %q after %d attempts: %w",
+		consumerName, streamName, retryAttempts, err)
+}
+
+func calculateExponentialBackoff(attempt int, baseDelay time.Duration, maxDelay time.Duration) time.Duration {
+	delay := baseDelay * time.Duration(1<<attempt) // 1x, 2x, 4x, 8x ...
+	if delay > maxDelay {
+		return maxDelay
+	}
+	return delay
 }
