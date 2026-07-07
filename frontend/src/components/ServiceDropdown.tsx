@@ -28,10 +28,12 @@ export default memo(function ServiceDropdown({ services, onChange, isLoading, se
                 }
             >
                 {serviceOptions.length === 0 ? (
-                    <MenuItem disabled>No services found</MenuItem>
+                    <MenuItem dense disabled>
+                        No services found
+                    </MenuItem>
                 ) : (
                     serviceOptions.map((serviceOption) => (
-                        <MenuItem key={serviceOption} value={serviceOption}>
+                        <MenuItem dense key={serviceOption} value={serviceOption}>
                             <DropdownItemContent option={serviceOption} checked={services.includes(serviceOption)} />
                         </MenuItem>
                     ))

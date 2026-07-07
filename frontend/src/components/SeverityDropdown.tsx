@@ -28,7 +28,7 @@ export default memo(function SeverityDropdown({ severities, onChange }: Severity
                 }
             >
                 {LOG_TYPES.map((type) => (
-                    <MenuItem key={type} value={type}>
+                    <MenuItem dense key={type} value={type}>
                         <DropdownItemContent option={type.toUpperCase()} checked={severities.includes(type)} />
                     </MenuItem>
                 ))}
