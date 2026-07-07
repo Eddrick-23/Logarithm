@@ -1,6 +1,7 @@
 import { Box, TableCell, TableRow, Typography } from "@mui/material";
 import type { FlatLogRecord } from "../types/Log";
 import { parseSeverity, severityStyles } from "../utils/severity";
+import { memo } from "react";
 
 interface HighlightedBodyProps {
     text: string;
@@ -47,7 +48,7 @@ function HighlightedBody({ text, query }: HighlightedBodyProps) {
     );
 }
 
-export default function TailLogRow({ log, searchQuery }: TailLogRowProps) {
+export default memo(function TailLogRow({ log, searchQuery }: TailLogRowProps) {
     const severity = parseSeverity(log.severityText);
     return (
         <TableRow>
@@ -81,4 +82,4 @@ export default function TailLogRow({ log, searchQuery }: TailLogRowProps) {
             </TableCell>
         </TableRow>
     );
-}
+});

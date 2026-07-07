@@ -18,7 +18,7 @@ import {
     Checkbox,
     ListItemText,
 } from "@mui/material";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { card, pulseSx, sectionLabel } from "../theme/tokens";
 import PauseIcon from "@mui/icons-material/Pause";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
@@ -194,18 +194,20 @@ export default function LiveTailLogs() {
         setSeverities(typeof value === "string" ? (value.split(",") as LogType[]) : value);
     };
 
-    const filteredLogs = logs.filter((log) => {
-        if (services.length > 0 && !services.includes(log.serviceName)) return false;
-        if (severities.length > 0 && !severities.includes(parseSeverity(log.severityText))) return false;
+    const filteredLogs = useMemo(() => {
+        return logs.filter((log) => {
+            if (services.length > 0 && !services.includes(log.serviceName)) return false;
+            if (severities.length > 0 && !severities.includes(parseSeverity(log.severityText))) return false;
 
-        if (debouncedSearch.trim()) {
-            const lower = debouncedSearch.toLowerCase();
-            const bodyMatch = log.body.toLowerCase().includes(lower);
-            if (!bodyMatch) return false;
-        }
+            if (debouncedSearch.trim()) {
+                const lower = debouncedSearch.toLowerCase();
+                const bodyMatch = log.body.toLowerCase().includes(lower);
+                if (!bodyMatch) return false;
+            }
 
-        return true;
-    });
+            return true;
+        });
+    }, [logs, services, severities, debouncedSearch]);
 
     return (
         <>
