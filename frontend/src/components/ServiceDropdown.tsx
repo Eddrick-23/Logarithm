@@ -1,13 +1,6 @@
-import {
-    Checkbox,
-    FormControl,
-    InputLabel,
-    ListItemText,
-    MenuItem,
-    Select,
-    type SelectChangeEvent,
-} from "@mui/material";
+import { FormControl, InputLabel, MenuItem, Select, type SelectChangeEvent } from "@mui/material";
 import { memo } from "react";
+import DropdownItemContent from "./DropdownItemContent";
 
 interface ServiceDropdownProps {
     services: string[];
@@ -39,12 +32,10 @@ export default memo(function ServiceDropdown({ services, onChange, isLoading, se
                 ) : (
                     serviceOptions.map((serviceOption) => (
                         <MenuItem key={serviceOption} value={serviceOption}>
-                            <Checkbox checked={services.includes(serviceOption)} size="small" />
-                            <ListItemText primary={serviceOption} />
+                            <DropdownItemContent option={serviceOption} checked={services.includes(serviceOption)} />
                         </MenuItem>
                     ))
                 )}
-                {}
             </Select>
         </FormControl>
     );

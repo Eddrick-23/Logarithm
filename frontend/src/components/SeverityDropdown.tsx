@@ -1,14 +1,7 @@
-import {
-    Checkbox,
-    FormControl,
-    InputLabel,
-    ListItemText,
-    MenuItem,
-    Select,
-    type SelectChangeEvent,
-} from "@mui/material";
+import { FormControl, InputLabel, MenuItem, Select, type SelectChangeEvent } from "@mui/material";
 import type { LogType } from "../types/Log";
 import { memo } from "react";
+import DropdownItemContent from "./DropdownItemContent";
 
 interface SeverityDropdownProps {
     severities: LogType[];
@@ -36,8 +29,7 @@ export default memo(function SeverityDropdown({ severities, onChange }: Severity
             >
                 {LOG_TYPES.map((type) => (
                     <MenuItem key={type} value={type}>
-                        <Checkbox checked={severities.includes(type)} size="small" />
-                        <ListItemText primary={type.toUpperCase()} />
+                        <DropdownItemContent option={type.toUpperCase()} checked={severities.includes(type)} />
                     </MenuItem>
                 ))}
             </Select>
