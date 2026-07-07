@@ -3,11 +3,7 @@ import {
     Typography,
     Stack,
     Button,
-    Select,
-    MenuItem,
     type SelectChangeEvent,
-    FormControl,
-    InputLabel,
     CircularProgress,
     TableContainer,
     Table,
@@ -15,8 +11,6 @@ import {
     TableRow,
     TableCell,
     TableBody,
-    Checkbox,
-    ListItemText,
 } from "@mui/material";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { card, pulseSx, sectionLabel } from "../theme/tokens";
@@ -29,6 +23,8 @@ import { decodeMulti, ExtensionCodec } from "@msgpack/msgpack";
 import { parseSeverity } from "../utils/severity";
 import TailLogRow from "./TailLogRow";
 import SearchField from "./SearchField";
+import SeverityDropdown from "./SeverityDropdown";
+import ServiceDropdown from "./ServiceDropdown";
 
 // Create a custom extension codec to handle Go's msgp time.Time (type 5)
 const extensionCodec = new ExtensionCodec();
@@ -50,7 +46,6 @@ extensionCodec.register({
 
 type ConnectionStatus = "connecting" | "connected" | "error";
 
-const LOG_TYPES: LogType[] = ["trace", "debug", "info", "warn", "error", "fatal"];
 const MAX_GLOBAL_LOGS = 300;
 const MAX_DISPLAY_LOGS = 15;
 const WEBSOCKET_NORMAL_CLOSURE = 1000;
@@ -184,15 +179,18 @@ export default function LiveTailLogs() {
         connect();
     };
 
-    const handleServiceChange = (event: SelectChangeEvent<string[]>) => {
-        const value = event.target.value;
-        setServices(typeof value === "string" ? value.split(",") : value);
-    };
+    const handleServiceChange = useCallback(
+        (event: SelectChangeEvent<string[]>) => {
+            const value = event.target.value;
+            setServices(typeof value === "string" ? value.split(",") : value);
+        },
+        [serviceOptions],
+    );
 
-    const handleSeverityChange = (event: SelectChangeEvent<LogType[]>) => {
+    const handleSeverityChange = useCallback((event: SelectChangeEvent<LogType[]>) => {
         const value = event.target.value;
         setSeverities(typeof value === "string" ? (value.split(",") as LogType[]) : value);
-    };
+    }, []);
 
     const filteredLogs = useMemo(() => {
         return logs.filter((log) => {
@@ -239,61 +237,14 @@ export default function LiveTailLogs() {
 
                 {/* Filters Row */}
                 <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
-                    <FormControl variant="outlined" sx={{ width: 200 }}>
-                        <InputLabel shrink>Services</InputLabel>
-                        {/* value in InputLabel must match label in Select */}
-                        <Select
-                            label="Services"
-                            multiple
-                            displayEmpty
-                            value={services}
-                            size="small"
-                            onChange={handleServiceChange}
-                            disabled={isLoading}
-                            aria-label="services"
-                            renderValue={(selected) =>
-                                selected.length === 0
-                                    ? isLoading
-                                        ? "Loading..."
-                                        : "All services"
-                                    : selected.join(", ")
-                            }
-                        >
-                            {(serviceOptions?.services || []).map((serviceOption) => (
-                                <MenuItem key={serviceOption} value={serviceOption}>
-                                    <Checkbox checked={services.includes(serviceOption)} size="small" />
-                                    <ListItemText primary={serviceOption} />
-                                </MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
+                    <ServiceDropdown
+                        services={services}
+                        onChange={handleServiceChange}
+                        isLoading={isLoading}
+                        serviceOptions={serviceOptions?.services || []}
+                    />
 
-                    <FormControl variant="outlined" sx={{ width: 160 }}>
-                        <InputLabel shrink>Severities</InputLabel>
-                        {/* value in InputLabel must match label in Select */}
-                        <Select
-                            label="Severities"
-                            multiple
-                            displayEmpty
-                            value={severities}
-                            size="small"
-                            onChange={handleSeverityChange}
-                            aria-label="severity level"
-                            renderValue={(selected) =>
-                                selected.length === 0
-                                    ? "All severities"
-                                    : selected.map((s) => s.toUpperCase()).join(", ")
-                            }
-                        >
-                            {LOG_TYPES.map((type) => (
-                                <MenuItem key={type} value={type}>
-                                    <Checkbox checked={severities.includes(type)} size="small" />
-                                    <ListItemText primary={type.toUpperCase()} />
-                                </MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-
+                    <SeverityDropdown severities={severities} onChange={handleSeverityChange} />
                     <SearchField onDebouncedChange={setDebouncedSearch} />
                 </Stack>
 
