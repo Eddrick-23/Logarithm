@@ -28,6 +28,8 @@ export class CircularLogBuffer<T> {
             result[i] = this.buffer[currentIndex];
             currentIndex--;
         }
-        return result;
+
+        // sort the logs based on timestamp in descending order since it is not guaranteed that incoming logs timestamps are in chronological order
+        return result.sort((a, b) => b.timestamp - a.timestamp);
     }
 }
