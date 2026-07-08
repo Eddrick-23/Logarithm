@@ -25,6 +25,7 @@ import TailLogRow from "./TailLogRow";
 import SearchField from "./SearchField";
 import SeverityDropdown from "./SeverityDropdown";
 import ServiceDropdown from "./ServiceDropdown";
+import { CircularLogBuffer } from "../utils/CircularLogBuffer";
 
 // Create a custom extension codec to handle Go's msgp time.Time (type 5)
 const extensionCodec = new ExtensionCodec();
@@ -49,19 +50,20 @@ type ConnectionStatus = "connecting" | "connected" | "error";
 const MAX_GLOBAL_LOGS = 300;
 const MAX_DISPLAY_LOGS = 15;
 const WEBSOCKET_NORMAL_CLOSURE = 1000;
+const RENDER_INTERVAL_MS = 1000;
 
 export default function LiveTailLogs() {
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectAttempts = useRef(0);
     const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const [logs, setLogs] = useState<FlatLogRecord[]>([]);
+    const [displayLogs, setDisplayLogs] = useState<FlatLogRecord[]>([]);
     const [severities, setSeverities] = useState<LogType[]>([]); // empty indicates all severities selected
     const [services, setServices] = useState<string[]>([]); // empty indicates all services selected
     const [debouncedSearch, setDebouncedSearch] = useState<string>("");
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
     const [isPaused, setIsPaused] = useState<boolean>(false);
     const isPausedRef = useRef<boolean>(isPaused);
-    const bufferRef = useRef<FlatLogRecord[]>([]);
+    const logBuffer = useRef(new CircularLogBuffer<FlatLogRecord>(MAX_GLOBAL_LOGS));
     const { data: serviceOptions, isLoading } = useDistinctServices();
     const dotColour = {
         connected: "success.main",
@@ -69,12 +71,16 @@ export default function LiveTailLogs() {
         error: "error.main",
     }[connectionStatus];
 
-    const processBatch = useCallback((batch: FlatLogRecord[]) => {
-        setLogs((prev) => {
-            const combined = [...prev, ...batch];
-            combined.sort((a: FlatLogRecord, b: FlatLogRecord) => b.timestamp - a.timestamp);
-            return combined.slice(0, MAX_GLOBAL_LOGS);
-        });
+    useEffect(() => {
+        const renderTimer = setInterval(() => {
+            // If the user clicks pause, the UI stops updating.
+            // But the WebSocket above keeps quietly updating logBuffer in the background
+            if (!isPausedRef.current) {
+                setDisplayLogs(logBuffer.current.toArrayNewestFirst());
+            }
+        }, RENDER_INTERVAL_MS);
+
+        return () => clearInterval(renderTimer);
     }, []);
 
     const connect = useCallback(() => {
@@ -90,28 +96,17 @@ export default function LiveTailLogs() {
 
         ws.onmessage = async (e) => {
             if (!e.data) return; // ignore empty messages
-            const batch: FlatLogRecord[] = [];
 
             try {
                 const buf = e.data instanceof Blob ? await e.data.arrayBuffer() : e.data;
                 // decodeMulti parses the concatenated byte stream into individual objects
                 for (const record of decodeMulti(buf, { extensionCodec })) {
-                    batch.push(record as FlatLogRecord);
+                    logBuffer.current.add(record as FlatLogRecord);
                 }
             } catch {
                 console.error("failed to parse websocket message", e.data);
                 return;
             }
-
-            if (!Array.isArray(batch) || batch.length === 0) return;
-
-            if (isPausedRef.current) {
-                bufferRef.current.push(...batch); // spread entire batch into buffer
-                bufferRef.current = bufferRef.current.slice(-MAX_GLOBAL_LOGS);
-                return;
-            }
-
-            processBatch(batch);
         };
 
         ws.onerror = (e) => {
@@ -167,10 +162,8 @@ export default function LiveTailLogs() {
     const handleResume = () => {
         setIsPaused(false);
 
-        if (bufferRef.current.length > 0) {
-            processBatch(bufferRef.current);
-            bufferRef.current = [];
-        }
+        // instantly flush latest state of buffer to screen
+        setDisplayLogs(logBuffer.current.toArrayNewestFirst());
     };
 
     const handleReconnect = () => {
@@ -195,7 +188,7 @@ export default function LiveTailLogs() {
     const filteredLogs = useMemo(() => {
         const result: FlatLogRecord[] = [];
         const lower = debouncedSearch.trim().toLowerCase();
-        for (const log of logs) {
+        for (const log of displayLogs) {
             if (result.length >= MAX_DISPLAY_LOGS) break;
             if (services.length > 0 && !services.includes(log.serviceName)) continue;
             if (severities.length > 0 && !severities.includes(parseSeverity(log.severityText))) continue;
@@ -203,7 +196,7 @@ export default function LiveTailLogs() {
             result.push(log);
         }
         return result;
-    }, [logs, services, severities, debouncedSearch]);
+    }, [displayLogs, services, severities, debouncedSearch]);
 
     return (
         <>
