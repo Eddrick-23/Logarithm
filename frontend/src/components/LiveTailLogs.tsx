@@ -19,51 +19,24 @@ import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import type { FlatLogRecord, LogType } from "../types/Log";
 import { useDistinctServices } from "../hooks/useDistinctServices";
 import ErrorBanner from "./ErrorBanner";
-import { decodeMulti, ExtensionCodec } from "@msgpack/msgpack";
 import { parseSeverity } from "../utils/severity";
 import TailLogRow from "./TailLogRow";
 import SearchField from "./SearchField";
 import SeverityDropdown from "./SeverityDropdown";
 import ServiceDropdown from "./ServiceDropdown";
-import { CircularLogBuffer } from "../utils/CircularLogBuffer";
-
-// Create a custom extension codec to handle Go's msgp time.Time (type 5)
-const extensionCodec = new ExtensionCodec();
-extensionCodec.register({
-    type: 5,
-    encode: () => null,
-    decode: (data: Uint8Array) => {
-        const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-
-        // Bytes 0-7: 64-bit Big-Endian Unix seconds
-        const seconds = Number(view.getBigInt64(0, false));
-        // Bytes 8-11: 32-bit Big-Endian nanoseconds
-        const nanos = view.getUint32(8, false);
-
-        // convert to unix timestamp in milliseconds
-        return seconds * 1000 + Math.floor(nanos / 1_000_000);
-    },
-});
 
 type ConnectionStatus = "connecting" | "connected" | "error";
 
-const MAX_GLOBAL_LOGS = 300;
 const MAX_DISPLAY_LOGS = 15;
-const WEBSOCKET_NORMAL_CLOSURE = 1000;
-const RENDER_INTERVAL_MS = 1000;
 
 export default function LiveTailLogs() {
-    const wsRef = useRef<WebSocket | null>(null);
-    const reconnectAttempts = useRef(0);
-    const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const workerRef = useRef<Worker | null>(null);
     const [displayLogs, setDisplayLogs] = useState<FlatLogRecord[]>([]);
     const [severities, setSeverities] = useState<LogType[]>([]); // empty indicates all severities selected
     const [services, setServices] = useState<string[]>([]); // empty indicates all services selected
     const [debouncedSearch, setDebouncedSearch] = useState<string>("");
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
     const [isPaused, setIsPaused] = useState<boolean>(false);
-    const isPausedRef = useRef<boolean>(isPaused);
-    const logBuffer = useRef(new CircularLogBuffer<FlatLogRecord>(MAX_GLOBAL_LOGS));
     const { data: serviceOptions, isLoading } = useDistinctServices();
     const dotColour = {
         connected: "success.main",
@@ -72,104 +45,42 @@ export default function LiveTailLogs() {
     }[connectionStatus];
 
     useEffect(() => {
-        const renderTimer = setInterval(() => {
-            // If the user clicks pause, the UI stops updating.
-            // But the WebSocket above keeps quietly updating logBuffer in the background
-            if (!isPausedRef.current) {
-                setDisplayLogs(logBuffer.current.toArrayNewestFirst());
+        // Instantiate the worker using Vite's standard pattern
+        workerRef.current = new Worker(
+            new URL("../workers/logWorker.ts", import.meta.url),
+            { type: "module" }, // Required to allow imports inside the worker
+        );
+
+        workerRef.current.onmessage = (e) => {
+            if (e.data.type === "LOG_UPDATE") {
+                setDisplayLogs(e.data.payload);
             }
-        }, RENDER_INTERVAL_MS);
-
-        return () => clearInterval(renderTimer);
-    }, []);
-
-    const connect = useCallback(() => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) return;
-
-        const ws = new WebSocket("ws://localhost:8091/ws/logs/tail");
-        wsRef.current = ws;
-
-        ws.onopen = () => {
-            reconnectAttempts.current = 0; // reset backoff on successful connect
-            setConnectionStatus("connected");
-        };
-
-        ws.onmessage = async (e) => {
-            if (!e.data) return; // ignore empty messages
-
-            try {
-                const buf = e.data instanceof Blob ? await e.data.arrayBuffer() : e.data;
-                // decodeMulti parses the concatenated byte stream into individual objects
-                for (const record of decodeMulti(buf, { extensionCodec })) {
-                    logBuffer.current.add(record as FlatLogRecord);
-                }
-            } catch {
-                console.error("failed to parse websocket message", e.data);
-                return;
+            // Listen for status changes from the worker
+            if (e.data.type === "STATUS") {
+                setConnectionStatus(e.data.payload);
             }
         };
 
-        ws.onerror = (e) => {
-            console.error("ws error", e);
-        };
-
-        ws.onclose = (e) => {
-            // Close ghost websocket so that it does not trigger a reconnect
-            if (wsRef.current !== ws) return;
-
-            wsRef.current = null;
-            if (e.code === WEBSOCKET_NORMAL_CLOSURE) return; // intentional close, don't reconnect
-
-            const maxAttempts = 5;
-            if (reconnectAttempts.current >= maxAttempts) {
-                console.error("max reconnect attempts reached");
-                setConnectionStatus("error");
-                return;
-            }
-
-            setConnectionStatus("connecting");
-            // Exponential backoff: 1s, 2s, 4s, 8s, 16s
-            const delay = Math.min(1000 * 2 ** reconnectAttempts.current, 30_000);
-            reconnectAttempts.current += 1;
-            reconnectTimer.current = setTimeout(connect, delay);
+        return () => {
+            // Tell the worker to close the WS cleanly before terminating
+            workerRef.current?.postMessage({ type: "CLEANUP" });
+            workerRef.current?.terminate();
         };
     }, []);
-
-    useEffect(() => {
-        connect();
-
-        const cleanupConnection = () => {
-            if (reconnectTimer.current) {
-                clearTimeout(reconnectTimer.current);
-            }
-            if (wsRef.current) {
-                wsRef.current.close(WEBSOCKET_NORMAL_CLOSURE, "navigating away");
-            }
-            setConnectionStatus("error");
-        };
-
-        return () => cleanupConnection();
-    }, [connect]);
-
-    useEffect(() => {
-        isPausedRef.current = isPaused;
-    }, [isPaused]);
 
     const handlePause = () => {
         setIsPaused(true);
+        workerRef.current?.postMessage({ type: "PAUSE" });
     };
 
     const handleResume = () => {
         setIsPaused(false);
-
-        // instantly flush latest state of buffer to screen
-        setDisplayLogs(logBuffer.current.toArrayNewestFirst());
+        workerRef.current?.postMessage({ type: "RESUME" });
     };
 
     const handleReconnect = () => {
         setConnectionStatus("connecting");
-        reconnectAttempts.current = 0;
-        connect();
+        workerRef.current?.postMessage({ type: "RECONNECT" });
     };
 
     const handleServiceChange = useCallback(
