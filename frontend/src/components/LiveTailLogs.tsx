@@ -2,7 +2,6 @@ import {
     Box,
     Typography,
     Stack,
-    Button,
     type SelectChangeEvent,
     CircularProgress,
     TableContainer,
@@ -13,9 +12,8 @@ import {
     TableBody,
 } from "@mui/material";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { card, pulseSx, sectionLabel } from "../theme/tokens";
+import { card } from "../theme/tokens";
 import PauseIcon from "@mui/icons-material/Pause";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import type { FlatLogRecord, LogType } from "../types/Log";
 import { useDistinctServices } from "../hooks/useDistinctServices";
 import ErrorBanner from "./ErrorBanner";
@@ -24,8 +22,8 @@ import TailLogRow from "./TailLogRow";
 import SearchField from "./SearchField";
 import SeverityDropdown from "./SeverityDropdown";
 import ServiceDropdown from "./ServiceDropdown";
-
-type ConnectionStatus = "connecting" | "connected" | "error";
+import LiveTailLogsHeader from "./LiveTailLogsHeader";
+import type { ConnectionStatus } from "../types/Connection";
 
 const MAX_DISPLAY_LOGS = 15;
 
@@ -68,15 +66,15 @@ export default function LiveTailLogs() {
         };
     }, []);
 
-    const handlePause = () => {
+    const handlePause = useCallback(() => {
         setIsPaused(true);
         workerRef.current?.postMessage({ type: "PAUSE" });
-    };
+    }, []);
 
-    const handleResume = () => {
+    const handleResume = useCallback(() => {
         setIsPaused(false);
         workerRef.current?.postMessage({ type: "RESUME" });
-    };
+    }, []);
 
     const handleReconnect = () => {
         setConnectionStatus("connecting");
@@ -113,29 +111,13 @@ export default function LiveTailLogs() {
         <>
             <Box sx={{ ...card, width: "100%" }}>
                 {/* Top Bar (Title and Pause button) */}
-                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-                    <Stack direction="row" sx={{ alignItems: "center" }} spacing={1}>
-                        <Box sx={{ ...pulseSx, bgcolor: dotColour }} />
-                        <Typography sx={{ ...sectionLabel, color: dotColour }}>Live Tail</Typography>
-                    </Stack>
-                    <Button
-                        variant="outlined"
-                        startIcon={isPaused ? <PlayArrowIcon fontSize="small" /> : <PauseIcon fontSize="small" />}
-                        onClick={isPaused ? handleResume : handlePause}
-                        disabled={connectionStatus !== "connected"}
-                        sx={{
-                            color: "text.disabled",
-                            borderColor: "rgba(255,255,255,0.15)",
-                            textTransform: "none",
-                            fontSize: 13,
-                            py: 0.5,
-                            minWidth: 105,
-                            "&.Mui-disabled": { borderColor: "rgba(255,255,255,0.05)" },
-                        }}
-                    >
-                        {isPaused ? "Continue" : "Pause"}
-                    </Button>
-                </Box>
+                <LiveTailLogsHeader
+                    color={dotColour}
+                    isPaused={isPaused}
+                    handleResume={handleResume}
+                    handlePause={handlePause}
+                    connectionStatus={connectionStatus}
+                />
 
                 {/* Filters Row */}
                 <Stack direction="row" spacing={2} sx={{ mb: 3 }}>

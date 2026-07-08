@@ -2,10 +2,10 @@ import IngestionGraph from "../components/IngestionGraph";
 import { Grid, Box, Stack, Typography, Button } from "@mui/material";
 import ServiceOverview from "../components/ServiceOverview";
 import ServiceError from "../components/ServiceError";
-import { pulseSx } from "../theme/tokens";
 import { useDashboard } from "../hooks/useMetrics";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import NatsQueueDepth from "../components/NatsQueueDepth";
+import PulsingCircle from "../components/PulsingCircle";
 
 const STATUS_CONFIG = {
     live: { label: "LIVE", colour: "success.main" },
@@ -52,7 +52,7 @@ export default function Dashboard() {
                         </Button>
                     )}
                     <Stack direction="row" sx={{ alignItems: "center" }} spacing={1}>
-                        <Box sx={{ ...pulseSx, bgcolor: status.colour, color: status.colour }} />
+                        <PulsingCircle color={status.colour} />
                         <Typography
                             sx={{
                                 fontSize: 10,
