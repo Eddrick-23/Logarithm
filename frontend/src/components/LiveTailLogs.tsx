@@ -2,7 +2,6 @@ import {
     Box,
     Typography,
     Stack,
-    Button,
     type SelectChangeEvent,
     CircularProgress,
     TableContainer,
@@ -13,55 +12,29 @@ import {
     TableBody,
 } from "@mui/material";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { card, pulseSx, sectionLabel } from "../theme/tokens";
+import { card } from "../theme/tokens";
 import PauseIcon from "@mui/icons-material/Pause";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import type { FlatLogRecord, LogType } from "../types/Log";
 import { useDistinctServices } from "../hooks/useDistinctServices";
 import ErrorBanner from "./ErrorBanner";
-import { decodeMulti, ExtensionCodec } from "@msgpack/msgpack";
 import { parseSeverity } from "../utils/severity";
 import TailLogRow from "./TailLogRow";
 import SearchField from "./SearchField";
 import SeverityDropdown from "./SeverityDropdown";
 import ServiceDropdown from "./ServiceDropdown";
+import LiveTailLogsHeader from "./LiveTailLogsHeader";
+import type { ConnectionStatus } from "../types/Connection";
 
-// Create a custom extension codec to handle Go's msgp time.Time (type 5)
-const extensionCodec = new ExtensionCodec();
-extensionCodec.register({
-    type: 5,
-    encode: () => null,
-    decode: (data: Uint8Array) => {
-        const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-
-        // Bytes 0-7: 64-bit Big-Endian Unix seconds
-        const seconds = Number(view.getBigInt64(0, false));
-        // Bytes 8-11: 32-bit Big-Endian nanoseconds
-        const nanos = view.getUint32(8, false);
-
-        // Convert to a JS Date and immediately return as an ISO string
-        return new Date(seconds * 1000 + Math.floor(nanos / 1_000_000)).toISOString();
-    },
-});
-
-type ConnectionStatus = "connecting" | "connected" | "error";
-
-const MAX_GLOBAL_LOGS = 300;
 const MAX_DISPLAY_LOGS = 15;
-const WEBSOCKET_NORMAL_CLOSURE = 1000;
 
 export default function LiveTailLogs() {
-    const wsRef = useRef<WebSocket | null>(null);
-    const reconnectAttempts = useRef(0);
-    const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const [logs, setLogs] = useState<FlatLogRecord[]>([]);
+    const workerRef = useRef<Worker | null>(null);
+    const [displayLogs, setDisplayLogs] = useState<FlatLogRecord[]>([]);
     const [severities, setSeverities] = useState<LogType[]>([]); // empty indicates all severities selected
     const [services, setServices] = useState<string[]>([]); // empty indicates all services selected
     const [debouncedSearch, setDebouncedSearch] = useState<string>("");
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
     const [isPaused, setIsPaused] = useState<boolean>(false);
-    const isPausedRef = useRef<boolean>(isPaused);
-    const bufferRef = useRef<FlatLogRecord[]>([]);
     const { data: serviceOptions, isLoading } = useDistinctServices();
     const dotColour = {
         connected: "success.main",
@@ -69,114 +42,43 @@ export default function LiveTailLogs() {
         error: "error.main",
     }[connectionStatus];
 
-    const processBatch = useCallback((batch: FlatLogRecord[]) => {
-        setLogs((prev) => {
-            const combined = [...prev, ...batch];
-            combined.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-            return combined.slice(0, MAX_GLOBAL_LOGS);
-        });
-    }, []);
+    useEffect(() => {
+        // Instantiate the worker using Vite's standard pattern
+        workerRef.current = new Worker(
+            new URL("../workers/logWorker.ts", import.meta.url),
+            { type: "module" }, // Required to allow imports inside the worker
+        );
 
-    const connect = useCallback(() => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) return;
-
-        const ws = new WebSocket("ws://localhost:8091/ws/logs/tail");
-        wsRef.current = ws;
-
-        ws.onopen = () => {
-            reconnectAttempts.current = 0; // reset backoff on successful connect
-            setConnectionStatus("connected");
+        workerRef.current.onmessage = (e) => {
+            if (e.data.type === "LOG_UPDATE") {
+                setDisplayLogs(e.data.payload);
+            }
+            // Listen for status changes from the worker
+            if (e.data.type === "STATUS") {
+                setConnectionStatus(e.data.payload);
+            }
         };
 
-        ws.onmessage = async (e) => {
-            if (!e.data) return; // ignore empty messages
-            const batch: FlatLogRecord[] = [];
-
-            try {
-                const buf = e.data instanceof Blob ? await e.data.arrayBuffer() : e.data;
-                // decodeMulti parses the concatenated byte stream into individual objects
-                for (const record of decodeMulti(buf, { extensionCodec })) {
-                    batch.push(record as FlatLogRecord);
-                }
-            } catch {
-                console.error("failed to parse websocket message", e.data);
-                return;
-            }
-
-            if (!Array.isArray(batch) || batch.length == 0) return;
-
-            if (isPausedRef.current) {
-                bufferRef.current.push(...batch); // spread entire batch into buffer
-                bufferRef.current = bufferRef.current.slice(-MAX_GLOBAL_LOGS);
-                return;
-            }
-
-            processBatch(batch);
-        };
-
-        ws.onerror = (e) => {
-            console.error("ws error", e);
-        };
-
-        ws.onclose = (e) => {
-            // Close ghost websocket so that it does not trigger a reconnect
-            if (wsRef.current !== ws) return;
-
-            wsRef.current = null;
-            if (e.code === WEBSOCKET_NORMAL_CLOSURE) return; // intentional close, don't reconnect
-
-            const maxAttempts = 5;
-            if (reconnectAttempts.current >= maxAttempts) {
-                console.error("max reconnect attempts reached");
-                setConnectionStatus("error");
-                return;
-            }
-
-            setConnectionStatus("connecting");
-            // Exponential backoff: 1s, 2s, 4s, 8s, 16s
-            const delay = Math.min(1000 * 2 ** reconnectAttempts.current, 30_000);
-            reconnectAttempts.current += 1;
-            reconnectTimer.current = setTimeout(connect, delay);
+        return () => {
+            // Tell the worker to close the WS cleanly before terminating
+            workerRef.current?.postMessage({ type: "CLEANUP" });
+            workerRef.current?.terminate();
         };
     }, []);
 
-    useEffect(() => {
-        connect();
-
-        const cleanupConnection = () => {
-            if (reconnectTimer.current) {
-                clearTimeout(reconnectTimer.current);
-            }
-            if (wsRef.current) {
-                wsRef.current.close(WEBSOCKET_NORMAL_CLOSURE, "navigating away");
-            }
-            setConnectionStatus("error");
-        };
-
-        return () => cleanupConnection();
-    }, [connect]);
-
-    useEffect(() => {
-        isPausedRef.current = isPaused;
-    }, [isPaused]);
-
-    const handlePause = () => {
+    const handlePause = useCallback(() => {
         setIsPaused(true);
-    };
+        workerRef.current?.postMessage({ type: "PAUSE" });
+    }, []);
 
-    const handleResume = () => {
+    const handleResume = useCallback(() => {
         setIsPaused(false);
-
-        if (bufferRef.current.length > 0) {
-            processBatch(bufferRef.current);
-            bufferRef.current = [];
-        }
-    };
+        workerRef.current?.postMessage({ type: "RESUME" });
+    }, []);
 
     const handleReconnect = () => {
         setConnectionStatus("connecting");
-        reconnectAttempts.current = 0;
-        connect();
+        workerRef.current?.postMessage({ type: "RECONNECT" });
     };
 
     const handleServiceChange = useCallback(
@@ -193,47 +95,29 @@ export default function LiveTailLogs() {
     }, []);
 
     const filteredLogs = useMemo(() => {
-        return logs.filter((log) => {
-            if (services.length > 0 && !services.includes(log.serviceName)) return false;
-            if (severities.length > 0 && !severities.includes(parseSeverity(log.severityText))) return false;
-
-            if (debouncedSearch.trim()) {
-                const lower = debouncedSearch.toLowerCase();
-                const bodyMatch = log.body.toLowerCase().includes(lower);
-                if (!bodyMatch) return false;
-            }
-
-            return true;
-        });
-    }, [logs, services, severities, debouncedSearch]);
+        const result: FlatLogRecord[] = [];
+        const lower = debouncedSearch.trim().toLowerCase();
+        for (const log of displayLogs) {
+            if (result.length >= MAX_DISPLAY_LOGS) break;
+            if (services.length > 0 && !services.includes(log.serviceName)) continue;
+            if (severities.length > 0 && !severities.includes(parseSeverity(log.severityText))) continue;
+            if (lower && !log.body.toLowerCase().includes(lower)) continue;
+            result.push(log);
+        }
+        return result;
+    }, [displayLogs, services, severities, debouncedSearch]);
 
     return (
         <>
             <Box sx={{ ...card, width: "100%" }}>
                 {/* Top Bar (Title and Pause button) */}
-                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-                    <Stack direction="row" sx={{ alignItems: "center" }} spacing={1}>
-                        <Box sx={{ ...pulseSx, bgcolor: dotColour }} />
-                        <Typography sx={{ ...sectionLabel, color: dotColour }}>Live Tail</Typography>
-                    </Stack>
-                    <Button
-                        variant="outlined"
-                        startIcon={isPaused ? <PlayArrowIcon fontSize="small" /> : <PauseIcon fontSize="small" />}
-                        onClick={isPaused ? handleResume : handlePause}
-                        disabled={connectionStatus !== "connected"}
-                        sx={{
-                            color: "text.disabled",
-                            borderColor: "rgba(255,255,255,0.15)",
-                            textTransform: "none",
-                            fontSize: 13,
-                            py: 0.5,
-                            minWidth: 105,
-                            "&.Mui-disabled": { borderColor: "rgba(255,255,255,0.05)" },
-                        }}
-                    >
-                        {isPaused ? "Continue" : "Pause"}
-                    </Button>
-                </Box>
+                <LiveTailLogsHeader
+                    color={dotColour}
+                    isPaused={isPaused}
+                    handleResume={handleResume}
+                    handlePause={handlePause}
+                    connectionStatus={connectionStatus}
+                />
 
                 {/* Filters Row */}
                 <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
