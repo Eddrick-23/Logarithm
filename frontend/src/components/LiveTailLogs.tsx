@@ -39,8 +39,8 @@ extensionCodec.register({
         // Bytes 8-11: 32-bit Big-Endian nanoseconds
         const nanos = view.getUint32(8, false);
 
-        // Convert to a JS Date and immediately return as an ISO string
-        return new Date(seconds * 1000 + Math.floor(nanos / 1_000_000)).toISOString();
+        // convert to unix timestamp in milliseconds
+        return seconds * 1000 + Math.floor(nanos / 1_000_000);
     },
 });
 
@@ -72,7 +72,7 @@ export default function LiveTailLogs() {
     const processBatch = useCallback((batch: FlatLogRecord[]) => {
         setLogs((prev) => {
             const combined = [...prev, ...batch];
-            combined.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            combined.sort((a: FlatLogRecord, b: FlatLogRecord) => b.timestamp - a.timestamp);
             return combined.slice(0, MAX_GLOBAL_LOGS);
         });
     }, []);
@@ -103,7 +103,7 @@ export default function LiveTailLogs() {
                 return;
             }
 
-            if (!Array.isArray(batch) || batch.length == 0) return;
+            if (!Array.isArray(batch) || batch.length === 0) return;
 
             if (isPausedRef.current) {
                 bufferRef.current.push(...batch); // spread entire batch into buffer
@@ -193,18 +193,16 @@ export default function LiveTailLogs() {
     }, []);
 
     const filteredLogs = useMemo(() => {
-        return logs.filter((log) => {
-            if (services.length > 0 && !services.includes(log.serviceName)) return false;
-            if (severities.length > 0 && !severities.includes(parseSeverity(log.severityText))) return false;
-
-            if (debouncedSearch.trim()) {
-                const lower = debouncedSearch.toLowerCase();
-                const bodyMatch = log.body.toLowerCase().includes(lower);
-                if (!bodyMatch) return false;
-            }
-
-            return true;
-        });
+        const result: FlatLogRecord[] = [];
+        const lower = debouncedSearch.trim().toLowerCase();
+        for (const log of logs) {
+            if (result.length >= MAX_DISPLAY_LOGS) break;
+            if (services.length > 0 && !services.includes(log.serviceName)) continue;
+            if (severities.length > 0 && !severities.includes(parseSeverity(log.severityText))) continue;
+            if (lower && !log.body.toLowerCase().includes(lower)) continue;
+            result.push(log);
+        }
+        return result;
     }, [logs, services, severities, debouncedSearch]);
 
     return (

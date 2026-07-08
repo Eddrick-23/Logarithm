@@ -17,8 +17,8 @@ export type LogRecord = {
 };
 
 export type FlatLogRecord = {
-    timestamp: string;
-    observedTimestamp: string;
+    timestamp: number;
+    observedTimestamp: number;
     insertedAt: string;
     traceId: string;
     spanId: string;
