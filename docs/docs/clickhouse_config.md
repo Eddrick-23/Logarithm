@@ -34,7 +34,8 @@ clickhouse:
 3. Credentials: Sets the database name, username and password. This must match the corresponding environment variables injected to the backend services. See [Credentials](#credentials)
 4. Open File Limits: Clickhouse's columnar storage model requires opening thousands of files simultaneously. Increasing this limit prevents fatal "too many open files" errors.
 
-### Ports
+## Ports
+
 Clickhouse exposes two ports:
 
 - `8123` to access the web ui
@@ -45,7 +46,8 @@ If the second port `9000` is modified, the env variables passed in must match th
 DB_ADDRESS=clickhouse:<modified-port>
 ```
 
-### Credentials
+## Credentials
+
 By default, the `docker-compose.yml` file provisions the initial admin account using environment variables:
 
 - **Username:** `admin` (configured via `CLICKHOUSE_USER`)

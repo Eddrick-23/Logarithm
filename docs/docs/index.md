@@ -19,19 +19,21 @@ For full documentation visit [mkdocs.org](https://www.mkdocs.org).
 **leave everything above as reference for now**
 
 ## Project Overview
+
 Brief explanation of what this project is about
 
 ## Installation guide
 
 **Prerequisites**: You must have Docker installed.
 
-- Copy the 3 files into the same directory
-- Build and run using
-```
+* Copy the 3 files into the same directory
+* Build and run using
+
+```bash
 docker compose up -d
 ```
-- Access the dashboard at [http://localhost:5173](http://localhost:5173)
 
+* Access the dashboard at [http://localhost:5173](http://localhost:5173)
 
 ??? "docker-compose.yml"
 
@@ -305,9 +307,10 @@ docker compose up -d
 
 ## QuickStart
 
-This is a short tutorial on connecting a service to logarithm itself, and sending some sample logs. <br>
+This is a short tutorial on connecting a service to logarithm itself, and sending some sample logs.
+
 **Prerequisites**: You must have logarithm running locally on your machine via docker. See [installation-guide](#installation-guide)
 
-- dockerised http server maybe using python fastapi
-- setup otlp into loggers and point directly to logarithm or to an otel collector
-- send curl requests to force log events and view dashboard
+* dockerised http server maybe using python fastapi
+* setup otlp into loggers and point directly to logarithm or to an otel collector
+* send curl requests to force log events and view dashboard
