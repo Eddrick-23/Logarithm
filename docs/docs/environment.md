@@ -1,5 +1,109 @@
 # Configuration
 
+## Environment Variables
+
+### Frontend (`frontend/.env`)
+
+| Variable | Description | Example | Required |
+| --- | --- | --- | --- |
+| `VITE_API_URL` | Base URL of backend REST API | `http://dashboard-api:8091` | Yes |
+| `VITE_WEBSOCKET_URL` | WebSocket endpoint for real-time updates | `ws://dashboard-api:8091` | Yes |
+
+> **Note:** All frontend env vars must be prefixed with `VITE_` to be exposed to client-side code. Anything without the prefix won't be injected at build time.  Do not put secrets here, since these are bundled into public JS.
+
+### Backend (`backend/.env`)
+
+This backend is composed of several services (Ingester, Dashboard API, Worker) sharing a ClickHouse database and NATS message broker. Each section below documents the variables relevant to that component.
+
+#### Ingester
+
+Handles incoming log ingestion over gRPC and HTTP.
+
+| Variable | Description | Example | Required |
+| --- | --- | --- | --- |
+| `INGESTER_HOST` | Bind address for the ingester service | `0.0.0.0` | Yes |
+| `INGESTER_PORT_GRPC` | Port for gRPC ingestion endpoint | `8089` | Yes |
+| `INGESTER_PORT_HTTP` | Port for HTTP ingestion endpoint | `8090` | Yes |
+| `INGESTER_READ_HEADER_TIMEOUT` | Max time to read request headers | `2s` | No (default: `2s`) |
+| `INGESTER_READ_TIMEOUT` | Max time to read full request | `5s` | No (default: `5s`) |
+| `INGESTER_WRITE_TIMEOUT` | Max time to write response | `10s` | No (default: `10s`) |
+| `INGESTER_IDLE_TIMEOUT` | Max idle time for keep-alive connections | `60s` | No (default: `60s`) |
+
+---
+
+#### Dashboard API
+
+Serves the frontend dashboard, including live tail streaming.
+
+| Variable | Description | Example | Required |
+| --- | --- | --- | --- |
+| `APP_HOST` | Bind address / service name for the dashboard API | `dashboard-api` | Yes |
+| `APP_PORT` | Port the dashboard API listens on | `8091` | Yes |
+| `LIVE_TAIL_REFRESH_INTERVAL` | Live tail poll/refresh interval (ms) | `500` | Yes |
+| `LIVE_TAIL_MAX_BATCH` | Max number of log lines sent per live tail batch | `100` | Yes |
+
+> Corresponds to frontend `VITE_API_URL` / `VITE_WEBSOCKET_URL`, which should point at `APP_HOST:APP_PORT`.
+
+---
+
+#### ClickHouse (Database)
+
+| Variable | Description | Example | Required |
+| --- | --- | --- | --- |
+| `DB_ADDRESS` | ClickHouse connection address | `clickhouse:9000` | Yes |
+| `DB_USER` | ClickHouse username | `admin` | Yes |
+| `DB_PASSWORD` | ClickHouse password | `strongpassword` | Yes |
+| `DB_NAME` | Database name | `logarithm` | Yes |
+| `DB_BATCH_POOL_SIZE` | Number of concurrent batch insert workers | `5` | Yes |
+| `DB_BATCH_POOL_MAX_ROWS` | Max rows per batch insert | `2000` | Yes |
+
+> ⚠️ `DB_BATCH_POOL_MAX_ROWS` must be **≥ `WORKER_ROWS_PER_BATCH`**, or batches will be split/dropped unexpectedly.
+
+---
+
+#### NATS (Message Broker)
+
+| Variable | Description | Example | Required |
+| --- | --- | --- | --- |
+| `NATS_URL` | NATS server connection URL | `nats://nats:4222` | Yes |
+| `NATS_STREAM_MAX_AGE` | Max retention age for the main log stream | `12h` | Yes |
+| `NATS_DLQ_MAX_AGE` | Max retention age for dead-letter queue messages | `24h` | Yes |
+| `NATS_MAX_DELIVER` | Max delivery attempts before a message is sent to DLQ | `20` | Yes |
+| `NATS_BACKOFF` | Redelivery backoff schedule (comma-separated durations) | `5s,30s,60s,300s,3600s` | Yes |
+| `NATS_LOG_STREAM_MAX_BYTES` | Max size of the main log stream before eviction | `50GB` | Yes |
+| `NATS_DLQ_MAX_BYTES` | Max size of the dead-letter queue stream | `10GB` | Yes |
+| `NATS_CONSUMER_MAX_ACK_PENDING` | Max unacknowledged messages per consumer | `2000` | Yes |
+
+> ⚠️ `NATS_CONSUMER_MAX_ACK_PENDING` must be **≥ `WORKER_MAX_BATCH`**, or the worker may stall waiting for ack headroom.
+
+---
+
+#### Worker
+
+Consumes from NATS and writes batches into ClickHouse.
+
+| Variable | Description | Example | Required |
+| --- | --- | --- | --- |
+| `WORKER_LOG_LEVEL` | Log verbosity | `INFO` | Yes |
+| `WORKER_MAX_BATCH` | Max messages pulled per batch from NATS | `1000` | Yes |
+| `WORKER_MAX_WAIT` | Max time to wait before flushing a partial batch | `2s` | Yes |
+| `WORKER_BACKOFF` | Retry backoff schedule on failure (comma-separated durations) | `5s,30s,60s,300s,3600s` | Yes |
+| `WORKER_COUNT` | Number of worker instances/goroutines to run | `1` | Yes |
+| `WORKER_LIVE_TAIL_COUNT` | Number of concurrent live tail subscriptions supported | `3` | Yes |
+| `WORKER_LIVE_TAIL_QUEUE_SIZE` | Max buffered messages per live tail subscription | `10000` | Yes |
+| `WORKER_ROWS_PER_BATCH` | Rows written to ClickHouse per insert batch | `1000` | Yes |
+
+---
+
+#### Profiling & Benchmarking
+
+| Variable | Description | Example | Required |
+| --- | --- | --- | --- |
+| `ENABLE_PPROF` | Enables Go pprof profiling endpoint | `false` | No (default: `false`) |
+| `PPROF_HOST` | Bind address for the pprof server | `0.0.0.0` | No (default: `0.0.0.0`) |
+
+> ⚠️ Do not enable `ENABLE_PPROF` in production without restricting access since  pprof endpoints can leak memory contents and are a security risk if publicly exposed.
+
 ## Basic
 
 - basic environment variables.
