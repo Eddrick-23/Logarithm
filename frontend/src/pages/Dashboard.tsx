@@ -14,8 +14,8 @@ const STATUS_CONFIG = {
 };
 
 function getStatus(isLoading: boolean, isError: boolean) {
-    if (isError) return STATUS_CONFIG.error;
     if (isLoading) return STATUS_CONFIG.connecting;
+    if (isError) return STATUS_CONFIG.error;
     return STATUS_CONFIG.live;
 }
 
@@ -31,7 +31,7 @@ export default function Dashboard() {
                     SYSTEM OVERVIEW
                 </Typography>
                 <Stack direction="row" sx={{ alignItems: "center" }} spacing={1.5}>
-                    {isError && (
+                    {isError && !isLoading && (
                         <Button
                             size="small"
                             onClick={() => refetch()}
