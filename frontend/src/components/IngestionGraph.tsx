@@ -74,7 +74,7 @@ export default function IngestionGraph({ isLoading, isError }: IngestionGraphPro
     const isStale = !isLoading && isError && hasData;
 
     return (
-        <Box sx={{ ...card }}>
+        <Box sx={{ ...card, height: "100%" }}>
             <Typography sx={sectionLabel}>Ingestion Throughput - Last 60s</Typography>
 
             <LastUpdated timestamp={lastUpdatedAt} refreshIntervalMs={INGESTION_GRAPH_REFETCH_INTERVAL_MS} />
@@ -124,8 +124,8 @@ export default function IngestionGraph({ isLoading, isError }: IngestionGraphPro
                 </Box>
             )}
 
-            {/* only show the graph if is not loading */}
-            {!isLoading && (
+            {/* only show the graph if is not loading and contains data */}
+            {!isLoading && hasData && (
                 <LineChart
                     xAxis={xAxis}
                     yAxis={yAxis} // set min to 0 so that y starts from 0
