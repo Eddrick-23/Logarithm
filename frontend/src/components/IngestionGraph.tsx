@@ -119,13 +119,13 @@ export default function IngestionGraph({ isLoading, isError }: IngestionGraphPro
                 // add a gap between LastUpdatedAt and alert bar
                 <Box sx={{ mt: 1.5 }}>
                     <Alert variant="outlined" severity="info">
-                        No logs received in the last 60 seconds.
+                        No logs received in the past minute.
                     </Alert>
                 </Box>
             )}
 
-            {/* only show the graph if is not loading and contains data */}
-            {!isLoading && hasData && (
+            {/* only show the graph if there are timestamps found */}
+            {!isLoading && data && data?.timestamps.length > 0 && (
                 <LineChart
                     xAxis={xAxis}
                     yAxis={yAxis} // set min to 0 so that y starts from 0
