@@ -49,8 +49,20 @@ func mustSpanID(hexStr string) pcommon.SpanID {
 }
 
 func run(ctx context.Context, w io.Writer, args []string) error {
+	config, err := config.LoadConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	var logLevel slog.Level
+	if err := logLevel.UnmarshalText([]byte(config.DashboardLogLevel)); err != nil {
+		logLevel = slog.LevelInfo
+	}
+	opt := &slog.HandlerOptions{
+		Level: logLevel,
+	}
 	logger := slog.New(
-		slog.NewTextHandler(w, nil),
+		slog.NewTextHandler(w, opt),
 	)
 	httpLogger := logger.With("component", "dashboard")
 	databaseLogger := logger.With("component", "database")
@@ -58,11 +70,6 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-
-	config, err := config.LoadConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
 
 	broker, err := transport.NewNatsBroker(ctx, natsLogger, config.NatsURL)
 	if err != nil {
