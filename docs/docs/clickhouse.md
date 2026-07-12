@@ -1,10 +1,10 @@
-# Usage of Clickhouse DB
+# Usage of ClickHouse DB
 
-Logarithm uses Clickhouse to persist logs. </br>
-While log entries can be viewed using the react dashboard, the clickhouse web ui is also accessible for manual database management.
+Logarithm uses ClickHouse to persist logs. </br>
+While log entries can be viewed using the React dashboard, the ClickHouse web UI is also accessible for manual database management.
 
-By default, clickhouse web ui is accessible at [localhost:8123](http://localhost:8123).
-To access clickhouse web ui services, the credentials specified in the dockercompose.yaml must be used.</br>
+By default, ClickHouse web UI is accessible at [localhost:8123](http://localhost:8123).
+To access ClickHouse web UI services, the credentials specified in the docker-compose.yml must be used.</br>
 By default these are:
 
 ```yaml

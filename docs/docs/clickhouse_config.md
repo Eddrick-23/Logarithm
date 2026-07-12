@@ -1,6 +1,6 @@
-# Configuring Clickhouse
+# Configuring ClickHouse
 
-Clickhouse is configured via the `docker-compose.yml` file
+ClickHouse is configured via the `docker-compose.yml` file.
 
 ```yaml
 clickhouse:
@@ -30,15 +30,15 @@ clickhouse:
 ```
 
 1. Web UI: Used to access the built-in HTTP visual interface via your browser.
-2. Native Port: Used by Clickhouse clients and external applications to send and retrieve raw data over TCP.
+2. Native Port: Used by ClickHouse clients and external applications to send and retrieve raw data over TCP.
 3. Credentials: Sets the database name, username and password. This must match the corresponding environment variables injected to the backend services. See [Credentials](#credentials)
-4. Open File Limits: Clickhouse's columnar storage model requires opening thousands of files simultaneously. Increasing this limit prevents fatal "too many open files" errors.
+4. Open File Limits: ClickHouse's columnar storage model requires opening thousands of files simultaneously. Increasing this limit prevents fatal "too many open files" errors.
 
 ## Ports
 
-Clickhouse exposes two ports:
+ClickHouse exposes two ports:
 
-- `8123` to access the web ui
+- `8123` to access the web UI
 - `9000` which is for clients to send and retrieve data.
 If the second port `9000` is modified, the env variables passed in must match this change
 
@@ -53,4 +53,4 @@ By default, the `docker-compose.yml` file provisions the initial admin account u
 - **Username:** `admin` (configured via `CLICKHOUSE_USER`)
 - **Password:** `strongpassword` (configured via `CLICKHOUSE_PASSWORD`)
 
-> Detailed guide for environment variables is configured [here](environment.md)
+> Detailed guide for environment variables is configured [here](environment.md).
