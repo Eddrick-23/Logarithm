@@ -1,0 +1,106 @@
+services:
+  react:
+    image: eddricklivando/logarithm:react
+    ports:
+      - "5173:80"
+    environment:
+      - VITE_API_URL=http://dashboard-api:8091
+    depends_on:
+    dashboard-api:
+      condition: service_healthy
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.3
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: strongpassword
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--user", "admin", "--password", "strongpassword", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  nats:
+    image: nats:2.14-alpine
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["-c", "/etc/deploy/nats.conf"]
+    volumes:
+      - ./nats.conf:/etc/deploy/nats.conf:ro
+      - nats_storage:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  ingester:
+    image: eddricklivando/logarithm:ingester
+    ports:
+      - "8090:8090"
+    environment:
+      - NATS_URL=nats://nats:4222
+      - PORT=8090
+      - DB_USER=admin
+      - DB_PASSWORD=strongpassword
+      - DB_ADDRESS=clickhouse:9000
+    depends_on:
+      nats:
+        condition: service_healthy
+
+  worker:
+    image: eddricklivando/logarithm:worker
+    environment:
+      - NATS_URL=nats://nats:4222
+      - DB_USER=admin
+      - DB_PASSWORD=strongpassword
+      - DB_ADDRESS=clickhouse:9000
+    depends_on:
+      nats:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+
+  dashboard-api:
+    image: eddricklivando/logarithm:dashboard-api
+    ports:
+      - "8091:8091"
+    environment:
+      - PORT=8091
+      - NATS_URL=nats://nats:4222
+      - DB_USER=admin
+      - DB_PASSWORD=strongpassword
+      - DB_ADDRESS=clickhouse:9000
+      - SEED_SYSTEM=true
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://dashboard-api:8091/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      nats:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+
+volumes:
+  clickhouse_data:
+  clickhouse_logs:
+  nats_storage:
