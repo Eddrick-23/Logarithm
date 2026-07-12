@@ -39,7 +39,7 @@ docker compose up -d
 
 ??? "docker-compose.yml"
 
-```yaml title="docker-compose.yml"
+    ```yaml title="docker-compose.yml"
     services:
     react:
         image: eddricklivando/logarithm:react
