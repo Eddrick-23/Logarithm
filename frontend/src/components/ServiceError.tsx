@@ -78,6 +78,11 @@ export default memo(function ServiceError({ isLoading, isError }: ServiceErrorPr
         setEditorOpen(false);
     }, []);
 
+    const hasData = data && data.length > 0;
+    const isEmpty = !isLoading && !isError && !hasData;
+    const isHardError = !isLoading && isError && !hasData;
+    const isStale = !isLoading && isError && hasData;
+
     return (
         <Box sx={{ ...card, height: "100%" }}>
             {/* header */}
@@ -108,14 +113,24 @@ export default memo(function ServiceError({ isLoading, isError }: ServiceErrorPr
             <Box sx={{ mb: 1 }} />
 
             {/* Error bar */}
-            {!isLoading && isError && (
+            {isHardError && (
                 <Alert variant="outlined" severity="error">
                     Unable to load top service errors.
                 </Alert>
             )}
 
             {/* Threshold legend */}
-            {!isLoading && !isError && data && data.length > 0 && <ThresholdLegend thresholds={thresholds} />}
+            {!isLoading && hasData && <ThresholdLegend thresholds={thresholds} />}
+
+            {/* stale data: show last known data while attempting to refetch */}
+            {isStale && (
+                // add a gap between LastUpdatedAt and alert bar
+                <Box sx={{ mt: 1.5 }}>
+                    <Alert variant="outlined" severity="warning">
+                        Showing last known data.
+                    </Alert>
+                </Box>
+            )}
 
             {/* create loading skeleton bars to simulate loading service errors */}
             {isLoading && (
@@ -127,7 +142,7 @@ export default memo(function ServiceError({ isLoading, isError }: ServiceErrorPr
             )}
 
             {/* no errors found in past hour */}
-            {!isLoading && !isError && (!data || data.length === 0) && (
+            {isEmpty && (
                 <Box sx={{ py: 3, textAlign: "center" }}>
                     <Typography variant="body2" sx={{ color: "text.secondary" }}>
                         No errors recorded in the last hour.
@@ -136,7 +151,7 @@ export default memo(function ServiceError({ isLoading, isError }: ServiceErrorPr
             )}
 
             {/* display rows */}
-            {!isLoading && !isError && data && data.length > 0 && (
+            {!isLoading && hasData && (
                 <Box>
                     {data.map((item: TopServiceErrorsStats) => (
                         <ServiceErrorRow
