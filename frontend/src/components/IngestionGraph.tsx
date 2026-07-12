@@ -107,7 +107,7 @@ export default function IngestionGraph({ isLoading, isError }: IngestionGraphPro
             {/* hard failure: websocket + rest api fetch both failed, nothing to display */}
             {isHardError && (
                 // add a gap between LastUpdatedAt and alert bar
-                <Box sx={{ mt: 1.5 }}>
+                <Box sx={{ mt: 3 }}>
                     <Alert variant="outlined" severity="error">
                         Unable to load ingestion graph data.
                     </Alert>
