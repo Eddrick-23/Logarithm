@@ -1,4 +1,4 @@
-import { Box, IconButton, LinearProgress, Skeleton, Tooltip, Typography } from "@mui/material";
+import { Box, IconButton, LinearProgress, Skeleton, Tooltip, Typography, Alert } from "@mui/material";
 import { card, sectionLabel } from "../theme/tokens";
 import { useTopServiceErrorsStats } from "../hooks/useMetrics";
 import type { TopServiceErrorsStats } from "../types/Metric";
@@ -18,6 +18,11 @@ interface ServiceErrorRowProps {
     totalErrors: number;
     errorRate: number;
     thresholds: Threshold[];
+}
+
+interface ServiceErrorProps {
+    isLoading: boolean;
+    isError: boolean;
 }
 
 function ServiceErrorRow({ serviceName, totalErrors, errorRate, thresholds }: ServiceErrorRowProps) {
@@ -58,8 +63,8 @@ function ServiceErrorRow({ serviceName, totalErrors, errorRate, thresholds }: Se
     );
 }
 
-export default memo(function ServiceError() {
-    const { data, isLoading, isError, dataUpdatedAt } = useTopServiceErrorsStats();
+export default memo(function ServiceError({ isLoading, isError }: ServiceErrorProps) {
+    const { data, dataUpdatedAt } = useTopServiceErrorsStats();
     const [thresholds, setThresholds] = useState<Threshold[]>(loadThresholds);
     const [editorOpen, setEditorOpen] = useState(false);
 
@@ -101,6 +106,13 @@ export default memo(function ServiceError() {
 
             {/* add a 8px gap between last updated and threshold legend */}
             <Box sx={{ mb: 1 }} />
+
+            {/* Error bar */}
+            {!isLoading && isError && (
+                <Alert variant="outlined" severity="error">
+                    Unable to load top service errors.
+                </Alert>
+            )}
 
             {/* Threshold legend */}
             {!isLoading && !isError && data && data.length > 0 && <ThresholdLegend thresholds={thresholds} />}
