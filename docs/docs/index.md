@@ -22,7 +22,7 @@ docs/
 
 ## Project Overview
 
-Brief explanation of what this project is about
+Logarithm is a high-throughput, OpenTelemetry compliant, self-hosted observability pipeline capable of ingesting thousands of logs per second. The system will decouple data ingestion, transport and permanent storage using a Golang based engine, NATS Jetstream as a durable queue and ClickHouse for persistent storage, along with a React based dashboard for real-time live tailing and analytics.
 
 ## Installation guide
 
@@ -58,10 +58,10 @@ docker compose up -d
 
 ## QuickStart
 
-This is a short tutorial on connecting a service to logarithm itself, and sending some sample logs.
+This is a short tutorial on connecting a service to Logarithm itself, and sending some sample logs.
 
-**Prerequisites**: You must have logarithm running locally on your machine via docker. See [installation-guide](#installation-guide)
+**Prerequisites**: You must have Logarithm running locally on your machine via Docker. See [installation-guide](#installation-guide)
 
 * dockerised http server maybe using python fastapi
-* setup otlp into loggers and point directly to logarithm or to an otel collector
+* setup otlp into loggers and point directly to Logarithm or to an otel collector
 * send curl requests to force log events and view dashboard
