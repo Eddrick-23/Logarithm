@@ -31,6 +31,9 @@ export default function NatsQueueDepthGraph({
     dataUpdatedAt,
 }: NatsQueueDepthGraphProps) {
     const hasData = xAxisData && xAxisData.length > 0;
+    const isEmpty = !isLoading && !isError && !hasData;
+    const isHardError = !isLoading && isError && !hasData;
+    const isStale = !isLoading && isError && hasData;
 
     return (
         <Box sx={{ ...card, flex: 1 }}>
@@ -42,13 +45,23 @@ export default function NatsQueueDepthGraph({
                 <Skeleton variant="rectangular" width="100%" height={CHART_HEIGHT} sx={{ borderRadius: 2 }} />
             )}
 
-            {isError && (
+            {/* stale data: show last known data while attempting to refetch */}
+            {isStale && (
+                // add a gap between LastUpdatedAt and alert bar
+                <Box sx={{ mt: 1.5 }}>
+                    <Alert variant="outlined" severity="warning">
+                        Showing last known data.
+                    </Alert>
+                </Box>
+            )}
+
+            {isHardError && (
                 <Box sx={{ my: 2 }}>
                     <Alert severity="error">Error fetching data.</Alert>
                 </Box>
             )}
 
-            {!isLoading && !isError && !hasData && (
+            {isEmpty && (
                 <Box sx={{ my: 2 }}>
                     <Alert severity="info">No data yet.</Alert>
                 </Box>

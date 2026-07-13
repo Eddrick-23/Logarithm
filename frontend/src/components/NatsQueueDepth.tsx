@@ -3,8 +3,13 @@ import { useNatsQueueDepthGraphMetrics } from "../hooks/useMetrics";
 import { Stack } from "@mui/material";
 import NatsQueueDepthGraph from "./NatsQueueDepthGraph";
 
-export default function NatsQueueDepth() {
-    const { data, isLoading, isError, dataUpdatedAt } = useNatsQueueDepthGraphMetrics();
+interface NatsQueueDepthProps {
+    isLoading: boolean;
+    isError: boolean;
+}
+
+export default function NatsQueueDepth({ isLoading, isError }: NatsQueueDepthProps) {
+    const { data, dataUpdatedAt } = useNatsQueueDepthGraphMetrics();
 
     const xAxisData = useMemo(() => data?.timestamps.map((ts) => new Date(ts)) ?? [], [data]);
     const numPendingData = useMemo(() => [{ data: data?.numPending ?? [] }], [data]);

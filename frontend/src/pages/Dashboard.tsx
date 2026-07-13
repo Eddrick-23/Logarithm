@@ -85,7 +85,7 @@ export default function Dashboard() {
             </Grid>
 
             {/* nats queue depth graphs */}
-            <NatsQueueDepth />
+            <NatsQueueDepth isLoading={isLoading} isError={isError} />
         </Box>
     );
 }
