@@ -433,7 +433,7 @@ func (nb *NatsBroker) StartPresenceListener(ctx context.Context, subject string,
 		if err := sub.Unsubscribe(); err != nil {
 			nb.logger.Error("failed to unsubscribe presence listener", "err", err)
 		}
-		nb.logger.Info("stopped presence listener", "subject", "subject")
+		nb.logger.Info("stopped presence listener", "subject", subject)
 	}()
 
 	isActive := func() bool {
