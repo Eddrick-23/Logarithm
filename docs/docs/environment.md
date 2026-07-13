@@ -117,7 +117,8 @@ Infrastructure tuning variables such as timeouts, batch sizes, intervals and ret
 | `DB_BATCH_POOL_SIZE` | Number of concurrent batch insert workers | `5` | Yes |
 | `DB_BATCH_POOL_MAX_ROWS` | Max rows per batch insert | `2000` | Yes |
 
-> ⚠️ `DB_BATCH_POOL_MAX_ROWS` must be **≥ `WORKER_ROWS_PER_BATCH`**, or batches will be split/dropped unexpectedly.
+!!! warning "`DB_BATCH_POOL_MAX_ROWS` must be >= `WORKER_ROWS_PER_BATCH`"
+    Not abiding by this may cause batches to be split/dropped unexpectedly
 
 ---
 
@@ -148,7 +149,9 @@ Infrastructure tuning variables such as timeouts, batch sizes, intervals and ret
 | `NATS_DLQ_MAX_BYTES` | Max size of the dead-letter queue stream | `10GB` | Yes |
 | `NATS_CONSUMER_MAX_ACK_PENDING` | Max unacknowledged messages per consumer | `2000` | Yes |
 
-> ⚠️ `NATS_CONSUMER_MAX_ACK_PENDING` must be **≥ `WORKER_MAX_BATCH`**, or the worker may stall waiting for ack headroom.
+!!! warning "`NATS_CONSUMER_MAX_ACK_PENDING` must be >= `WORKER_MAX_BATCH`"
+    This is to prevent the worker from stalling while waiting for more messages despite ack headroom being reached.
+  
 
 ---
 
@@ -159,7 +162,8 @@ Infrastructure tuning variables such as timeouts, batch sizes, intervals and ret
 | `ENABLE_PPROF` | Enables Go pprof profiling endpoint | `false` | No (default: `false`) |
 | `PPROF_HOST` | Bind address for the pprof server | `0.0.0.0` | No (default: `0.0.0.0`) |
 
-> ⚠️ Do not enable `ENABLE_PPROF` in production without restricting access since  pprof endpoints can leak memory contents and are a security risk if publicly exposed.
+!!! warning
+    Do not enable `ENABLE_PPROF` in production without restricting access since pprof endpoints can leak memory contents and are a security risk if publicly exposed.
 
 ## Basic
 
