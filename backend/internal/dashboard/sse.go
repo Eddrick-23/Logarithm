@@ -158,7 +158,7 @@ func writeErrorRateAndNatsQueueDepthMetricsEvent(
 	})
 
 	if err := eg.Wait(); err != nil {
-		logger.Error("failed to fetch error rate metrics / nats queue detph metrics", "error", err)
+		logger.Error("failed to fetch error rate metrics / nats queue depth metrics", "error", err)
 		return err
 	}
 
