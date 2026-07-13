@@ -384,7 +384,13 @@ func calculateExponentialBackoff(attempt int, baseDelay time.Duration, maxDelay 
 func (nb *NatsBroker) StartPresencePublisher(ctx context.Context, subject string, interval time.Duration) {
 	nb.logger.Info("starting presence publisher", "subject", subject, "interval", interval)
 
+	if interval <= 0 {
+		nb.logger.Warn("invalid interval passed in, defaulting to 1s")
+		interval = 1 * time.Second
+	}
+
 	go func() {
+
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 

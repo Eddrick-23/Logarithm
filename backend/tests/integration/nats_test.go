@@ -14,8 +14,7 @@ import (
 )
 
 func TestNatsPresence(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	natsBroker, err := transport.NewNatsBroker(ctx, slog.Default(), natsUrl)
 	require.NoError(t, err)
