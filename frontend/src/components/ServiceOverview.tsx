@@ -61,10 +61,10 @@ export default memo(function ServiceOverview({ isLoading }: ServiceOverviewProps
     }
 
     // log rate conditional display
-    let logDeltaText = "";
+    let logDeltaText = "—";
     let logDeltaColour = "text.secondary";
     if (logRateStats?.avgRate === 0) {
-        logDeltaText = "No logs in the last 1 min";
+        logDeltaText = "No logs received in the past minute.";
         logDeltaColour = "error.main";
     } else if (logRateStats?.ratio !== undefined) {
         const percentChange = (logRateStats.ratio - 1) * 100;

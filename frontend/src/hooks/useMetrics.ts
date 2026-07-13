@@ -65,6 +65,7 @@ export const useDashboard = () => {
     }, [queryClient]);
 
     const connect = useCallback(async () => {
+        setIsLoading(true);
         try {
             // manually fetch all of the metrics to load the dashboard upon connect
             const [ingestionGraphMetrics, storageInfoMetrics, logRateStats, topServiceErrorsStats, errorRateMetrics] =

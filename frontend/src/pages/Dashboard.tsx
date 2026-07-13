@@ -14,8 +14,8 @@ const STATUS_CONFIG = {
 };
 
 function getStatus(isLoading: boolean, isError: boolean) {
-    if (isError) return STATUS_CONFIG.error;
     if (isLoading) return STATUS_CONFIG.connecting;
+    if (isError) return STATUS_CONFIG.error;
     return STATUS_CONFIG.live;
 }
 
@@ -31,7 +31,7 @@ export default function Dashboard() {
                     SYSTEM OVERVIEW
                 </Typography>
                 <Stack direction="row" sx={{ alignItems: "center" }} spacing={1.5}>
-                    {isError && (
+                    {isError && !isLoading && (
                         <Button
                             size="small"
                             onClick={() => refetch()}
@@ -80,7 +80,7 @@ export default function Dashboard() {
                 {/* for 1200px <= size < 1536px, size assigned is larger to fit the ServiceError without overflowing
                     for size >= 1536px, size assigned is smaller since there is sufficient space to fit ServiceError without overflowing */}
                 <Grid size={{ lg: 3.25, xl: 2.75 }}>
-                    <ServiceError />
+                    <ServiceError isLoading={isLoading} isError={isError} />
                 </Grid>
             </Grid>
 
