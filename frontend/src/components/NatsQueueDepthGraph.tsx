@@ -2,6 +2,7 @@ import { Alert, Box, Skeleton, Typography } from "@mui/material";
 import { card, sectionLabel } from "../theme/tokens";
 import { LastUpdated } from "./LastUpdated";
 import { LineChart } from "@mui/x-charts";
+import type { LineChartXAxis } from "../types/LineChart";
 
 const REFETCH_INTERVAL_MS = 15000;
 const CHART_HEIGHT = 400;
@@ -12,7 +13,7 @@ interface SeriesConfig {
 
 interface NatsQueueDepthGraphProps {
     title: string;
-    xAxisData: Date[];
+    xAxis: LineChartXAxis;
     seriesData: SeriesConfig[];
     isLoading: boolean;
     isError: boolean;
@@ -24,13 +25,13 @@ const yAxis = [{ min: 0, tickMinStep: 1, valueFormatter: (value: number) => Math
 
 export default function NatsQueueDepthGraph({
     title,
-    xAxisData,
+    xAxis,
     seriesData,
     isLoading,
     isError,
     dataUpdatedAt,
 }: NatsQueueDepthGraphProps) {
-    const hasData = xAxisData && xAxisData.length > 0;
+    const hasData = xAxis && xAxis.length > 0;
     const isEmpty = !isLoading && !isError && !hasData;
     const isHardError = !isLoading && isError && !hasData;
     const isStale = !isLoading && isError && hasData;
@@ -69,19 +70,7 @@ export default function NatsQueueDepthGraph({
 
             {/* after a while, there will be data recorded to be displayed */}
             {!isLoading && hasData && (
-                <LineChart
-                    skipAnimation
-                    xAxis={[
-                        {
-                            data: xAxisData,
-                            scaleType: "time",
-                            valueFormatter: (date) => date.toLocaleTimeString(),
-                        },
-                    ]}
-                    yAxis={yAxis}
-                    series={seriesData}
-                    height={CHART_HEIGHT}
-                />
+                <LineChart skipAnimation xAxis={xAxis} yAxis={yAxis} series={seriesData} height={CHART_HEIGHT} />
             )}
         </Box>
     );
