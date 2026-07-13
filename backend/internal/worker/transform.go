@@ -110,8 +110,6 @@ func (t *LogTransformer) Flatten(resourceLogs plog.ResourceLogs, publisher Publi
 				if !publisher.Enqueue(transport.LiveTailSubjectPrefix+serviceName, &transBuf.flatLogrecord) {
 					t.logger.Warn("failed to enqueue log for live tail, queue full")
 				}
-			} else {
-				t.logger.Info("skipping live tail publish as there are no subscribers")
 			}
 
 			appender.Append(
