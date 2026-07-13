@@ -12,7 +12,6 @@ import (
 	"os/signal"
 	"runtime"
 	"syscall"
-	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/config"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
@@ -110,7 +109,7 @@ func run(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("failed to ensure dlq stream: %w", err)
 	}
 
-	subscriberCheck, err := natsBroker.StartPresenceListener(ctx, transport.LiveTailPresenceSubject, 1*time.Second)
+	subscriberCheck, err := natsBroker.StartPresenceListener(ctx, transport.LiveTailPresenceSubject, config.WorkerLiveTailPresenceTimeout)
 	if err != nil {
 		return fmt.Errorf("failed to set up live tail presence listener: %w", err)
 	}
