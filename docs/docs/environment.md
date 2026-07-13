@@ -15,7 +15,11 @@ This document describes all environment variables used to configure the frontend
 | `VITE_API_URL` | Base URL of backend REST API | `http://dashboard-api:8091` | Yes |
 | `VITE_WEBSOCKET_URL` | WebSocket endpoint for real-time updates | `ws://dashboard-api:8091` | Yes |
 
-> **Note:** All frontend env vars must be prefixed with `VITE_` to be exposed to client-side code. Anything without the prefix won't be injected at build time.  Do not put secrets here, since these are bundled into public Javascript.
+!!! note
+    All frontend environment variables must be prefixed with `VITE_` to be exposed to client-side code. Anything without the prefix won't be injected at build time.  Do not put any secrets since these are bundled into public Javascript.
+
+!!! info
+    `VITE_API_URL` and `VITE_WEBSOCKET_URL` are derived from Dashboard API's `APP_HOST` and `APP_PORT` — see below.
 
 ### Backend (`backend/.env`)
 
@@ -38,7 +42,10 @@ This backend is composed of several services (Ingester, Dashboard API, Worker) s
 | `APP_HOST` | Bind address / service name for the dashboard API | `dashboard-api` | Yes |
 | `APP_PORT` | Port the dashboard API listens on | `8091` | Yes |
 
-> Corresponds to frontend `VITE_API_URL` / `VITE_WEBSOCKET_URL`, which should point at `APP_HOST:APP_PORT`.
+!!! info
+    `VITE_API_URL` = `http://{APP_HOST}:{APP_PORT}`
+
+    `VITE_WEBSOCKET_URL` = `ws://{APP_HOST}:{APP_PORT}`
 
 ---
 
@@ -152,7 +159,6 @@ Infrastructure tuning variables such as timeouts, batch sizes, intervals and ret
 !!! warning "`NATS_CONSUMER_MAX_ACK_PENDING` must be >= `WORKER_MAX_BATCH`"
     This is to prevent the worker from stalling while waiting for more messages despite ack headroom being reached.
   
-
 ---
 
 #### Profiling & Benchmarking
