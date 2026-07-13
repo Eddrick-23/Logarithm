@@ -65,7 +65,24 @@ Variables that control log verbosity.
 
 | Variable | Description | Example | Required |
 | --- | --- | --- | --- |
+| `INGESTER_LOG_LEVEL` | Log verbosity for ingester | `INFO` | Yes |
+| `DASHBOARD_LOG_LEVEL` | Log verbosity for dashboard | `INFO` | Yes |
 | `WORKER_LOG_LEVEL` | Log verbosity for worker | `INFO` | Yes |
+
+## Live Tail Streaming
+
+Logarithm uses smart streaming under the hood. It avoids publishing to live tail if there are no existing live tail connections on the frontend. This is controlled via a heartbeat checking pipeline betweeen the dashbord api and the worker.
+
+| Variable | Description | Example | Required |
+| --- | --- | --- | --- |
+| `LIVE_TAIL_PRESENCE_INTERVAL` | How often to send ping messages to nats to signify active subscriptions. | `500ms` | No(default `1s`) |
+| `WORKER_LIVE_TAIL_PRESENCE_TIMEOUT` | How new the last ping message has to be for it to be considered an active subscriber. | `1s` | No(default `1s`) |
+
+!!! tip "Note on `LIVE_TAIL_PRESENCE_INTERVAL`"
+    Lowering this value increases responsiveness but results in higher NATS traffic
+
+!!! warning "Timeout should be kept larger than interval"
+    It is best to keep timeout larger than interval to avoid skipping intermediate logs due to toggling between active and no-active subscribers when publishing rate is too low.
 
 ## Advanced
 

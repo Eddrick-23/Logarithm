@@ -49,3 +49,4 @@ markdown_extensions:
         - !relative $config_dir/.. # change relative path to the root directory to allow referencing all files
   - pymdownx.details
   - pymdownx.superfences
+  - admonition
