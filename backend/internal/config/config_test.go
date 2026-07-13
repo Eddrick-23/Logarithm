@@ -39,42 +39,44 @@ func TestByteSizeDecode(t *testing.T) {
 
 func TestValidate(t *testing.T) {
 	validConfig := Config{
-		IngesterHost:              "localhost",
-		IngesterPortGRPC:          "8089",
-		IngesterPortHTTP:          "8090",
-		IngesterReadHeaderTimeout: 2 * time.Second,
-		IngesterReadTimeout:       10 * time.Second,
-		IngesterWriteTimeout:      10 * time.Second,
-		IngesterIdleTimeout:       60 * time.Second,
-		AppHost:                   "localhost",
-		AppPort:                   "8091",
-		LiveTailRefreshInterval:   500,
-		LiveTailMaxBatch:          100,
-		DBAddress:                 "localhost:9000",
-		DBUser:                    "default",
-		DBPassword:                "password",
-		DBName:                    "logarithm",
-		DBBatchPoolSize:           5,
-		DBBatchPoolMaxRows:        2000,
-		NatsURL:                   "nats://localhost:4222",
-		NatsStreamMaxAge:          24 * time.Hour,
-		NatsDLQMaxAge:             24 * time.Hour,
-		NatsMaxDeliver:            10,
-		NatsBackoff:               []time.Duration{1 * time.Second},
-		NatsLogStreamMaxBytes:     100,
-		NatsDLQMaxBytes:           100,
-		NatsConsumerMaxAckPending: 1000,
-		WorkerLogLevel:            "INFO",
-		WorkerMaxBatch:            1000,
-		WorkerMaxWait:             2 * time.Second,
-		WorkerBackoff:             []time.Duration{1 * time.Second},
-		WorkerCount:               1,
-		WorkerLiveTailCount:       3,
-		WorkerLiveTailQueueSize:   10000,
-		WorkerRowsPerBatch:        1000,
-		SeedSystem:                false,
-		EnablePprof:               false,
-		PprofHost:                 "0.0.0.0",
+		IngesterHost:                  "localhost",
+		IngesterPortGRPC:              "8089",
+		IngesterPortHTTP:              "8090",
+		IngesterReadHeaderTimeout:     2 * time.Second,
+		IngesterReadTimeout:           10 * time.Second,
+		IngesterWriteTimeout:          10 * time.Second,
+		IngesterIdleTimeout:           60 * time.Second,
+		AppHost:                       "localhost",
+		AppPort:                       "8091",
+		LiveTailPresenceInterval:      1 * time.Second,
+		LiveTailRefreshInterval:       500,
+		LiveTailMaxBatch:              100,
+		DBAddress:                     "localhost:9000",
+		DBUser:                        "default",
+		DBPassword:                    "password",
+		DBName:                        "logarithm",
+		DBBatchPoolSize:               5,
+		DBBatchPoolMaxRows:            2000,
+		NatsURL:                       "nats://localhost:4222",
+		NatsStreamMaxAge:              24 * time.Hour,
+		NatsDLQMaxAge:                 24 * time.Hour,
+		NatsMaxDeliver:                10,
+		NatsBackoff:                   []time.Duration{1 * time.Second},
+		NatsLogStreamMaxBytes:         100,
+		NatsDLQMaxBytes:               100,
+		NatsConsumerMaxAckPending:     1000,
+		WorkerLogLevel:                "INFO",
+		WorkerMaxBatch:                1000,
+		WorkerMaxWait:                 2 * time.Second,
+		WorkerBackoff:                 []time.Duration{1 * time.Second},
+		WorkerCount:                   1,
+		WorkerLiveTailCount:           3,
+		WorkerLiveTailQueueSize:       10000,
+		WorkerRowsPerBatch:            1000,
+		WorkerLiveTailPresenceTimeout: 1 * time.Second,
+		SeedSystem:                    false,
+		EnablePprof:                   false,
+		PprofHost:                     "0.0.0.0",
 	}
 
 	invalidConfigMaxAckPending := validConfig
@@ -97,6 +99,12 @@ func TestValidate(t *testing.T) {
 
 	invalidConfigDBBatchPoolRowsTooSmall := validConfig
 	invalidConfigDBBatchPoolRowsTooSmall.DBBatchPoolMaxRows = 1
+
+	invalidConfigLiveTailPresenceInterval := validConfig
+	invalidConfigLiveTailPresenceInterval.LiveTailPresenceInterval = 0
+
+	invalidConfigWorkerLiveTailPresenceTimeout := validConfig
+	invalidConfigWorkerLiveTailPresenceTimeout.WorkerLiveTailPresenceTimeout = 0
 
 	tests := []struct {
 		name          string
@@ -141,6 +149,16 @@ func TestValidate(t *testing.T) {
 		{
 			name:          "invalid config DB Batch Pool Max Rows is smaller than worker rows per batch",
 			input:         invalidConfigDBBatchPoolRowsTooSmall,
+			expectedError: true,
+		},
+		{
+			name:          "invalid config live tail presence interval",
+			input:         invalidConfigLiveTailPresenceInterval,
+			expectedError: true,
+		},
+		{
+			name:          "invalid config worker live tail presence timeout",
+			input:         invalidConfigWorkerLiveTailPresenceTimeout,
 			expectedError: true,
 		},
 	}

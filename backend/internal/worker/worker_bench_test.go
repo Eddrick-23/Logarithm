@@ -42,8 +42,12 @@ func (n *noOpProducer) PublishLiveTail(_ string, _ []byte) error {
 }
 
 func BenchmarkLiveTailPublisher(b *testing.B) {
-	// 2 Workers, Queue size of 1000
-	pub := NewLiveTailPublisher(slog.Default(), &noOpProducer{}, 2, 1000)
+	pub := NewLiveTailPublisher(
+		&noOpProducer{},
+		func() bool { return true },
+		WithWorkerCount(2),
+		WithQueueSize(1000),
+	)
 	defer pub.Close()
 
 	b.ReportAllocs()

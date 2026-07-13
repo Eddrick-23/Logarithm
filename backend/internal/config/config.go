@@ -24,44 +24,46 @@ func (b *ByteSize) EnvDecode(val string) error {
 }
 
 type Config struct {
-	IngesterHost              string          `env:"INGESTER_HOST, default=localhost"`
-	IngesterPortGRPC          string          `env:"INGESTER_PORT_GRPC, default=8089"`
-	IngesterPortHTTP          string          `env:"INGESTER_PORT_HTTP, default=8090"`
-	IngesterLogLevel          string          `env:"INGESTER_LOG_LEVEL, default=INFO"`
-	IngesterReadHeaderTimeout time.Duration   `env:"INGESTER_READ_HEADER_TIMEOUT, default=2s"`
-	IngesterReadTimeout       time.Duration   `env:"INGESTER_READ_TIMEOUT, default=5s"`
-	IngesterWriteTimeout      time.Duration   `env:"INGESTER_WRITE_TIMEOUT, default=10s"`
-	IngesterIdleTimeout       time.Duration   `env:"INGESTER_IDLE_TIMEOUT, default=60s"`
-	AppHost                   string          `env:"APP_HOST, default=dashboard-api"`
-	AppPort                   string          `env:"APP_PORT, default=8091"`
-	DashboardLogLevel         string          `env:"DASHBOARD_LOG_LEVEL, default=INFO"`
-	LiveTailRefreshInterval   int             `env:"LIVE_TAIL_REFRESH_INTERVAL, default=500"`
-	LiveTailMaxBatch          int             `env:"LIVE_TAIL_MAX_BATCH, default=100"`
-	DBAddress                 string          `env:"DB_ADDRESS, default=localhost:9000"`
-	DBUser                    string          `env:"DB_USER, required"`
-	DBPassword                string          `env:"DB_PASSWORD, required"`
-	DBName                    string          `env:"DB_NAME, default=logarithm"`
-	DBBatchPoolSize           int             `env:"DB_BATCH_POOL_SIZE, default=5"`
-	DBBatchPoolMaxRows        int             `env:"DB_BATCH_POOL_MAX_ROWS, default=2000"`
-	NatsURL                   string          `env:"NATS_URL, default=nats://127.0.0.1:4222"`
-	NatsStreamMaxAge          time.Duration   `env:"NATS_STREAM_MAX_AGE, default=12h"`
-	NatsDLQMaxAge             time.Duration   `env:"NATS_DLQ_MAX_AGE, default=24h"`
-	NatsMaxDeliver            int             `env:"NATS_MAX_DELIVER, default=10"`
-	NatsBackoff               []time.Duration `env:"NATS_BACKOFF, default=5s,30s,60s,300s,3600s"`
-	NatsLogStreamMaxBytes     ByteSize        `env:"NATS_LOG_STREAM_MAX_BYTES, default=50GB"`
-	NatsDLQMaxBytes           ByteSize        `env:"NATS_DLQ_MAX_BYTES, default=10GB"`
-	NatsConsumerMaxAckPending int             `env:"NATS_CONSUMER_MAX_ACK_PENDING, default=1000"`
-	WorkerLogLevel            string          `env:"WORKER_LOG_LEVEL, default=INFO"`
-	WorkerMaxBatch            int             `env:"WORKER_MAX_BATCH, default=10"`
-	WorkerMaxWait             time.Duration   `env:"WORKER_MAX_WAIT, default=2s"`
-	WorkerBackoff             []time.Duration `env:"WORKER_BACKOFF, default=5s,30s,60s,300s,3600s"`
-	WorkerCount               int             `env:"WORKER_COUNT, default=1"`
-	WorkerLiveTailCount       int             `env:"WORKER_LIVE_TAIL_COUNT, default=3"`
-	WorkerLiveTailQueueSize   int             `env:"WORKER_LIVE_TAIL_QUEUE_SIZE, default=10000"`
-	WorkerRowsPerBatch        int             `env:"WORKER_ROWS_PER_BATCH, default=1000"`
-	SeedSystem                bool            `env:"SEED_SYSTEM, default=false"`
-	EnablePprof               bool            `env:"ENABLE_PPROF, default=false"`
-	PprofHost                 string          `env:"PPROF_HOST, default=0.0.0.0"`
+	IngesterHost                  string          `env:"INGESTER_HOST, default=localhost"`
+	IngesterPortGRPC              string          `env:"INGESTER_PORT_GRPC, default=8089"`
+	IngesterPortHTTP              string          `env:"INGESTER_PORT_HTTP, default=8090"`
+	IngesterLogLevel              string          `env:"INGESTER_LOG_LEVEL, default=INFO"`
+	IngesterReadHeaderTimeout     time.Duration   `env:"INGESTER_READ_HEADER_TIMEOUT, default=2s"`
+	IngesterReadTimeout           time.Duration   `env:"INGESTER_READ_TIMEOUT, default=5s"`
+	IngesterWriteTimeout          time.Duration   `env:"INGESTER_WRITE_TIMEOUT, default=10s"`
+	IngesterIdleTimeout           time.Duration   `env:"INGESTER_IDLE_TIMEOUT, default=60s"`
+	AppHost                       string          `env:"APP_HOST, default=dashboard-api"`
+	AppPort                       string          `env:"APP_PORT, default=8091"`
+	DashboardLogLevel             string          `env:"DASHBOARD_LOG_LEVEL, default=INFO"`
+	LiveTailPresenceInterval      time.Duration   `env:"LIVE_TAIL_PRESENCE_INTERVAL, default=1s"`
+	LiveTailRefreshInterval       int             `env:"LIVE_TAIL_REFRESH_INTERVAL, default=500"`
+	LiveTailMaxBatch              int             `env:"LIVE_TAIL_MAX_BATCH, default=100"`
+	DBAddress                     string          `env:"DB_ADDRESS, default=localhost:9000"`
+	DBUser                        string          `env:"DB_USER, required"`
+	DBPassword                    string          `env:"DB_PASSWORD, required"`
+	DBName                        string          `env:"DB_NAME, default=logarithm"`
+	DBBatchPoolSize               int             `env:"DB_BATCH_POOL_SIZE, default=5"`
+	DBBatchPoolMaxRows            int             `env:"DB_BATCH_POOL_MAX_ROWS, default=2000"`
+	NatsURL                       string          `env:"NATS_URL, default=nats://127.0.0.1:4222"`
+	NatsStreamMaxAge              time.Duration   `env:"NATS_STREAM_MAX_AGE, default=12h"`
+	NatsDLQMaxAge                 time.Duration   `env:"NATS_DLQ_MAX_AGE, default=24h"`
+	NatsMaxDeliver                int             `env:"NATS_MAX_DELIVER, default=10"`
+	NatsBackoff                   []time.Duration `env:"NATS_BACKOFF, default=5s,30s,60s,300s,3600s"`
+	NatsLogStreamMaxBytes         ByteSize        `env:"NATS_LOG_STREAM_MAX_BYTES, default=50GB"`
+	NatsDLQMaxBytes               ByteSize        `env:"NATS_DLQ_MAX_BYTES, default=10GB"`
+	NatsConsumerMaxAckPending     int             `env:"NATS_CONSUMER_MAX_ACK_PENDING, default=1000"`
+	WorkerLogLevel                string          `env:"WORKER_LOG_LEVEL, default=INFO"`
+	WorkerMaxBatch                int             `env:"WORKER_MAX_BATCH, default=10"`
+	WorkerMaxWait                 time.Duration   `env:"WORKER_MAX_WAIT, default=2s"`
+	WorkerBackoff                 []time.Duration `env:"WORKER_BACKOFF, default=5s,30s,60s,300s,3600s"`
+	WorkerCount                   int             `env:"WORKER_COUNT, default=1"`
+	WorkerLiveTailCount           int             `env:"WORKER_LIVE_TAIL_COUNT, default=3"`
+	WorkerLiveTailQueueSize       int             `env:"WORKER_LIVE_TAIL_QUEUE_SIZE, default=10000"`
+	WorkerRowsPerBatch            int             `env:"WORKER_ROWS_PER_BATCH, default=1000"`
+	WorkerLiveTailPresenceTimeout time.Duration   `env:"WORKER_LIVE_TAIL_PRESENCE_TIMEOUT, default=1s"`
+	SeedSystem                    bool            `env:"SEED_SYSTEM, default=false"`
+	EnablePprof                   bool            `env:"ENABLE_PPROF, default=false"`
+	PprofHost                     string          `env:"PPROF_HOST, default=0.0.0.0"`
 }
 
 type PublicConfig struct {
@@ -140,6 +142,15 @@ func (c *Config) validate() error {
 			c.DBBatchPoolMaxRows, c.WorkerRowsPerBatch, 2*c.WorkerRowsPerBatch,
 		)
 	}
+
+	if c.LiveTailPresenceInterval <= 0 {
+		return fmt.Errorf("LIVE_TAIL_PRESENCE_INTERVAL (%s) must be positive.", c.LiveTailPresenceInterval)
+	}
+
+	if c.WorkerLiveTailPresenceTimeout <= 0 {
+		return fmt.Errorf("WORKER_LIVE_TAIL_PRESENCE_TIMEOUT (%s) must be positive.", c.WorkerLiveTailPresenceTimeout)
+	}
+
 	return nil
 }
 

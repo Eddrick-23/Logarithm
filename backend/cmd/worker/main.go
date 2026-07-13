@@ -109,7 +109,18 @@ func run(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("failed to ensure dlq stream: %w", err)
 	}
 
-	liveTailPublisher := worker.NewLiveTailPublisher(publishLogger, natsBroker, config.WorkerLiveTailCount, config.WorkerLiveTailQueueSize)
+	subscriberCheck, err := natsBroker.StartPresenceListener(ctx, transport.LiveTailPresenceSubject, config.WorkerLiveTailPresenceTimeout)
+	if err != nil {
+		return fmt.Errorf("failed to set up live tail presence listener: %w", err)
+	}
+
+	liveTailPublisher := worker.NewLiveTailPublisher(
+		natsBroker,
+		subscriberCheck,
+		worker.WithLogger(publishLogger),
+		worker.WithWorkerCount(config.WorkerLiveTailCount),
+		worker.WithQueueSize(config.WorkerLiveTailQueueSize),
+	)
 	defer liveTailPublisher.Close()
 
 	decoder := worker.NewLogDecoder()
