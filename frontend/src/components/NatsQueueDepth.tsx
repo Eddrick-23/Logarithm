@@ -3,13 +3,12 @@ import { useNatsQueueDepthGraphMetrics } from "../hooks/useMetrics";
 import { Stack } from "@mui/material";
 import NatsQueueDepthGraph from "./NatsQueueDepthGraph";
 import type { LineChartXAxis } from "../types/LineChart";
+import { formatTime } from "../utils/utils";
 
 interface NatsQueueDepthProps {
     isLoading: boolean;
     isError: boolean;
 }
-
-const formatTime = (v: number) => new Date(v).toLocaleTimeString();
 
 export default function NatsQueueDepth({ isLoading, isError }: NatsQueueDepthProps) {
     const { data, dataUpdatedAt } = useNatsQueueDepthGraphMetrics();
