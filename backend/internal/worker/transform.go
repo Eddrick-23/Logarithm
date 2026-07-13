@@ -89,24 +89,29 @@ func (t *LogTransformer) Flatten(resourceLogs plog.ResourceLogs, publisher Publi
 				eventTime = nowNano
 			}
 
-			transBuf.flatLogrecord.Timestamp = time.Unix(0, int64(eventTime))
-			transBuf.flatLogrecord.ObservedTimestamp = time.Unix(0, int64(observedTime))
-			transBuf.flatLogrecord.TraceId = logRecord.TraceID().String()
-			transBuf.flatLogrecord.SpanId = logRecord.SpanID().String()
-			transBuf.flatLogrecord.SeverityText = logRecord.SeverityText()
-			transBuf.flatLogrecord.SeverityNumber = uint8(logRecord.SeverityNumber())
-			transBuf.flatLogrecord.Body = logRecord.Body().AsString()
-			transBuf.flatLogrecord.BodyType = "string" // TODO see if there is need to extract original body type
-			transBuf.flatLogrecord.ServiceName = serviceName
-			transBuf.flatLogrecord.ScopeName = scopeName
-			transBuf.flatLogrecord.ScopeVersion = scopeVersion
-			transBuf.flatLogrecord.ResAttrKeys = transBuf.resAttrKeys
-			transBuf.flatLogrecord.ResAttrValues = transBuf.resAttrValues
-			transBuf.flatLogrecord.LogAttrKeys = transBuf.logAttrKeys
-			transBuf.flatLogrecord.LogAttrValues = transBuf.logAttrValues
+			// only fill flatLogRecord and publish if there are subscribers
+			if publisher.HasSubscribers() {
+				transBuf.flatLogrecord.Timestamp = time.Unix(0, int64(eventTime))
+				transBuf.flatLogrecord.ObservedTimestamp = time.Unix(0, int64(observedTime))
+				transBuf.flatLogrecord.TraceId = logRecord.TraceID().String()
+				transBuf.flatLogrecord.SpanId = logRecord.SpanID().String()
+				transBuf.flatLogrecord.SeverityText = logRecord.SeverityText()
+				transBuf.flatLogrecord.SeverityNumber = uint8(logRecord.SeverityNumber())
+				transBuf.flatLogrecord.Body = logRecord.Body().AsString()
+				transBuf.flatLogrecord.BodyType = "string" // TODO see if there is need to extract original body type
+				transBuf.flatLogrecord.ServiceName = serviceName
+				transBuf.flatLogrecord.ScopeName = scopeName
+				transBuf.flatLogrecord.ScopeVersion = scopeVersion
+				transBuf.flatLogrecord.ResAttrKeys = transBuf.resAttrKeys
+				transBuf.flatLogrecord.ResAttrValues = transBuf.resAttrValues
+				transBuf.flatLogrecord.LogAttrKeys = transBuf.logAttrKeys
+				transBuf.flatLogrecord.LogAttrValues = transBuf.logAttrValues
 
-			if !publisher.Enqueue(transport.LiveTailSubjectPrefix+serviceName, &transBuf.flatLogrecord) {
-				t.logger.Warn("failed to enqueue log for live tail, queue full")
+				if !publisher.Enqueue(transport.LiveTailSubjectPrefix+serviceName, &transBuf.flatLogrecord) {
+					t.logger.Warn("failed to enqueue log for live tail, queue full")
+				}
+			} else {
+				t.logger.Info("skipping live tail publish as there are no subscribers")
 			}
 
 			appender.Append(

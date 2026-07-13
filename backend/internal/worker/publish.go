@@ -1,8 +1,10 @@
 package worker
 
 import (
+	"io"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 )
@@ -18,26 +20,55 @@ type MsgMarshaler interface {
 
 type Publisher interface {
 	Enqueue(string, MsgMarshaler) bool
+	HasSubscribers() bool
 }
 
 var _ Publisher = (*LiveTailPublisher)(nil)
 
 type LiveTailPublisher struct {
-	logger   *slog.Logger
-	producer transport.Producer
-	jobChan  chan tailJob
-	bufPool  sync.Pool
+	logger          *slog.Logger
+	producer        transport.Producer
+	jobChan         chan tailJob
+	bufPool         sync.Pool
+	subscriberCheck func() bool
+	workers         int
+}
+type Option func(p *LiveTailPublisher)
+
+func WithLogger(l *slog.Logger) Option {
+	return func(p *LiveTailPublisher) {
+		p.logger = l
+	}
+}
+
+// control number of workers that pull from queue and publish
+func WithWorkerCount(count int) Option {
+	return func(p *LiveTailPublisher) {
+		p.workers = count
+	}
+}
+
+// control internal channel size which acts as a queue
+func WithQueueSize(size int) Option {
+	return func(p *LiveTailPublisher) {
+		p.jobChan = make(chan tailJob, size)
+	}
 }
 
 // Creates a Live Tail publisher with an internal worker pool
 //
 // Clients will enqueue subjects and messages that support the MsgMarshaller interface.
 // The publisher will handle efficient publishing to nats using workers and reusable buffers
-func NewLiveTailPublisher(logger *slog.Logger, producer transport.Producer, workers int, queueSize int) *LiveTailPublisher {
+func NewLiveTailPublisher(producer transport.Producer, subscriberCheck func() bool, opts ...Option) *LiveTailPublisher {
+	const defaultWorkers = 3
+	const defaultQueueSize = 10000
+	const defaultPresenceTimeout = 1 * time.Second
+	defaultLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
 	p := &LiveTailPublisher{
-		logger:   logger,
+		logger:   defaultLogger,
 		producer: producer,
-		jobChan:  make(chan tailJob, queueSize),
+		jobChan:  make(chan tailJob, defaultQueueSize),
 		bufPool: sync.Pool{
 			New: func() any {
 				// prealloc reasonable size
@@ -45,9 +76,15 @@ func NewLiveTailPublisher(logger *slog.Logger, producer transport.Producer, work
 				return &buf
 			},
 		},
+		subscriberCheck: subscriberCheck,
+		workers:         defaultWorkers,
 	}
 
-	for range workers {
+	for _, opt := range opts {
+		opt(p)
+	}
+
+	for range p.workers {
 		go p.worker()
 	}
 	p.logger.Info("Created live tail worker pool")
@@ -101,4 +138,12 @@ func (p *LiveTailPublisher) worker() {
 		}
 		p.bufPool.Put(job.Payload)
 	}
+}
+
+// Check for active subscribers to live tail
+//
+// If there no active subscribers, client can skip live
+// tail generation work and not enqueue at all.
+func (p *LiveTailPublisher) HasSubscribers() bool {
+	return p.subscriberCheck()
 }

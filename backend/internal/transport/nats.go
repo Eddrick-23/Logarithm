@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -12,13 +13,14 @@ import (
 )
 
 const ( // infra constants
-	LogStreamName          = "LOGS"
-	LogStreamSubject       = "logs.>"
-	LogStreamSubjectPrefix = "logs."
-	DLQStreamName          = "LOGS_DLQ"
-	DLQSubject             = "dlq.logs"
-	LiveTailSubject        = "tail.>"
-	LiveTailSubjectPrefix  = "tail."
+	LogStreamName           = "LOGS"
+	LogStreamSubject        = "logs.>"
+	LogStreamSubjectPrefix  = "logs."
+	DLQStreamName           = "LOGS_DLQ"
+	DLQSubject              = "dlq.logs"
+	LiveTailSubject         = "tail.>"
+	LiveTailSubjectPrefix   = "tail."
+	LiveTailPresenceSubject = "presence.livetail"
 )
 
 var _ Producer = (*NatsBroker)(nil)
@@ -373,4 +375,69 @@ func calculateExponentialBackoff(attempt int, baseDelay time.Duration, maxDelay 
 		return maxDelay
 	}
 	return delay
+}
+
+// Starts an internal goroutine and publishes a simple ping message to the
+// specified subject using core NATS.
+//
+// This is used with StartPresenceListener for inter-container communication.
+func (nb *NatsBroker) StartPresencePublisher(ctx context.Context, subject string, interval time.Duration) {
+	nb.logger.Info("starting presence publisher", "subject", subject, "interval", interval)
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		pingPayload := []byte("ping")
+
+		for {
+			select {
+			case <-ctx.Done():
+				nb.logger.Info("stopping presence publisher", "subject", subject)
+				return
+			case <-ticker.C:
+				if err := nb.conn.Publish(subject, pingPayload); err != nil {
+					nb.logger.Error("failed to publish presence heartbeat", "err", err)
+				}
+			}
+		}
+	}()
+}
+
+// StartPresenceListener listens for heartbeats and returns a lock-free function
+// that checks if the last heartbeat was received within the timeout period.
+//
+// This is used with StartPresencePublisher for inter-container communication.
+func (nb *NatsBroker) StartPresenceListener(ctx context.Context, subject string, timeout time.Duration) (func() bool, error) {
+	nb.logger.Info("starting presence listener", "subject", subject, "timeout", timeout)
+
+	var lastSeenNano atomic.Int64
+	lastSeenNano.Store(0)
+
+	sub, err := nb.conn.Subscribe(subject, func(msg *nats.Msg) {
+		lastSeenNano.Store(time.Now().UnixNano())
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	go func() {
+		<-ctx.Done()
+		if err := sub.Unsubscribe(); err != nil {
+			nb.logger.Error("failed to unsubscribe presence listener", "err", err)
+		}
+		nb.logger.Info("stopped presence listener", "subject", "subject")
+	}()
+
+	isActive := func() bool {
+		lastSeen := lastSeenNano.Load()
+		if lastSeen == 0 {
+			return false
+		}
+		// return if last ping is newer than now - timeout
+		return time.Since(time.Unix(0, lastSeen)) < timeout
+	}
+
+	return isActive, nil
 }
