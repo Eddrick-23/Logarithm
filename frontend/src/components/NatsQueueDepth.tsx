@@ -2,11 +2,28 @@ import { useMemo } from "react";
 import { useNatsQueueDepthGraphMetrics } from "../hooks/useMetrics";
 import { Stack } from "@mui/material";
 import NatsQueueDepthGraph from "./NatsQueueDepthGraph";
+import type { LineChartXAxis } from "../types/LineChart";
+import { formatTime } from "../utils/utils";
 
-export default function NatsQueueDepth() {
-    const { data, isLoading, isError, dataUpdatedAt } = useNatsQueueDepthGraphMetrics();
+interface NatsQueueDepthProps {
+    isLoading: boolean;
+    isError: boolean;
+}
 
-    const xAxisData = useMemo(() => data?.timestamps.map((ts) => new Date(ts)) ?? [], [data]);
+export default function NatsQueueDepth({ isLoading, isError }: NatsQueueDepthProps) {
+    const { data, dataUpdatedAt } = useNatsQueueDepthGraphMetrics();
+
+    const xAxis: LineChartXAxis = useMemo(
+        () => [
+            {
+                data: data?.timestamps ?? [],
+                scaleType: "time" as const,
+                valueFormatter: formatTime,
+                label: "Time",
+            },
+        ],
+        [data?.timestamps],
+    );
     const numPendingData = useMemo(() => [{ data: data?.numPending ?? [] }], [data]);
     const numAckPendingdData = useMemo(() => [{ data: data?.numAckPending ?? [] }], [data]);
     const numRedeliveredData = useMemo(() => [{ data: data?.numRedelivered ?? [] }], [data]);
@@ -15,7 +32,7 @@ export default function NatsQueueDepth() {
         <Stack spacing={2}>
             <NatsQueueDepthGraph
                 title="Num Pending - number of logs waiting in the queue to be delivered"
-                xAxisData={xAxisData}
+                xAxis={xAxis}
                 seriesData={numPendingData}
                 isLoading={isLoading}
                 isError={isError}
@@ -25,7 +42,7 @@ export default function NatsQueueDepth() {
             <Stack direction="row" spacing={2} sx={{ width: "100%" }}>
                 <NatsQueueDepthGraph
                     title="Num Ack Pending - number of logs currently being processed"
-                    xAxisData={xAxisData}
+                    xAxis={xAxis}
                     seriesData={numAckPendingdData}
                     isLoading={isLoading}
                     isError={isError}
@@ -33,7 +50,7 @@ export default function NatsQueueDepth() {
                 />
                 <NatsQueueDepthGraph
                     title="Num Redelivered - number of times logs has been resent"
-                    xAxisData={xAxisData}
+                    xAxis={xAxis}
                     seriesData={numRedeliveredData}
                     isLoading={isLoading}
                     isError={isError}
