@@ -25,6 +25,7 @@ const EVENT_MAP = [
     { event: "top-service-errors", queryKey: QUERY_KEYS.topServiceErrorsStats },
     { event: "error-rate", queryKey: QUERY_KEYS.errorRateMetrics },
     { event: "storage-info", queryKey: QUERY_KEYS.storageInfoMetrics },
+    { event: "nats-queue-depth", queryKey: QUERY_KEYS.natsQueueDepthGraphMetrics },
 ]; // stores a map which contains event name and TanStack query key
 
 export const useDashboard = () => {
@@ -68,20 +69,28 @@ export const useDashboard = () => {
         setIsLoading(true);
         try {
             // manually fetch all of the metrics to load the dashboard upon connect
-            const [ingestionGraphMetrics, storageInfoMetrics, logRateStats, topServiceErrorsStats, errorRateMetrics] =
-                await Promise.all([
-                    fetchIngestionGraphMetrics(),
-                    fetchStorageInfoMetrics(),
-                    fetchLogRateStats(),
-                    fetchTopServiceErrorsStats(),
-                    fetchErrorRateMetrics(),
-                ]);
+            const [
+                ingestionGraphMetrics,
+                storageInfoMetrics,
+                logRateStats,
+                topServiceErrorsStats,
+                errorRateMetrics,
+                natsQueueDepthGraphMetrics,
+            ] = await Promise.all([
+                fetchIngestionGraphMetrics(),
+                fetchStorageInfoMetrics(),
+                fetchLogRateStats(),
+                fetchTopServiceErrorsStats(),
+                fetchErrorRateMetrics(),
+                fetchNatsQueueDepthGraphMetrics(),
+            ]);
 
             queryClient.setQueryData([QUERY_KEYS.ingestionGraphMetrics], ingestionGraphMetrics);
             queryClient.setQueryData([QUERY_KEYS.storageInfoMetrics], storageInfoMetrics);
             queryClient.setQueryData([QUERY_KEYS.logRateStats], logRateStats);
             queryClient.setQueryData([QUERY_KEYS.topServiceErrorsStats], topServiceErrorsStats);
             queryClient.setQueryData([QUERY_KEYS.errorRateMetrics], errorRateMetrics);
+            queryClient.setQueryData([QUERY_KEYS.natsQueueDepthGraphMetrics], natsQueueDepthGraphMetrics);
 
             setIsError(false);
         } catch {
@@ -166,6 +175,8 @@ export const useNatsQueueDepthGraphMetrics = () => {
     return useQuery({
         queryKey: [QUERY_KEYS.natsQueueDepthGraphMetrics],
         queryFn: fetchNatsQueueDepthGraphMetrics,
-        refetchInterval: 15000, // refetch every 15 seconds since the difference in timings is 15 seconds
+        staleTime: Infinity,
+        refetchInterval: false,
+        enabled: false, // never auto-fetch since connect() seeds the data manually
     });
 };
