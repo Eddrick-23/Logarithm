@@ -36,8 +36,20 @@ func startPprof(logger *slog.Logger, config *config.Config) {
 }
 
 func run(ctx context.Context, w io.Writer, args []string) error {
+	config, err := config.LoadConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	var logLevel slog.Level
+	if err := logLevel.UnmarshalText([]byte(config.IngesterLogLevel)); err != nil {
+		logLevel = slog.LevelInfo
+	}
+	opt := &slog.HandlerOptions{
+		Level: logLevel,
+	}
 	logger := slog.New(
-		slog.NewTextHandler(w, nil),
+		slog.NewTextHandler(w, opt),
 	)
 	natsLogger := logger.With("component", "nats")
 	httpLogger := logger.With("component", "ingester_http")
@@ -46,11 +58,6 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-
-	config, err := config.LoadConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
 
 	startPprof(pprofLogger, config)
 

@@ -27,12 +27,14 @@ type Config struct {
 	IngesterHost              string          `env:"INGESTER_HOST, default=localhost"`
 	IngesterPortGRPC          string          `env:"INGESTER_PORT_GRPC, default=8089"`
 	IngesterPortHTTP          string          `env:"INGESTER_PORT_HTTP, default=8090"`
+	IngesterLogLevel          string          `env:"INGESTER_LOG_LEVEL, default=INFO"`
 	IngesterReadHeaderTimeout time.Duration   `env:"INGESTER_READ_HEADER_TIMEOUT, default=2s"`
 	IngesterReadTimeout       time.Duration   `env:"INGESTER_READ_TIMEOUT, default=5s"`
 	IngesterWriteTimeout      time.Duration   `env:"INGESTER_WRITE_TIMEOUT, default=10s"`
 	IngesterIdleTimeout       time.Duration   `env:"INGESTER_IDLE_TIMEOUT, default=60s"`
 	AppHost                   string          `env:"APP_HOST, default=dashboard-api"`
 	AppPort                   string          `env:"APP_PORT, default=8091"`
+	DashboardLogLevel         string          `env:"DASHBOARD_LOG_LEVEL, default=INFO"`
 	LiveTailRefreshInterval   int             `env:"LIVE_TAIL_REFRESH_INTERVAL, default=500"`
 	LiveTailMaxBatch          int             `env:"LIVE_TAIL_MAX_BATCH, default=100"`
 	DBAddress                 string          `env:"DB_ADDRESS, default=localhost:9000"`
