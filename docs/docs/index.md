@@ -58,10 +58,118 @@ docker compose up -d
 
 ## QuickStart
 
-This is a short tutorial on connecting a service to Logarithm itself, and sending some sample logs.
+This is a short tutorial on connecting a simple FastAPI service, instrumented with OTLP sdk, to logarithm.
 
-**Prerequisites**: You must have Logarithm running locally on your machine via Docker. See [installation-guide](#installation-guide)
+### Prerequisites
 
-* dockerised http server maybe using python fastapi
-* setup otlp into loggers and point directly to Logarithm or to an otel collector
-* send curl requests to force log events and view dashboard
+* You must have Logarithm running locally on your machine via Docker. See [installation-guide](#installation-guide).
+* Python3 installed on your machine
+
+### Guide
+
+??? "main.py"
+
+    ```python
+    import time
+    import logging
+    from fastapi import FastAPI
+    from opentelemetry import trace
+    from opentelemetry._logs import set_logger_provider
+    from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+    from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+    from opentelemetry.exporter.otlp.proto.http.import Compression
+    from opentelemetry.sdk.resources import Resource, SERVICE_NAME
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+    # 1) Set up OTel logging. Sets service name for logs coming from this api.
+    resource = Resource.create({SERVICE_NAME: "my-fastapi-service"})
+
+    # 2) TracerProvider without exporter. This allows FastAPIInstrumentor to
+    # stamp trace_id/span_id onto each log.
+    tracer_provider = TracerProvider(resource=resource)
+    trace.set_tracer_provider(tracer_provider)
+
+    logger_provider = LoggerProvider(resource=resource)
+    set_logger_provider(logger_provider)
+
+    # 3) point exported logs to logarithm's ingester
+    exporter = OTLPLogExporter(endpoint="http://localhost:8089/v1/logs", compression=Compression.Gzip)
+    logger_provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
+
+    # 4) Attatch OpenTelemetry Handler to Python's Root Logger
+    logging.getLogger().addHandler(LoggingHandler(logger_provider=logger_provider))
+    logging.getLogger().setLevel(logging.WARNING)
+
+    logger = logging.getLogger(__name__)
+
+    app = FastAPI()
+    FastAPIInstrumentor.instrument_app(app)
+
+    @app.get("/")
+    async def read_root():
+        logger.info("from root!")
+        return {"message": "Hello, FastAPI with OpenTelemetry"}
+
+    @app.get("/warn")
+    async def read_warning():
+        logger.warning("fake warning!")
+        return {"message": "Hello, FastAPI with OpenTelemetry!"}
+
+    @app.get("/info")
+    async def read_info():
+        logger.info("fake info!")
+        return {"message": "Hello, FastAPI with OpenTelemetry!"}
+
+    @app.get("/error")
+    async def read_error():
+        logger.error("fake error!")
+        return {"message": "Hello, FastAPI with OpenTelemetry!"}
+    ```
+
+* Copy the above python file into a directory.
+* Create a venv using `python3 -m venv venv`
+* Activate the venv
+
+    === "macOS/Linux"
+        ```bash
+        python3 -m venv venv
+        source venv/bin/activate
+        ```
+    === "Windows (PowerShell)"
+        ```powershell
+        python -m venv venv
+        venv\Scripts\Activate.ps1
+        ```
+    === "Windows (cmd)"
+        ```bat
+        python -m venv venv
+        venv\Scripts\activate.bat
+        ```
+
+* Install libraries using
+
+    ```bash
+    pip install fastapi uvicorn opentelemetry-api opentelemetry-sdk \
+        opentelemetry-exporter-otlp-proto-http opentelemetry-instrumentation-fastapi 
+    ```
+
+* Start the service with
+
+    ```bash
+    uvicorn main:app --port 8080
+    ```
+
+* send curl requests to trigger log events and watch the dashboard at [localhost:5173](http://localhost:5173)
+
+    ```bash
+    curl http://localhost:8080/
+
+    curl http://localhost:8080/warn
+
+    curl http://localhost:8080/error
+    ```
+
+!!! info
+    For advanced configuration using an Otel Collector or to set up with different languages, see [Integration With OpenTelemetry](otel.md)
