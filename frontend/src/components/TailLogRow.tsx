@@ -53,7 +53,8 @@ export default memo(function TailLogRow({ log, searchQuery }: TailLogRowProps) {
     return (
         <TableRow>
             <TableCell sx={{ fontWeight: "bold", whiteSpace: "nowrap" }}>
-                {new Date(log.timestamp).toLocaleString()}
+                {/* date accept timing in milliseconds and the timestamp is in microseconds */}
+                {new Date(log.timestamp / 1_000).toLocaleString()}
             </TableCell>
             <TableCell sx={{ color: "text.disabled", whiteSpace: "nowrap" }}>{log.serviceName}</TableCell>
             <TableCell>

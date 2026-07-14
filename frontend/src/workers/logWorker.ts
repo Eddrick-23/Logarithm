@@ -16,8 +16,8 @@ extensionCodec.register({
         // Bytes 8-11: 32-bit Big-Endian nanoseconds
         const nanos = view.getUint32(8, false);
 
-        // convert to unix timestamp in milliseconds
-        return seconds * 1000 + Math.floor(nanos / 1_000_000);
+        // convert to unix timestamp in microseconds
+        return seconds * 1_000_000 + Math.floor(nanos / 1_000);
     },
 });
 
