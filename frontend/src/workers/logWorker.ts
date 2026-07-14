@@ -1,6 +1,7 @@
 import { decodeMulti, ExtensionCodec } from "@msgpack/msgpack";
 import { CircularLogBuffer } from "../utils/CircularLogBuffer";
 import type { FlatLogRecord } from "../types/Log";
+import type { ConnectionStatus } from "../types/Connection";
 
 // Create a custom extension codec to handle Go's msgp time.Time (type 5)
 const extensionCodec = new ExtensionCodec();
@@ -32,7 +33,7 @@ let maxAttempts = 5;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Helper to notify React of connection changes
-function updateStatus(status: "connecting" | "connected" | "error") {
+function updateStatus(status: ConnectionStatus) {
     postMessage({ type: "STATUS", payload: status });
 }
 
@@ -44,7 +45,7 @@ function connect() {
 
     ws.onopen = () => {
         reconnectAttempts = 0; // reset backoff on successful connect
-        updateStatus("connected");
+        updateStatus("live");
     };
 
     ws.onmessage = async (e) => {

@@ -5,13 +5,8 @@ import ServiceError from "../components/ServiceError";
 import { useDashboard } from "../hooks/useMetrics";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import NatsQueueDepth from "../components/NatsQueueDepth";
-import PulsingCircle from "../components/PulsingCircle";
-
-const STATUS_CONFIG = {
-    live: { label: "LIVE", colour: "success.main" },
-    connecting: { label: "CONNECTING", colour: "warning.main" },
-    error: { label: "OFFLINE", colour: "error.main" },
-};
+import StatusIndicator from "../components/StatusIndicator";
+import { STATUS_CONFIG } from "../types/Connection";
 
 function getStatus(isLoading: boolean, isError: boolean) {
     if (isLoading) return STATUS_CONFIG.connecting;
@@ -51,19 +46,7 @@ export default function Dashboard() {
                             RETRY
                         </Button>
                     )}
-                    <Stack direction="row" sx={{ alignItems: "center" }} spacing={1}>
-                        <PulsingCircle color={status.colour} />
-                        <Typography
-                            sx={{
-                                fontSize: 10,
-                                fontWeight: 700,
-                                letterSpacing: "0.1em",
-                                color: status.colour,
-                            }}
-                        >
-                            {status.label}
-                        </Typography>
-                    </Stack>
+                    <StatusIndicator colour={status.colour} label={status.label} />
                 </Stack>
             </Stack>
 
