@@ -23,6 +23,7 @@ import SearchField from "./SearchField";
 import SeverityDropdown from "./SeverityDropdown";
 import ServiceDropdown from "./ServiceDropdown";
 import LiveTailLogsHeader from "./LiveTailLogsHeader";
+import SeverityLegend from "./SeverityLegend";
 import type { ConnectionStatus } from "../types/Connection";
 
 const MAX_DISPLAY_LOGS = 15;
@@ -176,6 +177,9 @@ export default function LiveTailLogs() {
                         </Typography>
                     </Box>
                 )}
+
+                {/* severity legend to display the severity levels with their colours */}
+                <SeverityLegend />
 
                 <TableContainer>
                     <Table>
