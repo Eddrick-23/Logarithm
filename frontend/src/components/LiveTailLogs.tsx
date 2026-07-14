@@ -189,7 +189,15 @@ export default function LiveTailLogs() {
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {filteredLogs.length === 0 ? (
+                            {displayLogs.length === 0 ? (
+                                // No logs have arrived yet.
+                                <TableRow>
+                                    <TableCell colSpan={4} align="center" sx={{ color: "text.disabled", py: 4 }}>
+                                        Waiting for the first log to arrive...
+                                    </TableCell>
+                                </TableRow>
+                            ) : filteredLogs.length === 0 ? (
+                                // No logs match the filters of service, severity or body filters
                                 <TableRow>
                                     <TableCell colSpan={4} align="center" sx={{ color: "text.disabled", py: 4 }}>
                                         No logs match your filters
