@@ -36,11 +36,6 @@ export default function LiveTailLogs() {
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
     const [isPaused, setIsPaused] = useState<boolean>(false);
     const { data: serviceOptions, isLoading } = useDistinctServices();
-    const dotColour = {
-        connected: "success.main",
-        connecting: "warning.main",
-        error: "error.main",
-    }[connectionStatus];
 
     useEffect(() => {
         // Instantiate the worker using Vite's standard pattern
@@ -112,7 +107,6 @@ export default function LiveTailLogs() {
             <Box sx={{ ...card, width: "100%" }}>
                 {/* Top Bar (Title and Pause button) */}
                 <LiveTailLogsHeader
-                    color={dotColour}
                     isPaused={isPaused}
                     handleResume={handleResume}
                     handlePause={handlePause}
