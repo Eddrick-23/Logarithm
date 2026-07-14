@@ -6,12 +6,12 @@ import { useDashboard } from "../hooks/useMetrics";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import NatsQueueDepth from "../components/NatsQueueDepth";
 import StatusIndicator from "../components/StatusIndicator";
-import { STATUS_CONFIG } from "../types/Connection";
+import type { ConnectionStatus } from "../types/Connection";
 
-function getStatus(isLoading: boolean, isError: boolean) {
-    if (isLoading) return STATUS_CONFIG.connecting;
-    if (isError) return STATUS_CONFIG.error;
-    return STATUS_CONFIG.live;
+function getStatus(isLoading: boolean, isError: boolean): ConnectionStatus {
+    if (isLoading) return "connecting";
+    if (isError) return "error";
+    return "live";
 }
 
 export default function Dashboard() {
@@ -46,7 +46,7 @@ export default function Dashboard() {
                             RETRY
                         </Button>
                     )}
-                    <StatusIndicator colour={status.colour} label={status.label} />
+                    <StatusIndicator connectionStatus={status} />
                 </Stack>
             </Stack>
 
