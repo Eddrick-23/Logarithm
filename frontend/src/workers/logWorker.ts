@@ -28,6 +28,7 @@ const logBuffer = new CircularLogBuffer<FlatLogRecord>(MAX_GLOBAL_LOGS);
 
 let ws: WebSocket | null = null;
 let isPaused = false;
+let pausedLogCount = 0; // logs received since paused status started
 let reconnectAttempts = 0;
 let maxAttempts = 5;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -55,6 +56,9 @@ function connect() {
             // decodeMulti parses the concatenated byte stream into individual objects
             for (const record of decodeMulti(buf, { extensionCodec })) {
                 logBuffer.add(record as FlatLogRecord);
+                if (isPaused) {
+                    pausedLogCount++;
+                }
             }
         } catch (err) {
             console.error("Worker: failed to parse msgpack", err);
@@ -90,18 +94,24 @@ connect();
 
 // Send to React thread every second
 setInterval(() => {
+    // return buffer if live tail is not paused
+    // otherwise return the buffer size for display
     if (!isPaused) {
         postMessage({ type: "LOG_UPDATE", payload: logBuffer.toArrayNewestFirst() });
+    } else {
+        postMessage({ type: "LOG_BUFFER_SIZE", payload: pausedLogCount });
     }
 }, RENDER_INTERVAL_MS);
 
 self.onmessage = (e) => {
     if (e.data.type === "PAUSE") {
         isPaused = true;
+        pausedLogCount = 0;
     }
 
     if (e.data.type === "RESUME") {
         isPaused = false;
+        pausedLogCount = 0;
         postMessage({ type: "LOG_UPDATE", payload: logBuffer.toArrayNewestFirst() });
     }
 

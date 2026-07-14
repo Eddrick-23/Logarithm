@@ -28,8 +28,16 @@ import type { ConnectionStatus } from "../types/Connection";
 
 const MAX_DISPLAY_LOGS = 15;
 
+function getBufferMessage(count: number): string {
+    if (count === 0) return "No new logs";
+    if (count === 1) return "1 log buffering";
+    if (count > 999) return "999+ logs buffering";
+    return `${count} logs buffering`;
+}
+
 export default function LiveTailLogs() {
     const workerRef = useRef<Worker | null>(null);
+    const [bufferSize, setBufferSize] = useState<number>(0);
     const [displayLogs, setDisplayLogs] = useState<FlatLogRecord[]>([]);
     const [severities, setSeverities] = useState<LogType[]>([]); // empty indicates all severities selected
     const [services, setServices] = useState<string[]>([]); // empty indicates all services selected
@@ -53,6 +61,10 @@ export default function LiveTailLogs() {
             if (e.data.type === "STATUS") {
                 setConnectionStatus(e.data.payload);
             }
+
+            if (e.data.type === "LOG_BUFFER_SIZE") {
+                setBufferSize(e.data.payload);
+            }
         };
 
         return () => {
@@ -63,6 +75,7 @@ export default function LiveTailLogs() {
     }, []);
 
     const handlePause = useCallback(() => {
+        setBufferSize(0);
         setIsPaused(true);
         workerRef.current?.postMessage({ type: "PAUSE" });
     }, []);
@@ -173,7 +186,7 @@ export default function LiveTailLogs() {
                     >
                         <PauseIcon sx={{ fontSize: 16, color: "warning.main" }} />
                         <Typography variant="body2" sx={{ color: "warning.main" }}>
-                            Tail paused — new logs buffering
+                            Tail paused — {getBufferMessage(bufferSize)}
                         </Typography>
                     </Box>
                 )}
