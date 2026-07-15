@@ -1,6 +1,5 @@
 import {
     Box,
-    Typography,
     Stack,
     type SelectChangeEvent,
     CircularProgress,
@@ -10,25 +9,40 @@ import {
     TableRow,
     TableCell,
     TableBody,
+    Tooltip,
+    IconButton,
+    Alert,
+    Button,
 } from "@mui/material";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { card } from "../theme/tokens";
 import PauseIcon from "@mui/icons-material/Pause";
 import type { FlatLogRecord, LogType } from "../types/Log";
 import { useDistinctServices } from "../hooks/useDistinctServices";
-import ErrorBanner from "./ErrorBanner";
 import { parseSeverity } from "../utils/severity";
 import TailLogRow from "./TailLogRow";
 import SearchField from "./SearchField";
 import SeverityDropdown from "./SeverityDropdown";
 import ServiceDropdown from "./ServiceDropdown";
 import LiveTailLogsHeader from "./LiveTailLogsHeader";
+import SeverityLegend from "./SeverityLegend";
 import type { ConnectionStatus } from "../types/Connection";
+import TailLogDialog from "./TailLogDialog";
+import InfoIcon from "@mui/icons-material/Info";
 
 const MAX_DISPLAY_LOGS = 15;
 
+function getBufferMessage(count: number): string {
+    if (count === 0) return "No new logs";
+    if (count === 1) return "1 log buffering";
+    if (count > 999) return "999+ logs buffering";
+    return `${count} logs buffering`;
+}
+
 export default function LiveTailLogs() {
     const workerRef = useRef<Worker | null>(null);
+    const [bufferSize, setBufferSize] = useState<number>(0);
+    const [selectedLog, setSelectedLog] = useState<FlatLogRecord | null>(null);
     const [displayLogs, setDisplayLogs] = useState<FlatLogRecord[]>([]);
     const [severities, setSeverities] = useState<LogType[]>([]); // empty indicates all severities selected
     const [services, setServices] = useState<string[]>([]); // empty indicates all services selected
@@ -36,11 +50,6 @@ export default function LiveTailLogs() {
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
     const [isPaused, setIsPaused] = useState<boolean>(false);
     const { data: serviceOptions, isLoading } = useDistinctServices();
-    const dotColour = {
-        connected: "success.main",
-        connecting: "warning.main",
-        error: "error.main",
-    }[connectionStatus];
 
     useEffect(() => {
         // Instantiate the worker using Vite's standard pattern
@@ -57,6 +66,10 @@ export default function LiveTailLogs() {
             if (e.data.type === "STATUS") {
                 setConnectionStatus(e.data.payload);
             }
+
+            if (e.data.type === "LOG_BUFFER_SIZE") {
+                setBufferSize(e.data.payload);
+            }
         };
 
         return () => {
@@ -67,6 +80,7 @@ export default function LiveTailLogs() {
     }, []);
 
     const handlePause = useCallback(() => {
+        setBufferSize(0);
         setIsPaused(true);
         workerRef.current?.postMessage({ type: "PAUSE" });
     }, []);
@@ -80,6 +94,10 @@ export default function LiveTailLogs() {
         setConnectionStatus("connecting");
         workerRef.current?.postMessage({ type: "RECONNECT" });
     };
+
+    const handleDialogClose = useCallback(() => {
+        setSelectedLog(null);
+    }, []);
 
     const handleServiceChange = useCallback(
         (event: SelectChangeEvent<string[]>) => {
@@ -112,7 +130,6 @@ export default function LiveTailLogs() {
             <Box sx={{ ...card, width: "100%" }}>
                 {/* Top Bar (Title and Pause button) */}
                 <LiveTailLogsHeader
-                    color={dotColour}
                     isPaused={isPaused}
                     handleResume={handleResume}
                     handlePause={handlePause}
@@ -134,54 +151,43 @@ export default function LiveTailLogs() {
 
                 {/* WebSocket Error Alert Bar */}
                 {connectionStatus === "error" && (
-                    <ErrorBanner service="live tail server" handleReconnect={handleReconnect} />
+                    <Alert
+                        severity="error"
+                        action={
+                            <Button color="inherit" onClick={handleReconnect} size="small">
+                                Retry
+                            </Button>
+                        }
+                        sx={{ mb: 3 }}
+                    >
+                        Connection lost. Failed to connect to the live tail server.
+                    </Alert>
                 )}
 
                 {/* Connecting alert bar */}
                 {connectionStatus === "connecting" && (
-                    <Box
-                        sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 1,
-                            width: "100%",
-                            px: 2,
-                            py: 1,
-                            border: "1px solid rgba(20, 184, 166, 0.4)",
-                            backgroundColor: "rgba(20, 184, 166, 0.08)",
-                            borderRadius: "6px",
-                            mb: 3,
-                        }}
+                    <Alert
+                        severity="warning"
+                        icon={<CircularProgress size={14} thickness={5} color="inherit" />}
+                        sx={{ mb: 3, alignItems: "center" }}
                     >
-                        <CircularProgress size={14} thickness={5} sx={{ color: "#2dd4bf" }} />{" "}
-                        <Typography variant="body2" sx={{ color: "#2dd4bf" }}>
-                            Connecting to live tail server...
-                        </Typography>
-                    </Box>
+                        Connecting to live tail server...
+                    </Alert>
                 )}
 
                 {/* Pause alert bar */}
                 {isPaused && connectionStatus !== "error" && (
-                    <Box
-                        sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 1,
-                            width: "100%",
-                            px: 2,
-                            py: 1,
-                            border: "1px solid #78450a",
-                            backgroundColor: "rgba(120, 69, 10, 0.15)",
-                            borderRadius: "6px",
-                            mb: 3,
-                        }}
+                    <Alert
+                        severity="warning"
+                        icon={<PauseIcon color="inherit" sx={{ fontSize: 16 }} />}
+                        sx={{ mb: 3, alignItems: "center" }}
                     >
-                        <PauseIcon sx={{ fontSize: 16, color: "warning.main" }} />
-                        <Typography variant="body2" sx={{ color: "warning.main" }}>
-                            Tail paused — new logs buffering
-                        </Typography>
-                    </Box>
+                        Live Tail paused — {getBufferMessage(bufferSize)}
+                    </Alert>
                 )}
+
+                {/* severity legend to display the severity levels with their colours */}
+                <SeverityLegend />
 
                 <TableContainer>
                     <Table>
@@ -190,12 +196,28 @@ export default function LiveTailLogs() {
                                 {/* width set to 1% so that the columns will only span the length it occupies */}
                                 <TableCell sx={{ color: "text.secondary", width: "1%" }}>TIME</TableCell>
                                 <TableCell sx={{ color: "text.secondary", width: "1%" }}>SERVICE</TableCell>
-                                <TableCell sx={{ color: "text.secondary", width: "1%" }}>SEVERITY</TableCell>
-                                <TableCell sx={{ color: "text.secondary" }}>BODY</TableCell>
+                                <TableCell sx={{ color: "text.secondary", width: "1%", whiteSpace: "nowrap" }}>
+                                    SEVERITY
+                                    <Tooltip title="Severity refers to OpenTelemetry log severity levels">
+                                        <IconButton size="small">
+                                            <InfoIcon fontSize="inherit" />
+                                        </IconButton>
+                                    </Tooltip>
+                                </TableCell>
+                                <TableCell sx={{ color: "text.secondary" }}>LOG BODY</TableCell>
+                                <TableCell sx={{ color: "text.secondary", width: "1%" }}>INFO</TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {filteredLogs.length === 0 ? (
+                            {displayLogs.length === 0 ? (
+                                // No logs have arrived yet.
+                                <TableRow>
+                                    <TableCell colSpan={4} align="center" sx={{ color: "text.disabled", py: 4 }}>
+                                        Waiting for the first log to arrive...
+                                    </TableCell>
+                                </TableRow>
+                            ) : filteredLogs.length === 0 ? (
+                                // No logs match the filters of service, severity or body filters
                                 <TableRow>
                                     <TableCell colSpan={4} align="center" sx={{ color: "text.disabled", py: 4 }}>
                                         No logs match your filters
@@ -208,6 +230,7 @@ export default function LiveTailLogs() {
                                             key={`${log.spanId}-${log.timestamp}`}
                                             log={log}
                                             searchQuery={debouncedSearch}
+                                            onInfoClick={setSelectedLog}
                                         />
                                     );
                                 })
@@ -216,6 +239,9 @@ export default function LiveTailLogs() {
                     </Table>
                 </TableContainer>
             </Box>
+
+            {/* only render TailLogDialog if log is selected */}
+            <TailLogDialog onClose={handleDialogClose} log={selectedLog} />
         </>
     );
 }

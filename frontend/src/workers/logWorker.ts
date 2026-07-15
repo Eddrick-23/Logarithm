@@ -1,6 +1,7 @@
 import { decodeMulti, ExtensionCodec } from "@msgpack/msgpack";
 import { CircularLogBuffer } from "../utils/CircularLogBuffer";
 import type { FlatLogRecord } from "../types/Log";
+import type { ConnectionStatus } from "../types/Connection";
 
 // Create a custom extension codec to handle Go's msgp time.Time (type 5)
 const extensionCodec = new ExtensionCodec();
@@ -15,8 +16,8 @@ extensionCodec.register({
         // Bytes 8-11: 32-bit Big-Endian nanoseconds
         const nanos = view.getUint32(8, false);
 
-        // convert to unix timestamp in milliseconds
-        return seconds * 1000 + Math.floor(nanos / 1_000_000);
+        // convert to unix timestamp in microseconds
+        return seconds * 1_000_000 + Math.floor(nanos / 1_000);
     },
 });
 
@@ -27,12 +28,13 @@ const logBuffer = new CircularLogBuffer<FlatLogRecord>(MAX_GLOBAL_LOGS);
 
 let ws: WebSocket | null = null;
 let isPaused = false;
+let pausedLogCount = 0; // logs received since paused status started
 let reconnectAttempts = 0;
 let maxAttempts = 5;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Helper to notify React of connection changes
-function updateStatus(status: "connecting" | "connected" | "error") {
+function updateStatus(status: ConnectionStatus) {
     postMessage({ type: "STATUS", payload: status });
 }
 
@@ -44,7 +46,7 @@ function connect() {
 
     ws.onopen = () => {
         reconnectAttempts = 0; // reset backoff on successful connect
-        updateStatus("connected");
+        updateStatus("live");
     };
 
     ws.onmessage = async (e) => {
@@ -54,6 +56,9 @@ function connect() {
             // decodeMulti parses the concatenated byte stream into individual objects
             for (const record of decodeMulti(buf, { extensionCodec })) {
                 logBuffer.add(record as FlatLogRecord);
+                if (isPaused) {
+                    pausedLogCount++;
+                }
             }
         } catch (err) {
             console.error("Worker: failed to parse msgpack", err);
@@ -89,18 +94,24 @@ connect();
 
 // Send to React thread every second
 setInterval(() => {
+    // return buffer if live tail is not paused
+    // otherwise return the buffer size for display
     if (!isPaused) {
         postMessage({ type: "LOG_UPDATE", payload: logBuffer.toArrayNewestFirst() });
+    } else {
+        postMessage({ type: "LOG_BUFFER_SIZE", payload: pausedLogCount });
     }
 }, RENDER_INTERVAL_MS);
 
 self.onmessage = (e) => {
     if (e.data.type === "PAUSE") {
         isPaused = true;
+        pausedLogCount = 0;
     }
 
     if (e.data.type === "RESUME") {
         isPaused = false;
+        pausedLogCount = 0;
         postMessage({ type: "LOG_UPDATE", payload: logBuffer.toArrayNewestFirst() });
     }
 
