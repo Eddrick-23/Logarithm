@@ -1,7 +1,8 @@
-import { Box, TableCell, TableRow, Typography } from "@mui/material";
+import { Box, IconButton, TableCell, TableRow, Typography } from "@mui/material";
 import type { FlatLogRecord } from "../types/Log";
 import { parseSeverity, severityStyles } from "../utils/severity";
 import { memo } from "react";
+import InfoIcon from "@mui/icons-material/Info";
 
 interface HighlightedBodyProps {
     text: string;
@@ -10,6 +11,7 @@ interface HighlightedBodyProps {
 interface TailLogRowProps {
     log: FlatLogRecord;
     searchQuery?: string;
+    onInfoClick: (log: FlatLogRecord) => void;
 }
 
 // prevents special characters in search input (".", "*", "(") from breaking regex
@@ -48,7 +50,7 @@ function HighlightedBody({ text, query }: HighlightedBodyProps) {
     );
 }
 
-export default memo(function TailLogRow({ log, searchQuery }: TailLogRowProps) {
+export default memo(function TailLogRow({ log, searchQuery, onInfoClick }: TailLogRowProps) {
     const severity = parseSeverity(log.severityText);
     return (
         <TableRow>
@@ -80,6 +82,11 @@ export default memo(function TailLogRow({ log, searchQuery }: TailLogRowProps) {
             </TableCell>
             <TableCell sx={{ color: "text.disabled" }}>
                 <HighlightedBody text={log.body} query={searchQuery} />
+            </TableCell>
+            <TableCell>
+                <IconButton onClick={() => onInfoClick(log)}>
+                    <InfoIcon />
+                </IconButton>
             </TableCell>
         </TableRow>
     );

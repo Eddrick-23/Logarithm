@@ -25,6 +25,7 @@ import ServiceDropdown from "./ServiceDropdown";
 import LiveTailLogsHeader from "./LiveTailLogsHeader";
 import SeverityLegend from "./SeverityLegend";
 import type { ConnectionStatus } from "../types/Connection";
+import TailLogDialog from "./TailLogDialog";
 
 const MAX_DISPLAY_LOGS = 15;
 
@@ -38,6 +39,7 @@ function getBufferMessage(count: number): string {
 export default function LiveTailLogs() {
     const workerRef = useRef<Worker | null>(null);
     const [bufferSize, setBufferSize] = useState<number>(0);
+    const [selectedLog, setSelectedLog] = useState<FlatLogRecord | null>(null);
     const [displayLogs, setDisplayLogs] = useState<FlatLogRecord[]>([]);
     const [severities, setSeverities] = useState<LogType[]>([]); // empty indicates all severities selected
     const [services, setServices] = useState<string[]>([]); // empty indicates all services selected
@@ -89,6 +91,10 @@ export default function LiveTailLogs() {
         setConnectionStatus("connecting");
         workerRef.current?.postMessage({ type: "RECONNECT" });
     };
+
+    const handleDialogClose = useCallback(() => {
+        setSelectedLog(null);
+    }, []);
 
     const handleServiceChange = useCallback(
         (event: SelectChangeEvent<string[]>) => {
@@ -203,6 +209,7 @@ export default function LiveTailLogs() {
                                 <TableCell sx={{ color: "text.secondary", width: "1%" }}>SERVICE</TableCell>
                                 <TableCell sx={{ color: "text.secondary", width: "1%" }}>SEVERITY</TableCell>
                                 <TableCell sx={{ color: "text.secondary" }}>BODY</TableCell>
+                                <TableCell sx={{ color: "text.secondary", width: "1%" }}>INFO</TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
@@ -227,6 +234,7 @@ export default function LiveTailLogs() {
                                             key={`${log.spanId}-${log.timestamp}`}
                                             log={log}
                                             searchQuery={debouncedSearch}
+                                            onInfoClick={setSelectedLog}
                                         />
                                     );
                                 })
@@ -235,6 +243,8 @@ export default function LiveTailLogs() {
                     </Table>
                 </TableContainer>
             </Box>
+
+            <TailLogDialog onClose={handleDialogClose} log={selectedLog} />
         </>
     );
 }
