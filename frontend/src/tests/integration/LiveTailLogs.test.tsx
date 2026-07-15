@@ -5,7 +5,7 @@ import LiveTailLogs from "../../components/LiveTailLogs";
 import type { FlatLogRecord } from "../../types/Log";
 
 const connectingMessage = "Connecting to live tail server...";
-const pauseMessage = "Tail paused — new logs buffering";
+const pauseMessage = "Live Tail paused — No new logs";
 const errorMessage = /live tail server/i;
 
 vi.mock("../../hooks/useDistinctServices", () => ({
@@ -63,7 +63,7 @@ const makeRecord = (overrides: Partial<FlatLogRecord> = {}): FlatLogRecord => ({
 const renderAndConnect = async () => {
     render(<LiveTailLogs />);
     // Simulate the worker telling the UI it connected successfully
-    mockWorkerInstance?.emit({ type: "STATUS", payload: "connected" });
+    mockWorkerInstance?.emit({ type: "STATUS", payload: "live" });
 };
 
 beforeEach(() => {
@@ -131,12 +131,12 @@ describe("LiveTailLogs — receiving logs", () => {
 
         mockWorkerInstance?.emit({
             type: "LOG_UPDATE",
-            payload: [makeRecord({ body: "Newer log" }), makeRecord({ body: "Older log" })],
+            payload: [makeRecord({ body: "Newer test log" }), makeRecord({ body: "Older test log" })],
         });
 
-        const rows = screen.getAllByText(/log/i);
-        expect(rows[0].textContent).toContain("Newer log");
-        expect(rows[1].textContent).toContain("Older log");
+        const rows = screen.getAllByText(/test log/i);
+        expect(rows[0].textContent).toContain("Newer test log");
+        expect(rows[1].textContent).toContain("Older test log");
     });
 });
 
