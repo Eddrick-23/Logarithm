@@ -16,6 +16,7 @@ theme:
   features:
     - content.code.annotate
     - content.code.copy
+    - content.tabs.link
   palette:
     # Dark Mode
     - scheme: slate
