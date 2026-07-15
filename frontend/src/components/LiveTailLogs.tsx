@@ -10,6 +10,8 @@ import {
     TableRow,
     TableCell,
     TableBody,
+    Tooltip,
+    IconButton,
 } from "@mui/material";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { card } from "../theme/tokens";
@@ -26,6 +28,7 @@ import LiveTailLogsHeader from "./LiveTailLogsHeader";
 import SeverityLegend from "./SeverityLegend";
 import type { ConnectionStatus } from "../types/Connection";
 import TailLogDialog from "./TailLogDialog";
+import InfoIcon from "@mui/icons-material/Info";
 
 const MAX_DISPLAY_LOGS = 15;
 
@@ -207,8 +210,15 @@ export default function LiveTailLogs() {
                                 {/* width set to 1% so that the columns will only span the length it occupies */}
                                 <TableCell sx={{ color: "text.secondary", width: "1%" }}>TIME</TableCell>
                                 <TableCell sx={{ color: "text.secondary", width: "1%" }}>SERVICE</TableCell>
-                                <TableCell sx={{ color: "text.secondary", width: "1%" }}>SEVERITY</TableCell>
-                                <TableCell sx={{ color: "text.secondary" }}>BODY</TableCell>
+                                <TableCell sx={{ color: "text.secondary", width: "1%", whiteSpace: "nowrap" }}>
+                                    SEVERITY
+                                    <Tooltip title="Severity refers to OpenTelemetry log severity levels">
+                                        <IconButton size="small">
+                                            <InfoIcon fontSize="inherit" />
+                                        </IconButton>
+                                    </Tooltip>
+                                </TableCell>
+                                <TableCell sx={{ color: "text.secondary" }}>LOG BODY</TableCell>
                                 <TableCell sx={{ color: "text.secondary", width: "1%" }}>INFO</TableCell>
                             </TableRow>
                         </TableHead>
@@ -244,6 +254,7 @@ export default function LiveTailLogs() {
                 </TableContainer>
             </Box>
 
+            {/* only render TailLogDialog if log is selected */}
             <TailLogDialog onClose={handleDialogClose} log={selectedLog} />
         </>
     );
