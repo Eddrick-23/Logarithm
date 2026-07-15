@@ -1,6 +1,5 @@
 import {
     Box,
-    Typography,
     Stack,
     type SelectChangeEvent,
     CircularProgress,
@@ -12,13 +11,14 @@ import {
     TableBody,
     Tooltip,
     IconButton,
+    Alert,
+    Button,
 } from "@mui/material";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { card } from "../theme/tokens";
 import PauseIcon from "@mui/icons-material/Pause";
 import type { FlatLogRecord, LogType } from "../types/Log";
 import { useDistinctServices } from "../hooks/useDistinctServices";
-import ErrorBanner from "./ErrorBanner";
 import { parseSeverity } from "../utils/severity";
 import TailLogRow from "./TailLogRow";
 import SearchField from "./SearchField";
@@ -151,53 +151,39 @@ export default function LiveTailLogs() {
 
                 {/* WebSocket Error Alert Bar */}
                 {connectionStatus === "error" && (
-                    <ErrorBanner service="live tail server" handleReconnect={handleReconnect} />
+                    <Alert
+                        severity="error"
+                        action={
+                            <Button color="inherit" onClick={handleReconnect} size="small">
+                                Retry
+                            </Button>
+                        }
+                        sx={{ mb: 3 }}
+                    >
+                        Connection lost. Failed to connect to the live tail server.
+                    </Alert>
                 )}
 
                 {/* Connecting alert bar */}
                 {connectionStatus === "connecting" && (
-                    <Box
-                        sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 1,
-                            width: "100%",
-                            px: 2,
-                            py: 1,
-                            border: "1px solid rgba(20, 184, 166, 0.4)",
-                            backgroundColor: "rgba(20, 184, 166, 0.08)",
-                            borderRadius: "6px",
-                            mb: 3,
-                        }}
+                    <Alert
+                        severity="warning"
+                        icon={<CircularProgress size={14} thickness={5} color="inherit" />}
+                        sx={{ mb: 3, alignItems: "center" }}
                     >
-                        <CircularProgress size={14} thickness={5} sx={{ color: "#2dd4bf" }} />{" "}
-                        <Typography variant="body2" sx={{ color: "#2dd4bf" }}>
-                            Connecting to live tail server...
-                        </Typography>
-                    </Box>
+                        Connecting to live tail server...
+                    </Alert>
                 )}
 
                 {/* Pause alert bar */}
                 {isPaused && connectionStatus !== "error" && (
-                    <Box
-                        sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 1,
-                            width: "100%",
-                            px: 2,
-                            py: 1,
-                            border: "1px solid #78450a",
-                            backgroundColor: "rgba(120, 69, 10, 0.15)",
-                            borderRadius: "6px",
-                            mb: 3,
-                        }}
+                    <Alert
+                        severity="warning"
+                        icon={<PauseIcon color="inherit" sx={{ fontSize: 16 }} />}
+                        sx={{ mb: 3, alignItems: "center" }}
                     >
-                        <PauseIcon sx={{ fontSize: 16, color: "warning.main" }} />
-                        <Typography variant="body2" sx={{ color: "warning.main" }}>
-                            Tail paused — {getBufferMessage(bufferSize)}
-                        </Typography>
-                    </Box>
+                        Live Tail paused — {getBufferMessage(bufferSize)}
+                    </Alert>
                 )}
 
                 {/* severity legend to display the severity levels with their colours */}
