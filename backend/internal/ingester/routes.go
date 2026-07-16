@@ -1,13 +1,14 @@
 package ingester
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/transport"
@@ -105,9 +106,24 @@ func handleHealth(logger *slog.Logger) http.HandlerFunc {
 }
 
 func handleOTLPLogs(logger *slog.Logger, producer transport.Producer, natsSubjectTemplate string) http.HandlerFunc {
+	bufPool := sync.Pool{
+		New: func() any {
+			return new(bytes.Buffer)
+		},
+	}
+
+	natsSubject := natsSubjectTemplate + "raw"
 	return func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, _ := io.ReadAll(r.Body)
+		buf := bufPool.Get().(*bytes.Buffer)
+		buf.Reset()
+		defer bufPool.Put(buf)
 		defer r.Body.Close()
+
+		if _, err := buf.ReadFrom(r.Body); err != nil {
+			logger.Error("failed to read request body", "err", err)
+			http.Error(w, "Failed to read request body", http.StatusBadRequest)
+			return
+		}
 
 		headers := map[string][]string{}
 		if ct := r.Header.Get("Content-Type"); ct != "" {
@@ -118,9 +134,10 @@ func handleOTLPLogs(logger *slog.Logger, producer transport.Producer, natsSubjec
 			headers["Content-Encoding"] = []string{ce}
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
-		if err := producer.PublishLogs(ctx, natsSubjectTemplate+"raw", bodyBytes, headers); err != nil {
+
+		if err := producer.PublishLogs(ctx, natsSubject, buf.Bytes(), headers); err != nil {
 			logger.Error("failed to publish to nats", "err", err)
 			http.Error(w, "Message broker unavailable", http.StatusServiceUnavailable)
 			return
