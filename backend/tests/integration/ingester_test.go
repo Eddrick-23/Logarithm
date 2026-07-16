@@ -85,7 +85,7 @@ func (m *MockProducer) PublishLiveTail(subject string, data []byte) error {
 
 func setupTestApp(producerErr error) (http.Handler, *MockProducer) {
 	mockProducer := &MockProducer{Err: producerErr}
-	mux := ingester.NewHTTPServer(slog.Default(), mockProducer)
+	mux := ingester.NewHTTPServer(slog.Default(), mockProducer, 4*1024)
 	return mux, mockProducer
 }
 

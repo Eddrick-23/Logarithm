@@ -23,7 +23,7 @@ func (n *noOpProducer) PublishLiveTail(string, []byte) error {
 func setupTestApp(tb testing.TB) http.Handler {
 	tb.Helper()
 	noOpLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	mux := NewHTTPServer(noOpLogger, &noOpProducer{})
+	mux := NewHTTPServer(noOpLogger, &noOpProducer{}, 4*1024)
 	return mux
 }
 
