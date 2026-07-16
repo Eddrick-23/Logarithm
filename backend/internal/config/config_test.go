@@ -46,6 +46,7 @@ func TestValidate(t *testing.T) {
 		IngesterReadTimeout:           10 * time.Second,
 		IngesterWriteTimeout:          10 * time.Second,
 		IngesterIdleTimeout:           60 * time.Second,
+		IngesterPresizeBuffer:         4 * 1024,
 		AppHost:                       "localhost",
 		AppPort:                       "8091",
 		LiveTailPresenceInterval:      1 * time.Second,
@@ -78,6 +79,9 @@ func TestValidate(t *testing.T) {
 		EnablePprof:                   false,
 		PprofHost:                     "0.0.0.0",
 	}
+
+	invalidConfigIngesterPresizeBuffer := validConfig
+	invalidConfigIngesterPresizeBuffer.IngesterPresizeBuffer = -10
 
 	invalidConfigMaxAckPending := validConfig
 	invalidConfigMaxAckPending.NatsConsumerMaxAckPending = 500
@@ -115,6 +119,11 @@ func TestValidate(t *testing.T) {
 			name:          "valid config",
 			input:         validConfig,
 			expectedError: false,
+		},
+		{
+			name:          "invalid ingester presize buffer",
+			input:         invalidConfigIngesterPresizeBuffer,
+			expectedError: true,
 		},
 		{
 			name:          "invalid config max ack pending too low",

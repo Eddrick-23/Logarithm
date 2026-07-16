@@ -32,6 +32,7 @@ type Config struct {
 	IngesterReadTimeout           time.Duration   `env:"INGESTER_READ_TIMEOUT, default=5s"`
 	IngesterWriteTimeout          time.Duration   `env:"INGESTER_WRITE_TIMEOUT, default=10s"`
 	IngesterIdleTimeout           time.Duration   `env:"INGESTER_IDLE_TIMEOUT, default=60s"`
+	IngesterPresizeBuffer         ByteSize        `env:"INGESTER_PRESIZE_BUFFER, default=4kb"`
 	AppHost                       string          `env:"APP_HOST, default=dashboard-api"`
 	AppPort                       string          `env:"APP_PORT, default=8091"`
 	DashboardLogLevel             string          `env:"DASHBOARD_LOG_LEVEL, default=INFO"`
@@ -99,6 +100,10 @@ func LoadConfig(ctx context.Context) (*Config, error) {
 }
 
 func (c *Config) validate() error {
+	if c.IngesterPresizeBuffer < 0 {
+		return fmt.Errorf("INGESTER_EXPECTED_PAYLOAD_SIZE (%d) must be non negative", c.IngesterPresizeBuffer)
+	}
+
 	if c.NatsConsumerMaxAckPending < c.WorkerMaxBatch {
 		safeLimit := c.WorkerMaxBatch * 2
 		return fmt.Errorf("NATS_CONSUMER_MAX_ACK_PENDING (%d) is dangerously low. To prevent deadlocks between nats and worker, set it to at least (%d)",

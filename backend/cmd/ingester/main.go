@@ -73,7 +73,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		return fmt.Errorf("failed to ensure stream: %w", err)
 	}
 
-	srv := ingester.NewHTTPServer(httpLogger, natsBroker)
+	srv := ingester.NewHTTPServer(httpLogger, natsBroker, int64(config.IngesterPresizeBuffer))
 
 	httpServer := &http.Server{
 		Addr:              net.JoinHostPort(config.IngesterHost, config.IngesterPortHTTP),
