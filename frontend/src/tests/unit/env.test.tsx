@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { parseEnv } from "../../config/env.schema";
 
 const validHttpUrl = "http://dashboard-api:8091";
-const validHttpsUrl = "http://dashboard-api:8091";
+const validHttpsUrl = "https://dashboard-api:8091";
 const validWebsocketUrl = "ws://dashboard-api:8091";
 const validWebsocketSecureUrl = "wss://api.example.com";
 
@@ -21,7 +21,7 @@ describe("parseEnv", () => {
             VITE_API_URL: validHttpsUrl,
             VITE_WEBSOCKET_URL: validWebsocketSecureUrl,
         });
-        expect(env.VITE_API_URL).toBe(validHttpUrl);
+        expect(env.VITE_API_URL).toBe(validHttpsUrl);
         expect(env.VITE_WEBSOCKET_URL).toBe(validWebsocketSecureUrl);
     });
 
