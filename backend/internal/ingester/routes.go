@@ -16,9 +16,9 @@ import (
 
 // NewHTTPServer constructs the ingester's HTTP handler, wiring the OTLP
 // log-ingestion routes defined in AddRoutes.
-func NewHTTPServer(logger *slog.Logger, producer transport.Producer) http.Handler {
+func NewHTTPServer(logger *slog.Logger, producer transport.Producer, presizeBuffer int64) http.Handler {
 	mux := http.NewServeMux()
-	addRoutes(mux, logger, producer, transport.LogStreamSubjectPrefix)
+	addRoutes(mux, logger, producer, transport.LogStreamSubjectPrefix, presizeBuffer)
 
 	var handler http.Handler = mux
 	// add middlewares if any
@@ -31,13 +31,14 @@ func addRoutes(
 	logger *slog.Logger,
 	producer transport.Producer,
 	natsSubjectPrefix string,
+	presizeBuffer int64,
 ) {
 	mux.HandleFunc("GET /", handleRoot(logger))
 	mux.HandleFunc("GET /health", handleHealth(logger))
 	mux.Handle("POST /v1/logs",
 		newContentTypeMiddleware()(
 			newContentEncodingMiddleware()(
-				handleOTLPLogs(logger, producer, natsSubjectPrefix),
+				handleOTLPLogs(logger, producer, natsSubjectPrefix, presizeBuffer),
 			),
 		),
 	)
@@ -105,10 +106,10 @@ func handleHealth(logger *slog.Logger) http.HandlerFunc {
 	}
 }
 
-func handleOTLPLogs(logger *slog.Logger, producer transport.Producer, natsSubjectTemplate string) http.HandlerFunc {
+func handleOTLPLogs(logger *slog.Logger, producer transport.Producer, natsSubjectTemplate string, presize int64) http.HandlerFunc {
 	bufPool := sync.Pool{
 		New: func() any {
-			return new(bytes.Buffer)
+			return bytes.NewBuffer(make([]byte, 0, presize))
 		},
 	}
 
