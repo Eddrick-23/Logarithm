@@ -6,6 +6,11 @@ This document describes all environment variables used to configure the frontend
 - **Logging Levels** — variables that control log verbosity of each service.
 - **Advanced** — infrastructure tuning (timeouts, batch sizes, intervals, retention, etc.) for performance and reliability
 
+!!! tip "Quickstart"
+    A ready-to-use example is provided at [`backend/.env.example`](reference/frontend-env-example.md) and
+    [`frontend/.env.example`](reference/backend-env-example.md). Copy these to `.env` and adjust values
+    for your environment rather than assembling one from scratch.
+
 ## Basic
 
 ### Frontend (`frontend/.env`)
