@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -56,22 +57,42 @@ type NatsJSConsumer struct {
 	maxDeliver uint64
 }
 
-func NewNatsBroker(ctx context.Context, logger *slog.Logger, natsUrl string) (*NatsBroker, error) {
-	logger.Info("Connecting to NATS")
+type Option func(*NatsBroker)
+
+func WithLogger(logger *slog.Logger) Option {
+	return func(nb *NatsBroker) {
+		nb.logger = logger
+	}
+}
+
+func NewNatsBroker(ctx context.Context, natsUrl string, opts ...Option) (*NatsBroker, error) {
+	broker := &NatsBroker{
+		conn:   nil,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		js:     nil,
+	}
+
+	for _, opt := range opts {
+		opt(broker)
+	}
+
+	broker.logger.Info("Connecting to NATS")
 	// connect to server
 	nc, err := nats.Connect(natsUrl, nats.DrainTimeout(5*time.Second))
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
 	}
+	broker.conn = nc
 
 	// create JetStream management interface
 	js, err := jetstream.New(nc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create to jetstream interface: %w", err)
 	}
+	broker.js = js
 
-	logger.Info("Connection to NATS established")
-	return &NatsBroker{conn: nc, logger: logger, js: js}, nil
+	broker.logger.Info("Connection to NATS established")
+	return broker, nil
 }
 
 func (nb *NatsBroker) Close() {

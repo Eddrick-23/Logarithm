@@ -28,7 +28,7 @@ func setupDashboardServer(t *testing.T, ctx context.Context) (*httptest.Server, 
 
 	setupTestDB(t, ctx, logStore)
 
-	broker, err := transport.NewNatsBroker(ctx, slog.Default(), natsUrl)
+	broker, err := transport.NewNatsBroker(ctx, natsUrl, transport.WithLogger(slog.Default()))
 	if err != nil {
 		t.Fatalf("failed to connect to NATS: %v", err)
 	}

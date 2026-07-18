@@ -61,7 +61,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 
 	startPprof(pprofLogger, config)
 
-	natsBroker, err := transport.NewNatsBroker(ctx, natsLogger, config.NatsURL)
+	natsBroker, err := transport.NewNatsBroker(ctx, config.NatsURL, transport.WithLogger(natsLogger))
 
 	if err != nil {
 		return fmt.Errorf("failed to crate nats broker: %w", err)

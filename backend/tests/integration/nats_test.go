@@ -16,7 +16,7 @@ import (
 func TestNatsPresence(t *testing.T) {
 	ctx := t.Context()
 
-	natsBroker, err := transport.NewNatsBroker(ctx, slog.Default(), natsUrl)
+	natsBroker, err := transport.NewNatsBroker(ctx, natsUrl, transport.WithLogger(slog.Default()))
 	require.NoError(t, err)
 	defer natsBroker.Close()
 
