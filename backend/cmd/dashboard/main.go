@@ -71,7 +71,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	broker, err := transport.NewNatsBroker(ctx, natsLogger, config.NatsURL)
+	broker, err := transport.NewNatsBroker(ctx, config.NatsURL, transport.WithLogger(natsLogger))
 	if err != nil {
 		natsLogger.Error("failed to initialise NATS broker", "err", err)
 		os.Exit(1)

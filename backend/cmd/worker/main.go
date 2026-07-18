@@ -79,7 +79,7 @@ func run(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("failed to connect to db: %w", err)
 	}
 
-	natsBroker, err := transport.NewNatsBroker(ctx, natsLogger, config.NatsURL)
+	natsBroker, err := transport.NewNatsBroker(ctx, config.NatsURL, transport.WithLogger(natsLogger))
 
 	if err != nil {
 		return fmt.Errorf("failed to create nats broker: %w", err)
