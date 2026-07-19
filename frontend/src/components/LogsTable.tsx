@@ -7,12 +7,13 @@ import {
     type MRT_PaginationState,
     type MRT_SortingState,
 } from "material-react-table";
-import { IconButton, Tooltip } from "@mui/material";
+import { IconButton, InputAdornment, Tooltip } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import type { KeyValue, LogRecord } from "../types/Log";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { useSearchLogs } from "../hooks/useSearchLogs";
+import SearchIcon from "@mui/icons-material/Search";
 
 export default function LogsTable() {
     const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>([]);
@@ -40,40 +41,57 @@ export default function LogsTable() {
                 accessorKey: "traceId",
                 header: "Trace ID",
                 enableSorting: false,
+                size: 295,
             },
             {
                 accessorKey: "spanId",
                 header: "Span ID",
                 enableSorting: false,
+                size: 190,
             },
             {
                 accessorKey: "severityText",
                 header: "Severity Text",
                 enableSorting: false,
+                size: 235,
             },
             {
                 accessorKey: "severityNumber",
                 header: "Severity #",
                 enableSorting: false,
+                size: 200,
                 muiFilterTextFieldProps: {
                     type: "number",
+                    slotProps: {
+                        input: {
+                            startAdornment: (
+                                <InputAdornment position="start">
+                                    <SearchIcon />
+                                </InputAdornment>
+                            ),
+                            endAdornment: null,
+                        },
+                    },
                 },
             },
             {
                 accessorKey: "serviceName",
                 header: "Service Name",
                 enableSorting: true,
+                size: 240,
             },
             {
                 accessorKey: "body",
                 header: "Body",
                 enableSorting: false,
+                size: 240,
             },
             {
                 accessorFn: (row) => new Date(row.timestamp),
                 id: "startTime",
                 header: "Time",
                 filterVariant: "datetime-range",
+                size: 635,
                 muiFilterDateTimePickerProps: ({ rangeFilterIndex }: { rangeFilterIndex: number }) => ({
                     label: rangeFilterIndex === 0 ? "Start" : "End",
                 }),
@@ -85,6 +103,7 @@ export default function LogsTable() {
                 header: "Log Attributes",
                 enableSorting: false,
                 enableColumnFilter: false,
+                size: 250,
                 Cell: ({ cell }) => (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                         {cell.getValue<KeyValue[]>()?.map((attr, i) => (
@@ -100,6 +119,7 @@ export default function LogsTable() {
                 header: "Resource Attributes",
                 enableSorting: false,
                 enableColumnFilter: false,
+                size: 250,
                 Cell: ({ cell }) => (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                         {cell.getValue<KeyValue[]>()?.map((attr, i) => (
@@ -117,6 +137,7 @@ export default function LogsTable() {
     const table = useMaterialReactTable({
         columns,
         data: logs,
+        layoutMode: "grid",
         initialState: {
             showColumnFilters: true,
             columnFilters: [
@@ -129,9 +150,19 @@ export default function LogsTable() {
         manualFiltering: true, // turn off built-in client-side filtering
         manualPagination: true, // turn off built-in client-side pagination
         manualSorting: true, // turn off built-in client-side sorting
-        muiFilterTextFieldProps: {
+        muiFilterTextFieldProps: ({ column }) => ({
             variant: "filled",
-        },
+            placeholder: column.columnDef.header,
+            slotProps: {
+                input: {
+                    startAdornment: (
+                        <InputAdornment position="start">
+                            <SearchIcon />
+                        </InputAdornment>
+                    ),
+                },
+            },
+        }),
         muiToolbarAlertBannerProps: isError
             ? {
                   severity: "error",
