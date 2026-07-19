@@ -153,36 +153,6 @@ func (p *proxyHandler) NewStreamHandler(presize int64, limit int64) func(any, gr
 	}
 }
 
-func (p *proxyHandler) StreamHandler(srv any, stream grpc.ServerStream) error {
-	frame := &RawFrame{}
-
-	if err := stream.RecvMsg(frame); err != nil {
-		if err == io.EOF {
-			return nil
-		}
-
-		p.logger.Error("failed to receive raw frame", "err", err)
-		return status.Errorf(codes.Internal, "failed to read stream")
-	}
-
-	headers := map[string][]string{
-		"Content-Type": {"application/x-protobuf"},
-	}
-
-	if compression := detectCompression(frame.RawBytes); compression != "" {
-		headers["Content-Encoding"] = []string{compression}
-	}
-
-	if err := p.producer.PublishLogs(stream.Context(), p.natsSubjectPrefix+"raw", frame.RawBytes, headers); err != nil {
-		p.logger.Error("failed to publish to nats", "err", err)
-		return status.Errorf(codes.Internal, "failed to publish to nats")
-	}
-
-	// Unary gRPC contract, client sends one message, server must send exactly one back.
-	// Then server closes the connection with status OK.
-	return stream.SendMsg(&RawFrame{RawBytes: []byte{}})
-}
-
 // Detect gzip and zstd compression via byte sniffing else it defaults to no compression.
 // This is due to grpc not exposing internal encoding information of incoming payloads.
 // Since grpc automatically filters out unsupported encodings via only registered

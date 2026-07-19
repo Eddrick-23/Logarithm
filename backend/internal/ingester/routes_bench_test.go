@@ -3,11 +3,15 @@ package ingester
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/Eddrick-23/Logarithm/internal/transport"
+	"google.golang.org/grpc"
 )
 
 type noOpProducer struct{}
@@ -43,5 +47,54 @@ func BenchmarkIngestEndpointHttp(b *testing.B) {
 		rec.Code = 0
 
 		app.ServeHTTP(rec, req)
+	}
+}
+
+type mockServerStream struct {
+	grpc.ServerStream // Embed to satisfy unused methods
+	payload           []byte
+}
+
+func (m *mockServerStream) Context() context.Context {
+	return context.Background()
+}
+
+func (m *mockServerStream) RecvMsg(v any) error {
+	frame, ok := v.(*RawFrame)
+	if !ok {
+		return fmt.Errorf("expected *RawFrame, got %T", v)
+	}
+
+	frame.RawBytes = append(frame.RawBytes[:0], m.payload...)
+	return nil
+}
+
+func (m *mockServerStream) SendMsg(v any) error {
+	return nil
+}
+
+func BenchmarkIngestEndpointGrpc(b *testing.B) {
+	noOpLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	producer := &noOpProducer{}
+
+	const bufSize = 1024 * 1024
+
+	proxy := newProxyHandler(noOpLogger, producer, transport.LogStreamSubject)
+	handler := proxy.NewStreamHandler(bufSize, bufSize*2)
+
+	dummyPayload := []byte("data")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		stream := &mockServerStream{
+			payload: dummyPayload,
+		}
+
+		err := handler(nil, stream)
+		if err != nil {
+			b.Fatalf("error sending grpc request: %v", err)
+		}
 	}
 }
