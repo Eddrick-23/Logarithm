@@ -65,6 +65,13 @@ export default function LogsTable() {
                 grow: false, // should not grow in length since severityText length is fixed
                 size: 235,
                 Cell: ({ cell }) => <SeverityPill severity={normaliseSeverity(cell.getValue<string>())} />,
+                // set severityText column to be center-aligned
+                muiTableHeadCellProps: {
+                    align: "center",
+                },
+                muiTableBodyCellProps: {
+                    align: "center",
+                },
             },
             {
                 accessorKey: "severityNumber",
@@ -84,6 +91,13 @@ export default function LogsTable() {
                             endAdornment: null,
                         },
                     },
+                },
+                // set severityNumber column to be center-aligned
+                muiTableHeadCellProps: {
+                    align: "center",
+                },
+                muiTableBodyCellProps: {
+                    align: "center",
                 },
             },
             {
@@ -152,6 +166,7 @@ export default function LogsTable() {
         columns,
         data: logs,
         layoutMode: "grid",
+        enableStickyHeader: true,
         initialState: {
             showColumnFilters: true,
             columnFilters: [
