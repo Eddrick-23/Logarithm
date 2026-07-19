@@ -9,11 +9,18 @@ import {
 } from "material-react-table";
 import { IconButton, InputAdornment, Tooltip } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import type { KeyValue, LogRecord } from "../types/Log";
+import type { KeyValue, LogRecord, LogType } from "../types/Log";
+import { SEVERITY_NORMALISE_MAP } from "../utils/severity";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { useSearchLogs } from "../hooks/useSearchLogs";
 import SearchIcon from "@mui/icons-material/Search";
+import SeverityPill from "./SeverityPill";
+
+function normaliseSeverity(value: string): LogType {
+    const lower = value.toLowerCase();
+    return SEVERITY_NORMALISE_MAP[lower] ?? "info";
+}
 
 export default function LogsTable() {
     const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>([]);
@@ -54,6 +61,7 @@ export default function LogsTable() {
                 header: "Severity Text",
                 enableSorting: false,
                 size: 235,
+                Cell: ({ cell }) => <SeverityPill severity={normaliseSeverity(cell.getValue<string>())} />,
             },
             {
                 accessorKey: "severityNumber",
