@@ -10,12 +10,16 @@ nav:
   - Integration with OpenTelemetry: otel.md
   - Infrastructure:
       - Clickhouse: clickhouse.md
+  - Reference:
+      - Backend .env example: reference/backend-env-example.md
+      - Frontend .env example: reference/frontend-env-example.md
 
 theme:
   name: material
   features:
     - content.code.annotate
     - content.code.copy
+    - content.tabs.link
   palette:
     # Dark Mode
     - scheme: slate
@@ -50,3 +54,6 @@ markdown_extensions:
   - pymdownx.details
   - pymdownx.superfences
   - admonition
+  - pymdownx.tabbed:
+      alternate_style: true
+      combine_header_slug: true
