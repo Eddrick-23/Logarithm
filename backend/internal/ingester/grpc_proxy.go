@@ -107,7 +107,7 @@ func newProxyHandler(logger *slog.Logger, producer transport.Producer, prefix st
 	}
 }
 
-func (p *proxyHandler) NewStreamHandler(presize int64) func(any, grpc.ServerStream) error {
+func (p *proxyHandler) NewStreamHandler(presize int64, limit int64) func(any, grpc.ServerStream) error {
 	rawFramePool := sync.Pool{
 		New: func() any {
 			return &RawFrame{
@@ -118,7 +118,12 @@ func (p *proxyHandler) NewStreamHandler(presize int64) func(any, grpc.ServerStre
 	return func(srv any, stream grpc.ServerStream) error {
 		frame := rawFramePool.Get().(*RawFrame)
 		frame.RawBytes = frame.RawBytes[:0]
-		defer rawFramePool.Put(frame)
+		// return buffer if capacity does not exceed limit
+		defer func() {
+			if int64(cap(frame.RawBytes)) <= limit {
+				rawFramePool.Put(frame)
+			}
+		}()
 
 		if err := stream.RecvMsg(frame); err != nil {
 			if err == io.EOF {

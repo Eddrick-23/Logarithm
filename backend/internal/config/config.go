@@ -33,6 +33,7 @@ type Config struct {
 	IngesterWriteTimeout          time.Duration   `env:"INGESTER_WRITE_TIMEOUT, default=10s"`
 	IngesterIdleTimeout           time.Duration   `env:"INGESTER_IDLE_TIMEOUT, default=60s"`
 	IngesterPresizeBuffer         ByteSize        `env:"INGESTER_PRESIZE_BUFFER, default=4kb"`
+	IngesterBufferLimit           ByteSize        `env:"INGESTER_BUFFER_LIMIT, default=20kb"`
 	AppHost                       string          `env:"APP_HOST, default=dashboard-api"`
 	AppPort                       string          `env:"APP_PORT, default=8091"`
 	DashboardLogLevel             string          `env:"DASHBOARD_LOG_LEVEL, default=INFO"`
@@ -101,7 +102,14 @@ func LoadConfig(ctx context.Context) (*Config, error) {
 
 func (c *Config) validate() error {
 	if c.IngesterPresizeBuffer < 0 {
-		return fmt.Errorf("INGESTER_EXPECTED_PAYLOAD_SIZE (%d) must be non negative", c.IngesterPresizeBuffer)
+		return fmt.Errorf("INGESTER_PRESIZE_BUFFER (%d) must be non negative", c.IngesterPresizeBuffer)
+	}
+
+	if c.IngesterBufferLimit < c.IngesterPresizeBuffer {
+		return fmt.Errorf("INGESTER_BUFFER_LIMIT (%d) must be >= INGESTER_PRESIZE_BUFFER (%d) for efficient buffer reuse",
+			c.IngesterBufferLimit,
+			c.IngesterPresizeBuffer,
+		)
 	}
 
 	if c.NatsConsumerMaxAckPending < c.WorkerMaxBatch {

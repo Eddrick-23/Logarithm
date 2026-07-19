@@ -73,7 +73,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		return fmt.Errorf("failed to ensure stream: %w", err)
 	}
 
-	srv := ingester.NewHTTPServer(httpLogger, natsBroker, int64(config.IngesterPresizeBuffer))
+	srv := ingester.NewHTTPServer(httpLogger, natsBroker, int64(config.IngesterPresizeBuffer), int64(config.IngesterBufferLimit))
 
 	httpServer := &http.Server{
 		Addr:              net.JoinHostPort(config.IngesterHost, config.IngesterPortHTTP),
@@ -84,7 +84,8 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		IdleTimeout:       config.IngesterIdleTimeout,
 	}
 
-	grpcServer := ingester.NewGRPCServer(grpcLogger, natsBroker)
+	grpcServer := ingester.NewGRPCServer(grpcLogger, natsBroker,
+		int64(config.IngesterPresizeBuffer), int64(config.IngesterBufferLimit))
 
 	// start http and grpc servers
 	go func() {

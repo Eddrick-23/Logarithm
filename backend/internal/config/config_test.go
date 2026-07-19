@@ -47,6 +47,7 @@ func TestValidate(t *testing.T) {
 		IngesterWriteTimeout:          10 * time.Second,
 		IngesterIdleTimeout:           60 * time.Second,
 		IngesterPresizeBuffer:         4 * 1024,
+		IngesterBufferLimit:           20 * 1024,
 		AppHost:                       "localhost",
 		AppPort:                       "8091",
 		LiveTailPresenceInterval:      1 * time.Second,
@@ -82,6 +83,9 @@ func TestValidate(t *testing.T) {
 
 	invalidConfigIngesterPresizeBuffer := validConfig
 	invalidConfigIngesterPresizeBuffer.IngesterPresizeBuffer = -10
+
+	invalidConfigIngesterBufferLimit := validConfig
+	invalidConfigIngesterBufferLimit.IngesterBufferLimit = validConfig.IngesterPresizeBuffer - 1
 
 	invalidConfigMaxAckPending := validConfig
 	invalidConfigMaxAckPending.NatsConsumerMaxAckPending = 500
@@ -123,6 +127,11 @@ func TestValidate(t *testing.T) {
 		{
 			name:          "invalid ingester presize buffer",
 			input:         invalidConfigIngesterPresizeBuffer,
+			expectedError: true,
+		},
+		{
+			name:          "invalid ingester buffer limit smaller than presize buffer",
+			input:         invalidConfigIngesterBufferLimit,
 			expectedError: true,
 		},
 		{
