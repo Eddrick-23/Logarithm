@@ -7,7 +7,7 @@ import {
     type MRT_PaginationState,
     type MRT_SortingState,
 } from "material-react-table";
-import { IconButton, InputAdornment, Tooltip } from "@mui/material";
+import { IconButton, InputAdornment, Stack, Tooltip } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import type { KeyValue, LogRecord, LogType } from "../types/Log";
 import { SEVERITY_NORMALISE_MAP } from "../utils/severity";
@@ -119,13 +119,13 @@ export default function LogsTable() {
                 enableColumnFilter: false,
                 size: 250,
                 Cell: ({ cell }) => (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    <Stack direction="column" spacing={1}>
                         {cell.getValue<KeyValue[]>()?.map((attr, i) => (
                             <span key={`${i}-${attr.key}`}>
                                 {attr.key}: {attr.value}
                             </span>
                         ))}
-                    </div>
+                    </Stack>
                 ),
             },
             {
@@ -135,13 +135,13 @@ export default function LogsTable() {
                 enableColumnFilter: false,
                 size: 250,
                 Cell: ({ cell }) => (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    <Stack direction="column" spacing={1}>
                         {cell.getValue<KeyValue[]>()?.map((attr, i) => (
                             <span key={`${i}-${attr.key}`}>
                                 {attr.key}: {attr.value}
                             </span>
                         ))}
-                    </div>
+                    </Stack>
                 ),
             },
         ],
