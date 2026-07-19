@@ -100,7 +100,7 @@ This is a short tutorial on connecting a simple FastAPI service, instrumented wi
 
     # 4) Attatch OpenTelemetry Handler to Python's Root Logger
     logging.getLogger().addHandler(LoggingHandler(logger_provider=logger_provider))
-    logging.getLogger().setLevel(logging.WARNING)
+    logging.getLogger().setLevel(logging.INFO)
 
     logger = logging.getLogger(__name__)
 
