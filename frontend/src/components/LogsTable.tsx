@@ -55,6 +55,9 @@ export default function LogsTable() {
                 accessorKey: "severityNumber",
                 header: "Severity #",
                 enableSorting: false,
+                muiFilterTextFieldProps: {
+                    type: "number",
+                },
             },
             {
                 accessorKey: "serviceName",
