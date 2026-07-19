@@ -75,8 +75,13 @@ func (r *rawCodec) Marshal(v any) (mem.BufferSlice, error) {
 func (r *rawCodec) Unmarshal(data mem.BufferSlice, v any) error {
 	// fast path, any unregistered payloads (e.g. OTel payloads)
 	if out, ok := v.(*RawFrame); ok {
-		srcBytes := data.Materialize()
-		out.RawBytes = append(out.RawBytes[:0], srcBytes...)
+		n := data.Len()
+		if cap(out.RawBytes) < n {
+			out.RawBytes = make([]byte, n)
+		} else {
+			out.RawBytes = out.RawBytes[:n]
+		}
+		data.CopyTo(out.RawBytes)
 		return nil
 	}
 
@@ -115,6 +120,8 @@ func (p *proxyHandler) NewStreamHandler(presize int64, limit int64) func(any, gr
 			}
 		},
 	}
+
+	natsSubject := p.natsSubjectPrefix + "raw"
 	return func(srv any, stream grpc.ServerStream) error {
 		frame := rawFramePool.Get().(*RawFrame)
 		frame.RawBytes = frame.RawBytes[:0]
@@ -142,7 +149,7 @@ func (p *proxyHandler) NewStreamHandler(presize int64, limit int64) func(any, gr
 			headers["Content-Encoding"] = []string{compression}
 		}
 
-		if err := p.producer.PublishLogs(stream.Context(), p.natsSubjectPrefix+"raw", frame.RawBytes, headers); err != nil {
+		if err := p.producer.PublishLogs(stream.Context(), natsSubject, frame.RawBytes, headers); err != nil {
 			p.logger.Error("failed to publish to nats", "err", err)
 			return status.Errorf(codes.Internal, "failed to publish to nats")
 		}
