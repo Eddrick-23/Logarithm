@@ -122,7 +122,7 @@ export default function LogsTable() {
                     <Stack direction="column" spacing={1}>
                         {cell.getValue<KeyValue[]>()?.map((attr, i) => (
                             <span key={`${i}-${attr.key}`}>
-                                {attr.key}: {attr.value}
+                                <strong>{attr.key}</strong>: {attr.value}
                             </span>
                         ))}
                     </Stack>
@@ -138,7 +138,7 @@ export default function LogsTable() {
                     <Stack direction="column" spacing={1}>
                         {cell.getValue<KeyValue[]>()?.map((attr, i) => (
                             <span key={`${i}-${attr.key}`}>
-                                {attr.key}: {attr.value}
+                                <strong>{attr.key}</strong>: {attr.value}
                             </span>
                         ))}
                     </Stack>
