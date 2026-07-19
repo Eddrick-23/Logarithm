@@ -150,6 +150,10 @@ func (nb *NatsBroker) ensureStream(ctx context.Context, config *jetstream.Stream
 	return stream, nil
 }
 
+// Publish a log payload under a specified subject. This is a synchronous call.
+//
+// Headers can be attatched for routing in the worker layer. The worker layer checks for
+// Content-Type and Content-Encoding.
 func (nb *NatsBroker) PublishLogs(ctx context.Context, subject string, payload []byte, headers map[string][]string) error {
 	msg := &nats.Msg{
 		Subject: subject,
