@@ -14,7 +14,7 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { useSearchLogs } from "../hooks/useSearchLogs";
 
-export default function EnhancedTable() {
+export default function LogsTable() {
     const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>([]);
     const [sorting, setSorting] = useState<MRT_SortingState>([]);
     const [pagination, setPagination] = useState<MRT_PaginationState>({
@@ -131,8 +131,8 @@ export default function EnhancedTable() {
         },
         muiToolbarAlertBannerProps: isError
             ? {
-                  color: "error",
-                  children: "Error loading data",
+                  severity: "error",
+                  children: "Error loading data.",
               }
             : undefined,
         onColumnFiltersChange: setColumnFilters,
