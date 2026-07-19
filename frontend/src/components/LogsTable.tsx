@@ -48,18 +48,21 @@ export default function LogsTable() {
                 accessorKey: "traceId",
                 header: "Trace ID",
                 enableSorting: false,
+                grow: false, // should not grow in length since traceId length is fixed
                 size: 295,
             },
             {
                 accessorKey: "spanId",
                 header: "Span ID",
                 enableSorting: false,
+                grow: false, // should not grow in length since spanId length is fixed
                 size: 190,
             },
             {
                 accessorKey: "severityText",
                 header: "Severity Text",
                 enableSorting: false,
+                grow: false, // should not grow in length since severityText length is fixed
                 size: 235,
                 Cell: ({ cell }) => <SeverityPill severity={normaliseSeverity(cell.getValue<string>())} />,
             },
@@ -67,6 +70,7 @@ export default function LogsTable() {
                 accessorKey: "severityNumber",
                 header: "Severity #",
                 enableSorting: false,
+                grow: false, // should not grow in length since severityNumber length is fixed
                 size: 200,
                 muiFilterTextFieldProps: {
                     type: "number",
@@ -86,6 +90,7 @@ export default function LogsTable() {
                 accessorKey: "serviceName",
                 header: "Service Name",
                 enableSorting: true,
+                grow: false, // should not grow in length since serviceName length is fixed
                 size: 240,
             },
             {
@@ -99,6 +104,7 @@ export default function LogsTable() {
                 id: "startTime",
                 header: "Time",
                 filterVariant: "datetime-range",
+                grow: false, // should not grow in length since time length is fixed
                 size: 635,
                 muiFilterDateTimePickerProps: ({ rangeFilterIndex }: { rangeFilterIndex: number }) => ({
                     label: rangeFilterIndex === 0 ? "Start" : "End",
