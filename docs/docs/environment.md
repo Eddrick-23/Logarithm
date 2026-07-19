@@ -98,6 +98,15 @@ Infrastructure tuning variables such as timeouts, batch sizes, intervals and ret
 | `INGESTER_READ_TIMEOUT` | Max time to read full request | `5s` | No (default: `5s`) |
 | `INGESTER_WRITE_TIMEOUT` | Max time to write response | `10s` | No (default: `10s`) |
 | `INGESTER_IDLE_TIMEOUT` | Max idle time for keep-alive connections | `60s` | No (default: `60s`) |
+| `INGESTER_PRESIZE_BUFFER` | Presize buffer to expected payload sizes to avoid expensive slice growths. | `4kb` | No (default: `4kb`) |
+| `INGESTER_BUFFER_LIMIT` | Restrict maximum buffer size in the pool. Buffers that grow beyond this size are not returned to pool. | `20kb` | No (default: `20kb`) |
+
+!!! Info
+    - The ingester handlers use go's sync.Pool internally to minimise allocations on the hot path. `INGESTER_PRESIZE_BUFFER` can be raised to if expected incoming payloads are much higher than the default.
+    - If payload sizes vary largely, setting an upper limit via `INGESTER_BUFFER_LIMIT` will help prevent holding on to large allocated buffers that are not used fully.
+
+!!! warning "`INGESTER_BUFFER_LIMIT` must be >= `INGESTER_PRESIZE_BUFFER`"
+    This is required for efficient buffer reuse. Else the allocated buffer will never be returned to pool resulting in a fresh allocation per request.
 
 ---
 
