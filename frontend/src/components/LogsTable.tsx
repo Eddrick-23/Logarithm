@@ -23,6 +23,7 @@ function normaliseSeverity(value: string): LogType {
 }
 
 export default function LogsTable() {
+    const [showColumnFilters, setShowColumnFilters] = useState<boolean>(true);
     const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>([]);
     const [sorting, setSorting] = useState<MRT_SortingState>([]);
     const [pagination, setPagination] = useState<MRT_PaginationState>({
@@ -56,14 +57,14 @@ export default function LogsTable() {
                 header: "Span ID",
                 enableSorting: false,
                 grow: false, // should not grow in length since spanId length is fixed
-                size: 190,
+                size: showColumnFilters ? 190 : 170,
             },
             {
                 accessorKey: "severityText",
                 header: "Severity Text",
                 enableSorting: false,
                 grow: false, // should not grow in length since severityText length is fixed
-                size: 235,
+                size: showColumnFilters ? 235 : 190,
                 Cell: ({ cell }) => <SeverityPill severity={normaliseSeverity(cell.getValue<string>())} />,
                 // set severityText column to be center-aligned
                 muiTableHeadCellProps: {
@@ -78,7 +79,7 @@ export default function LogsTable() {
                 header: "Severity #",
                 enableSorting: false,
                 grow: false, // should not grow in length since severityNumber length is fixed
-                size: 200,
+                size: showColumnFilters ? 200 : 170,
                 muiFilterTextFieldProps: {
                     type: "number",
                     slotProps: {
@@ -105,7 +106,7 @@ export default function LogsTable() {
                 header: "Service Name",
                 enableSorting: true,
                 grow: false, // should not grow in length since serviceName length is fixed
-                size: 240,
+                size: showColumnFilters ? 240 : 200,
             },
             {
                 accessorKey: "body",
@@ -119,7 +120,7 @@ export default function LogsTable() {
                 header: "Time",
                 filterVariant: "datetime-range",
                 grow: false, // should not grow in length since time length is fixed
-                size: 635,
+                size: showColumnFilters ? 635 : 200,
                 muiFilterDateTimePickerProps: ({ rangeFilterIndex }: { rangeFilterIndex: number }) => ({
                     label: rangeFilterIndex === 0 ? "Start" : "End",
                 }),
@@ -159,7 +160,7 @@ export default function LogsTable() {
                 ),
             },
         ],
-        [],
+        [showColumnFilters],
     );
 
     const table = useMaterialReactTable({
@@ -217,7 +218,9 @@ export default function LogsTable() {
             showAlertBanner: isError,
             showProgressBars: isRefetching,
             sorting,
+            showColumnFilters,
         },
+        onShowColumnFiltersChange: setShowColumnFilters, // state passed to allow for reducing column width if filters are disabled
         muiTableHeadCellProps: {
             sx: {
                 color: "primary.main",
