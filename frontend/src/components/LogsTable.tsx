@@ -80,18 +80,36 @@ export default function LogsTable() {
                 enableSorting: false,
                 grow: false, // should not grow in length since severityNumber length is fixed
                 size: showColumnFilters ? 200 : 170,
-                muiFilterTextFieldProps: {
-                    type: "number",
-                    slotProps: {
-                        input: {
-                            startAdornment: (
-                                <InputAdornment position="start">
-                                    <SearchIcon />
-                                </InputAdornment>
-                            ),
-                            endAdornment: null,
+                muiFilterTextFieldProps: ({ column }) => {
+                    const filterValue = column.getFilterValue() as string;
+                    const numericValue = Number(filterValue);
+                    const isInvalid = filterValue != "" && (numericValue < 1 || numericValue > 24);
+
+                    return {
+                        type: "number",
+                        error: isInvalid,
+                        helperText: isInvalid ? "Must be 1–24" : undefined,
+                        slotProps: {
+                            input: {
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon />
+                                    </InputAdornment>
+                                ),
+                                endAdornment: null,
+                            },
+                            // fix the formHelperText position below the input
+                            formHelperText: {
+                                sx: {
+                                    position: "absolute",
+                                    top: "100%",
+                                    left: 0,
+                                    margin: 0,
+                                    whiteSpace: "nowrap",
+                                },
+                            },
                         },
-                    },
+                    };
                 },
                 // set severityNumber column to be center-aligned
                 muiTableHeadCellProps: {
