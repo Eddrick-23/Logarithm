@@ -1,8 +1,9 @@
-import { Box, IconButton, TableCell, TableRow, Typography } from "@mui/material";
+import { Box, IconButton, TableCell, TableRow } from "@mui/material";
 import type { FlatLogRecord } from "../types/Log";
-import { parseSeverity, severityStyles } from "../utils/severity";
+import { parseSeverity } from "../utils/severity";
 import { memo } from "react";
 import InfoIcon from "@mui/icons-material/Info";
+import SeverityPill from "./SeverityPill";
 
 interface HighlightedBodyProps {
     text: string;
@@ -60,25 +61,7 @@ export default memo(function TailLogRow({ log, searchQuery, onInfoClick }: TailL
             </TableCell>
             <TableCell sx={{ color: "text.disabled", whiteSpace: "nowrap" }}>{log.serviceName}</TableCell>
             <TableCell>
-                <Box
-                    sx={{
-                        display: "inline-block",
-                        backgroundColor: severityStyles[severity].bg,
-                        borderRadius: 1,
-                        px: 1,
-                        py: 0.25,
-                    }}
-                >
-                    <Typography
-                        sx={{
-                            fontSize: 11,
-                            fontWeight: "bold",
-                            color: severityStyles[severity].text,
-                        }}
-                    >
-                        {severity.toUpperCase()}
-                    </Typography>
-                </Box>
+                <SeverityPill severity={severity} />
             </TableCell>
             <TableCell sx={{ color: "text.disabled" }}>
                 <HighlightedBody text={log.body} query={searchQuery} />

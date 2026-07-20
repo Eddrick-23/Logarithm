@@ -1,6 +1,6 @@
 import type { LogType } from "../types/Log";
 
-const SEVERITY_NORMALISE_MAP: Record<string, LogType> = {
+export const SEVERITY_NORMALISE_MAP: Record<string, LogType> = {
     trace: "trace",
     debug: "debug",
     info: "info",
