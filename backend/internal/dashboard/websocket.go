@@ -51,6 +51,8 @@ func handleLiveTail(logger *slog.Logger, broker *transport.NatsBroker, config *c
 		}
 		defer cleanup() // ensure NATS consumer stops when the websocket closes
 
+		broker.StartPresencePublisher(ctx, transport.LiveTailPresenceSubject, config.LiveTailPresenceInterval)
+
 		ticker := time.NewTicker(time.Duration(config.LiveTailRefreshInterval) * time.Millisecond) // default flush interval: 500ms
 		defer ticker.Stop()
 

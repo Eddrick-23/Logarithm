@@ -109,6 +109,7 @@ type MockPublisher struct {
 	enqueueCount   atomic.Int64
 	enqueueSuccess bool
 	records        []core.FlatLogRecord
+	hasSubscribers bool
 }
 
 // Safe to call concurrently.
@@ -125,6 +126,10 @@ func (m *MockPublisher) Enqueue(subject string, msg MsgMarshaler) bool {
 
 func (m *MockPublisher) GetEnqueueCount() int {
 	return int(m.enqueueCount.Load())
+}
+
+func (m *MockPublisher) HasSubscribers() bool {
+	return m.hasSubscribers
 }
 
 // MockTransformer
@@ -170,6 +175,10 @@ func (n *NoOpAppender) Flush() error {
 type NoOpPublisher struct{}
 
 func (n *NoOpPublisher) Enqueue(subject string, msg MsgMarshaler) bool {
+	return true
+}
+
+func (n *NoOpPublisher) HasSubscribers() bool {
 	return true
 }
 

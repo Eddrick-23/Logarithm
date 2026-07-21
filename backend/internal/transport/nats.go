@@ -3,8 +3,10 @@ package transport
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -12,13 +14,14 @@ import (
 )
 
 const ( // infra constants
-	LogStreamName          = "LOGS"
-	LogStreamSubject       = "logs.>"
-	LogStreamSubjectPrefix = "logs."
-	DLQStreamName          = "LOGS_DLQ"
-	DLQSubject             = "dlq.logs"
-	LiveTailSubject        = "tail.>"
-	LiveTailSubjectPrefix  = "tail."
+	LogStreamName           = "LOGS"
+	LogStreamSubject        = "logs.>"
+	LogStreamSubjectPrefix  = "logs."
+	DLQStreamName           = "LOGS_DLQ"
+	DLQSubject              = "dlq.logs"
+	LiveTailSubject         = "tail.>"
+	LiveTailSubjectPrefix   = "tail."
+	LiveTailPresenceSubject = "presence.livetail"
 )
 
 var _ Producer = (*NatsBroker)(nil)
@@ -54,22 +57,42 @@ type NatsJSConsumer struct {
 	maxDeliver uint64
 }
 
-func NewNatsBroker(ctx context.Context, logger *slog.Logger, natsUrl string) (*NatsBroker, error) {
-	logger.Info("Connecting to NATS")
+type Option func(*NatsBroker)
+
+func WithLogger(logger *slog.Logger) Option {
+	return func(nb *NatsBroker) {
+		nb.logger = logger
+	}
+}
+
+func NewNatsBroker(ctx context.Context, natsUrl string, opts ...Option) (*NatsBroker, error) {
+	broker := &NatsBroker{
+		conn:   nil,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		js:     nil,
+	}
+
+	for _, opt := range opts {
+		opt(broker)
+	}
+
+	broker.logger.Info("Connecting to NATS")
 	// connect to server
 	nc, err := nats.Connect(natsUrl, nats.DrainTimeout(5*time.Second))
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
 	}
+	broker.conn = nc
 
 	// create JetStream management interface
 	js, err := jetstream.New(nc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create to jetstream interface: %w", err)
 	}
+	broker.js = js
 
-	logger.Info("Connection to NATS established")
-	return &NatsBroker{conn: nc, logger: logger, js: js}, nil
+	broker.logger.Info("Connection to NATS established")
+	return broker, nil
 }
 
 func (nb *NatsBroker) Close() {
@@ -127,6 +150,10 @@ func (nb *NatsBroker) ensureStream(ctx context.Context, config *jetstream.Stream
 	return stream, nil
 }
 
+// Publish a log payload under a specified subject. This is a synchronous call.
+//
+// Headers can be attatched for routing in the worker layer. The worker layer checks for
+// Content-Type and Content-Encoding.
 func (nb *NatsBroker) PublishLogs(ctx context.Context, subject string, payload []byte, headers map[string][]string) error {
 	msg := &nats.Msg{
 		Subject: subject,
@@ -335,10 +362,113 @@ func (nb *NatsBroker) TailLiveLogs(ctx context.Context, subject string, maxBatch
 }
 
 func (nb *NatsBroker) GetJetstreamConsumer(ctx context.Context, streamName string, consumerName string) (jetstream.Consumer, error) {
-	consumer, err := nb.js.Consumer(ctx, streamName, consumerName)
+	const (
+		retryAttempts = 5
+		baseDelay     = time.Second
+		maxDelay      = 15 * time.Second
+	)
+
+	var consumer jetstream.Consumer
+	var err error
+
+	for i := range retryAttempts {
+		consumer, err = nb.js.Consumer(ctx, streamName, consumerName)
+		if err == nil {
+			return consumer, nil
+		}
+
+		nb.logger.Warn(
+			fmt.Sprintf("failed to get jetstream consumer, attempt %d/%d", i+1, retryAttempts),
+			"jetstream consumer", err,
+		)
+		delay := calculateExponentialBackoff(i, baseDelay, maxDelay)
+
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("context cancelled while retrying consumer fetch: %w", ctx.Err())
+		case <-time.After(delay): // wait for delay duration to elapse
+		}
+	}
+
+	return nil, fmt.Errorf("failed to get jetstream consumer %q on stream %q after %d attempts: %w",
+		consumerName, streamName, retryAttempts, err)
+}
+
+func calculateExponentialBackoff(attempt int, baseDelay time.Duration, maxDelay time.Duration) time.Duration {
+	delay := baseDelay * time.Duration(1<<attempt) // 1x, 2x, 4x, 8x ...
+	if delay > maxDelay {
+		return maxDelay
+	}
+	return delay
+}
+
+// Starts an internal goroutine and publishes a simple ping message to the
+// specified subject using core NATS.
+//
+// This is used with StartPresenceListener for inter-container communication.
+func (nb *NatsBroker) StartPresencePublisher(ctx context.Context, subject string, interval time.Duration) {
+	nb.logger.Info("starting presence publisher", "subject", subject, "interval", interval)
+
+	if interval <= 0 {
+		nb.logger.Warn("invalid interval passed in, defaulting to 1s")
+		interval = 1 * time.Second
+	}
+
+	go func() {
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		pingPayload := []byte("ping")
+
+		for {
+			select {
+			case <-ctx.Done():
+				nb.logger.Info("stopping presence publisher", "subject", subject)
+				return
+			case <-ticker.C:
+				if err := nb.conn.Publish(subject, pingPayload); err != nil {
+					nb.logger.Error("failed to publish presence heartbeat", "err", err)
+				}
+			}
+		}
+	}()
+}
+
+// StartPresenceListener listens for heartbeats and returns a lock-free function
+// that checks if the last heartbeat was received within the timeout period.
+//
+// This is used with StartPresencePublisher for inter-container communication.
+func (nb *NatsBroker) StartPresenceListener(ctx context.Context, subject string, timeout time.Duration) (func() bool, error) {
+	nb.logger.Info("starting presence listener", "subject", subject, "timeout", timeout)
+
+	var lastSeenNano atomic.Int64
+	lastSeenNano.Store(0)
+
+	sub, err := nb.conn.Subscribe(subject, func(msg *nats.Msg) {
+		lastSeenNano.Store(time.Now().UnixNano())
+	})
+
 	if err != nil {
-		nb.logger.Error("failed to get jetstream consumer", "jetstream consumer", err)
 		return nil, err
 	}
-	return consumer, nil
+
+	go func() {
+		<-ctx.Done()
+		if err := sub.Unsubscribe(); err != nil {
+			nb.logger.Error("failed to unsubscribe presence listener", "err", err)
+		}
+		nb.logger.Info("stopped presence listener", "subject", subject)
+	}()
+
+	isActive := func() bool {
+		lastSeen := lastSeenNano.Load()
+		if lastSeen == 0 {
+			return false
+		}
+		// return if last ping is newer than now - timeout
+		return time.Since(time.Unix(0, lastSeen)) < timeout
+	}
+
+	return isActive, nil
 }

@@ -2,21 +2,16 @@ import IngestionGraph from "../components/IngestionGraph";
 import { Grid, Box, Stack, Typography, Button } from "@mui/material";
 import ServiceOverview from "../components/ServiceOverview";
 import ServiceError from "../components/ServiceError";
-import { pulseSx } from "../theme/tokens";
 import { useDashboard } from "../hooks/useMetrics";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import NatsQueueDepth from "../components/NatsQueueDepth";
+import StatusIndicator from "../components/StatusIndicator";
+import type { ConnectionStatus } from "../types/Connection";
 
-const STATUS_CONFIG = {
-    live: { label: "LIVE", colour: "success.main" },
-    connecting: { label: "CONNECTING", colour: "warning.main" },
-    error: { label: "OFFLINE", colour: "error.main" },
-};
-
-function getStatus(isLoading: boolean, isError: boolean) {
-    if (isError) return STATUS_CONFIG.error;
-    if (isLoading) return STATUS_CONFIG.connecting;
-    return STATUS_CONFIG.live;
+function getStatus(isLoading: boolean, isError: boolean): ConnectionStatus {
+    if (isLoading) return "connecting";
+    if (isError) return "error";
+    return "live";
 }
 
 export default function Dashboard() {
@@ -31,7 +26,7 @@ export default function Dashboard() {
                     SYSTEM OVERVIEW
                 </Typography>
                 <Stack direction="row" sx={{ alignItems: "center" }} spacing={1.5}>
-                    {isError && (
+                    {isError && !isLoading && (
                         <Button
                             size="small"
                             onClick={() => refetch()}
@@ -51,19 +46,7 @@ export default function Dashboard() {
                             RETRY
                         </Button>
                     )}
-                    <Stack direction="row" sx={{ alignItems: "center" }} spacing={1}>
-                        <Box sx={{ ...pulseSx, bgcolor: status.colour, color: status.colour }} />
-                        <Typography
-                            sx={{
-                                fontSize: 10,
-                                fontWeight: 700,
-                                letterSpacing: "0.1em",
-                                color: status.colour,
-                            }}
-                        >
-                            {status.label}
-                        </Typography>
-                    </Stack>
+                    <StatusIndicator connectionStatus={status} />
                 </Stack>
             </Stack>
 
@@ -80,12 +63,12 @@ export default function Dashboard() {
                 {/* for 1200px <= size < 1536px, size assigned is larger to fit the ServiceError without overflowing
                     for size >= 1536px, size assigned is smaller since there is sufficient space to fit ServiceError without overflowing */}
                 <Grid size={{ lg: 3.25, xl: 2.75 }}>
-                    <ServiceError />
+                    <ServiceError isLoading={isLoading} isError={isError} />
                 </Grid>
             </Grid>
 
             {/* nats queue depth graphs */}
-            <NatsQueueDepth />
+            <NatsQueueDepth isLoading={isLoading} isError={isError} />
         </Box>
     );
 }
