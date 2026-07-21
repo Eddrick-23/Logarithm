@@ -85,7 +85,7 @@ func (m *MockProducer) PublishLiveTail(subject string, data []byte) error {
 
 func setupTestApp(producerErr error) (http.Handler, *MockProducer) {
 	mockProducer := &MockProducer{Err: producerErr}
-	mux := ingester.NewHTTPServer(slog.Default(), mockProducer)
+	mux := ingester.NewHTTPServer(slog.Default(), mockProducer, 4*1024, 8*1024)
 	return mux, mockProducer
 }
 
@@ -253,7 +253,7 @@ func setupGRPCTestApp(t *testing.T, producerErr error) (*grpc.Server, *bufconn.L
 	mockProducer := &MockProducer{Err: producerErr}
 	lis := bufconn.Listen(bufSize)
 
-	server := ingester.NewGRPCServer(slog.Default(), mockProducer)
+	server := ingester.NewGRPCServer(slog.Default(), mockProducer, bufSize, bufSize*2)
 
 	go func() {
 		if err := server.Serve(lis); err != nil {

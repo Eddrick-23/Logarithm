@@ -6,6 +6,7 @@ import { INGESTION_GRAPH_REFETCH_INTERVAL_MS } from "../api/metricsApi";
 import { LastUpdated } from "./LastUpdated";
 import { ServiceFilters } from "./ServiceFilters";
 import { useIngestionGraphMetrics } from "../hooks/useMetrics";
+import { formatTime } from "../utils/utils";
 
 interface IngestionGraphProps {
     isLoading: boolean;
@@ -16,7 +17,6 @@ const CHART_HEIGHT = 400;
 
 // automatically generates the colour based on golden angle formula
 const generateColour = (index: number) => `hsl(${(index * 137.5) % 360}, 70%, 50%)`;
-const formatTime = (v: number) => new Date(v).toLocaleTimeString();
 
 export default function IngestionGraph({ isLoading, isError }: IngestionGraphProps) {
     const [hiddenServices, setHiddenServices] = useState<Set<string>>(new Set());
@@ -67,13 +67,27 @@ export default function IngestionGraph({ isLoading, isError }: IngestionGraphPro
         [data?.timestamps, tickInterval],
     );
     const yAxis = useMemo(() => [{ min: 0, label: "Logs / sec" }], []);
-    const isEmpty = !isLoading && !isError && services.length === 0;
+
+    const hasData = series.length > 0;
+    const isEmpty = !isLoading && !isError && !hasData;
+    const isHardError = !isLoading && isError && !hasData;
+    const isStale = !isLoading && isError && hasData;
 
     return (
-        <Box sx={{ ...card }}>
+        <Box sx={{ ...card, height: "100%" }}>
             <Typography sx={sectionLabel}>Ingestion Throughput - Last 60s</Typography>
 
             <LastUpdated timestamp={lastUpdatedAt} refreshIntervalMs={INGESTION_GRAPH_REFETCH_INTERVAL_MS} />
+
+            {/* stale data: show last known data while attempting to refetch */}
+            {isStale && (
+                // add a gap between LastUpdatedAt and alert bar
+                <Box sx={{ mt: 1.5 }}>
+                    <Alert variant="outlined" severity="warning">
+                        Showing last known data.
+                    </Alert>
+                </Box>
+            )}
 
             {/* filters to choose which services to track on ingestion graph */}
             {!isLoading && services.length > 0 && (
@@ -90,18 +104,28 @@ export default function IngestionGraph({ isLoading, isError }: IngestionGraphPro
                 <Skeleton variant="rectangular" width="100%" height={CHART_HEIGHT} sx={{ borderRadius: 2 }} />
             )}
 
-            {/* no logs received from api */}
-            {isEmpty && (
+            {/* hard failure: websocket + rest api fetch both failed, nothing to display */}
+            {isHardError && (
                 // add a gap between LastUpdatedAt and alert bar
-                <Box sx={{ mt: 1.5 }}>
-                    <Alert variant="outlined" severity="info">
-                        No logs received in the last 60 seconds
+                <Box sx={{ mt: 3 }}>
+                    <Alert variant="outlined" severity="error">
+                        Unable to load ingestion graph data.
                     </Alert>
                 </Box>
             )}
 
-            {/* only show the graph if data and timestamps are valid */}
-            {!isLoading && data && data.timestamps.length > 0 && (
+            {/* no logs received from api in the past minute */}
+            {isEmpty && (
+                // add a gap between LastUpdatedAt and alert bar
+                <Box sx={{ mt: 1.5 }}>
+                    <Alert variant="outlined" severity="info">
+                        No logs received in the past minute.
+                    </Alert>
+                </Box>
+            )}
+
+            {/* only show the graph if there are timestamps found */}
+            {!isLoading && data && data?.timestamps.length > 0 && (
                 <LineChart
                     xAxis={xAxis}
                     yAxis={yAxis} // set min to 0 so that y starts from 0

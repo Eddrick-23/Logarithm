@@ -5,6 +5,6 @@ export const useDistinctServices = () => {
     return useQuery({
         queryKey: ["distinctServices"],
         queryFn: fetchDistinctServices,
-        staleTime: 1000 * 60 * 5, // Data stays "fresh" for 5 minutes
+        refetchInterval: 1000 * 2, // refreshes every 2 s
     });
 };

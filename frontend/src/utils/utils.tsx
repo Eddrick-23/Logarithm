@@ -69,3 +69,5 @@ export function getSeverityColour(errorRate: number, thresholds: Threshold[]): s
     const sorted = [...thresholds].sort((a, b) => b.min - a.min);
     return sorted.find(({ min }) => errorRate >= min)?.colour ?? "#607d8b";
 }
+
+export const formatTime = (v: number) => new Date(v).toLocaleTimeString();

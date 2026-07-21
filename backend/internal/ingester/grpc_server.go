@@ -16,14 +16,14 @@ import (
 // to NATS without proto schema validation, and it registers the standard
 // gRPC health checking service (grpc.health.v1.Health) which is reachable
 // via the ordinary proto codec fallback - see rawCodec.Marshal/Unmarshal.
-func NewGRPCServer(logger *slog.Logger, producer transport.Producer) *grpc.Server {
+func NewGRPCServer(logger *slog.Logger, producer transport.Producer, presize int64, bufferLimit int64) *grpc.Server {
 	const system = "" // means overall server status
 
 	proxyHandler := newProxyHandler(logger, producer, transport.LogStreamSubject)
 
 	grpcServer := grpc.NewServer(
 		grpc.ForceServerCodecV2(encoding.GetCodecV2(CodecName)),
-		grpc.UnknownServiceHandler(proxyHandler.StreamHandler),
+		grpc.UnknownServiceHandler(proxyHandler.NewStreamHandler(presize, bufferLimit)),
 	)
 
 	healthcheck := health.NewServer()

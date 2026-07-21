@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 	"google.golang.org/grpc"
@@ -74,9 +75,13 @@ func (r *rawCodec) Marshal(v any) (mem.BufferSlice, error) {
 func (r *rawCodec) Unmarshal(data mem.BufferSlice, v any) error {
 	// fast path, any unregistered payloads (e.g. OTel payloads)
 	if out, ok := v.(*RawFrame); ok {
-		srcBytes := data.Materialize()
-		out.RawBytes = make([]byte, len(srcBytes))
-		copy(out.RawBytes, srcBytes)
+		n := data.Len()
+		if cap(out.RawBytes) < n {
+			out.RawBytes = make([]byte, n)
+		} else {
+			out.RawBytes = out.RawBytes[:n]
+		}
+		data.CopyTo(out.RawBytes)
 		return nil
 	}
 
@@ -107,34 +112,52 @@ func newProxyHandler(logger *slog.Logger, producer transport.Producer, prefix st
 	}
 }
 
-func (p *proxyHandler) StreamHandler(srv any, stream grpc.ServerStream) error {
-	frame := &RawFrame{}
+func (p *proxyHandler) NewStreamHandler(presize int64, limit int64) func(any, grpc.ServerStream) error {
+	rawFramePool := sync.Pool{
+		New: func() any {
+			return &RawFrame{
+				RawBytes: make([]byte, 0, presize),
+			}
+		},
+	}
 
-	if err := stream.RecvMsg(frame); err != nil {
-		if err == io.EOF {
-			return nil
+	natsSubject := p.natsSubjectPrefix + "raw"
+	return func(srv any, stream grpc.ServerStream) error {
+		frame := rawFramePool.Get().(*RawFrame)
+		frame.RawBytes = frame.RawBytes[:0]
+		// return buffer if capacity does not exceed limit
+		defer func() {
+			if int64(cap(frame.RawBytes)) <= limit {
+				rawFramePool.Put(frame)
+			}
+		}()
+
+		if err := stream.RecvMsg(frame); err != nil {
+			if err == io.EOF {
+				return nil
+			}
+
+			p.logger.Error("failed to receive raw frame", "err", err)
+			return status.Errorf(codes.Internal, "failed to read stream")
 		}
 
-		p.logger.Error("failed to receive raw frame", "err", err)
-		return status.Errorf(codes.Internal, "failed to read stream")
-	}
+		headers := map[string][]string{
+			"Content-Type": {"application/x-protobuf"},
+		}
 
-	headers := map[string][]string{
-		"Content-Type": {"application/x-protobuf"},
-	}
+		if compression := detectCompression(frame.RawBytes); compression != "" {
+			headers["Content-Encoding"] = []string{compression}
+		}
 
-	if compression := detectCompression(frame.RawBytes); compression != "" {
-		headers["Content-Encoding"] = []string{compression}
-	}
+		if err := p.producer.PublishLogs(stream.Context(), natsSubject, frame.RawBytes, headers); err != nil {
+			p.logger.Error("failed to publish to nats", "err", err)
+			return status.Errorf(codes.Internal, "failed to publish to nats")
+		}
 
-	if err := p.producer.PublishLogs(stream.Context(), p.natsSubjectPrefix+"raw", frame.RawBytes, headers); err != nil {
-		p.logger.Error("failed to publish to nats", "err", err)
-		return status.Errorf(codes.Internal, "failed to publish to nats")
+		// Unary gRPC contract, client sends one message, server must send exactly one back.
+		// Then server closes the connection with status OK.
+		return stream.SendMsg(&RawFrame{RawBytes: []byte{}})
 	}
-
-	// Unary gRPC contract, client sends one message, server must send exactly one back.
-	// Then server closes the connection with status OK.
-	return stream.SendMsg(&RawFrame{RawBytes: []byte{}})
 }
 
 // Detect gzip and zstd compression via byte sniffing else it defaults to no compression.

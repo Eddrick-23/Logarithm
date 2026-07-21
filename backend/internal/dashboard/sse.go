@@ -49,14 +49,14 @@ func handleDashboardStream(logger *slog.Logger, logStore *storage.ClickHouseStor
 				return
 
 			case <-ticker5s.C:
-				// ingestion graph refreshes every 5s
+				// ingestion graph and log rate metrics refreshes every 5s
 				if err := writeIngestionGraphAndLogRatesEvent(r.Context(), w, flusher, logger, logStore); err != nil {
 					return
 				}
 
 			case <-ticker15s.C:
-				// error rate metrics refreshes every 15s
-				if err := writeErrorRateMetricsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
+				// error rate and nats queue depth metrics refreshes every 15s
+				if err := writeErrorRateAndNatsQueueDepthMetricsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
 					return
 				}
 
@@ -133,20 +133,44 @@ func writeIngestionGraphAndLogRatesEvent(
 	return nil
 }
 
-func writeErrorRateMetricsEvent(
+func writeErrorRateAndNatsQueueDepthMetricsEvent(
 	ctx context.Context,
 	w http.ResponseWriter,
 	flusher http.Flusher,
 	logger *slog.Logger,
 	logStore *storage.ClickHouseStore,
 ) error {
-	errorRateMetrics, err := logStore.GetErrorRateMetrics(ctx)
-	if err != nil {
-		logger.Error("failed to get error rate metrics", "err", err)
+	var errorRateMetrics core.ErrorRateMetrics
+	var natsQueueDepthMetrics core.NatsQueueDepthGraphMetrics
+
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		var err error
+		// retrieve error rate metrics
+		errorRateMetrics, err = logStore.GetErrorRateMetrics(egCtx)
+		return err
+	})
+	eg.Go(func() error {
+		var err error
+		// retrieve nats queue depth graph metrics from the past 15 minutes
+		natsQueueDepthMetrics, err = logStore.GetNatsQueueDepthMetrics(egCtx, 15)
+		return err
+	})
+
+	if err := eg.Wait(); err != nil {
+		logger.Error("failed to fetch error rate metrics / nats queue depth metrics", "error", err)
 		return err
 	}
 
-	return writeSSEEvent(w, flusher, "error-rate", errorRateMetrics)
+	if err := writeSSEEvent(w, flusher, "error-rate", errorRateMetrics); err != nil {
+		return err
+	}
+
+	if err := writeSSEEvent(w, flusher, "nats-queue-depth", natsQueueDepthMetrics); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func writeTopServiceErrorsStatsEvent(

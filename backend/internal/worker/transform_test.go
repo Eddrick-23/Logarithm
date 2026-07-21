@@ -39,26 +39,36 @@ func TestFlattenRouting(t *testing.T) {
 	tests := []struct {
 		name            string
 		enqueueSuccess  bool
+		hasSubscribers  bool
 		expectedAppends int
 		expectedEnqueue int
 	}{
 		{
 			name:            "successful enqueue and append",
 			enqueueSuccess:  true,
+			hasSubscribers:  true,
 			expectedAppends: 1,
 			expectedEnqueue: 1,
 		},
 		{
 			name:            "enqueue fail does not block append",
 			enqueueSuccess:  false,
+			hasSubscribers:  true,
 			expectedAppends: 1,
 			expectedEnqueue: 1,
+		},
+		{
+			name:            "skip live tail publish if no active subscribers",
+			enqueueSuccess:  true,
+			hasSubscribers:  false,
+			expectedAppends: 1,
+			expectedEnqueue: 0,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			publisher := &MockPublisher{enqueueSuccess: tc.enqueueSuccess}
+			publisher := &MockPublisher{enqueueSuccess: tc.enqueueSuccess, hasSubscribers: tc.hasSubscribers}
 			appender := &MockLogAppender{}
 
 			logTransformer := NewLogTransformer(slog.Default())
@@ -281,7 +291,7 @@ func TestFlattenLogic(t *testing.T) {
 			logs := req.Logs()
 
 			mockAppender := &MockLogAppender{}
-			mockPublisher := &MockPublisher{enqueueSuccess: true}
+			mockPublisher := &MockPublisher{enqueueSuccess: true, hasSubscribers: true}
 
 			logTransformer := NewLogTransformer(slog.Default())
 			for i := 0; i < logs.ResourceLogs().Len(); i++ {

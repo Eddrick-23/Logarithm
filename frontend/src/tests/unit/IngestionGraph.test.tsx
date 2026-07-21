@@ -74,7 +74,7 @@ describe("IngestionGraph", () => {
         mockHookData({ timestamps: [], metrics: {} });
         render(<IngestionGraph {...BASE_PROPS} />);
 
-        expect(screen.getByText(/no logs received in the last 60 seconds/i)).toBeInTheDocument();
+        expect(screen.getByText(/No logs received in the past minute./i)).toBeInTheDocument();
         expect(screen.queryByTestId("line-chart")).not.toBeInTheDocument();
     });
 

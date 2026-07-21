@@ -36,8 +36,20 @@ func startPprof(logger *slog.Logger, config *config.Config) {
 }
 
 func run(ctx context.Context, w io.Writer, args []string) error {
+	config, err := config.LoadConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	var logLevel slog.Level
+	if err := logLevel.UnmarshalText([]byte(config.IngesterLogLevel)); err != nil {
+		logLevel = slog.LevelInfo
+	}
+	opt := &slog.HandlerOptions{
+		Level: logLevel,
+	}
 	logger := slog.New(
-		slog.NewTextHandler(w, nil),
+		slog.NewTextHandler(w, opt),
 	)
 	natsLogger := logger.With("component", "nats")
 	httpLogger := logger.With("component", "ingester_http")
@@ -47,14 +59,9 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	config, err := config.LoadConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-
 	startPprof(pprofLogger, config)
 
-	natsBroker, err := transport.NewNatsBroker(ctx, natsLogger, config.NatsURL)
+	natsBroker, err := transport.NewNatsBroker(ctx, config.NatsURL, transport.WithLogger(natsLogger))
 
 	if err != nil {
 		return fmt.Errorf("failed to crate nats broker: %w", err)
@@ -66,7 +73,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		return fmt.Errorf("failed to ensure stream: %w", err)
 	}
 
-	srv := ingester.NewHTTPServer(httpLogger, natsBroker)
+	srv := ingester.NewHTTPServer(httpLogger, natsBroker, int64(config.IngesterPresizeBuffer), int64(config.IngesterBufferLimit))
 
 	httpServer := &http.Server{
 		Addr:              net.JoinHostPort(config.IngesterHost, config.IngesterPortHTTP),
@@ -77,7 +84,8 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		IdleTimeout:       config.IngesterIdleTimeout,
 	}
 
-	grpcServer := ingester.NewGRPCServer(grpcLogger, natsBroker)
+	grpcServer := ingester.NewGRPCServer(grpcLogger, natsBroker,
+		int64(config.IngesterPresizeBuffer), int64(config.IngesterBufferLimit))
 
 	// start http and grpc servers
 	go func() {
