@@ -258,7 +258,6 @@ func writeStorageInfoEvent(
 	return writeSSEEvent(w, flusher, "storage-info", card)
 }
 
-// TODO sse write event for nats DLQ data
 func writeNatsDlQInfoEvent(
 	ctx context.Context,
 	w http.ResponseWriter,
