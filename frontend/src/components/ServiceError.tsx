@@ -101,13 +101,14 @@ export default memo(function ServiceError({ isLoading, isError }: ServiceErrorPr
                         </IconButton>
                     </Tooltip>
                 </Typography>
-                <Typography variant="caption" sx={{ color: "primary.main", fontSize: "0.85rem", mb: 1 }}>
-                    last 1h
-                </Typography>
             </Box>
 
             {/* last updated display with refetch interval */}
-            <LastUpdated timestamp={dataUpdatedAt} refreshIntervalMs={TOP_SERVICE_ERRORS_STATS_REFETCH_INTERVAL_MS} />
+            <LastUpdated
+                timeRange="1h"
+                timestamp={dataUpdatedAt}
+                refreshIntervalMs={TOP_SERVICE_ERRORS_STATS_REFETCH_INTERVAL_MS}
+            />
 
             {/* add a 8px gap between last updated and threshold legend */}
             <Box sx={{ mb: 1 }} />
