@@ -39,7 +39,7 @@ export default function NatsQueueDepthGraph({
     return (
         <Box sx={{ ...card, flex: 1 }}>
             <Typography sx={sectionLabel}>{title}</Typography>
-            <LastUpdated timestamp={dataUpdatedAt} refreshIntervalMs={REFETCH_INTERVAL_MS} />
+            <LastUpdated timeRange="15m" timestamp={dataUpdatedAt} refreshIntervalMs={REFETCH_INTERVAL_MS} />
 
             {/* rectangular skeleton box to signify loading of graph */}
             {isLoading && (

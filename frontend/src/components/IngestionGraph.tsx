@@ -75,9 +75,13 @@ export default function IngestionGraph({ isLoading, isError }: IngestionGraphPro
 
     return (
         <Box sx={{ ...card, height: "100%" }}>
-            <Typography sx={sectionLabel}>Ingestion Throughput - Last 60s</Typography>
+            <Typography sx={sectionLabel}>Ingestion Throughput</Typography>
 
-            <LastUpdated timestamp={lastUpdatedAt} refreshIntervalMs={INGESTION_GRAPH_REFETCH_INTERVAL_MS} />
+            <LastUpdated
+                timeRange="1m"
+                timestamp={lastUpdatedAt}
+                refreshIntervalMs={INGESTION_GRAPH_REFETCH_INTERVAL_MS}
+            />
 
             {/* stale data: show last known data while attempting to refetch */}
             {isStale && (

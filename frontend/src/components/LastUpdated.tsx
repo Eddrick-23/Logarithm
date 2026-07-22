@@ -3,12 +3,13 @@ import { useRelativeTime } from "../hooks/useRelativeTime";
 import { formatInterval } from "../utils/utils";
 
 interface LastUpdatedProps {
+    timeRange?: string;
     timestamp: number;
     refreshIntervalMs: number;
     placement?: TooltipProps["placement"];
 }
 
-export function LastUpdated({ timestamp, refreshIntervalMs, placement = "bottom-start" }: LastUpdatedProps) {
+export function LastUpdated({ timeRange, timestamp, refreshIntervalMs, placement = "bottom-start" }: LastUpdatedProps) {
     const relativeTime = useRelativeTime(timestamp, 2);
     const intervalLabel = formatInterval(refreshIntervalMs);
 
@@ -20,7 +21,7 @@ export function LastUpdated({ timestamp, refreshIntervalMs, placement = "bottom-
             placement={placement}
         >
             <Typography sx={{ fontSize: 11, color: "text.disabled", mt: 0.5, width: "fit-content" }}>
-                Updated {relativeTime}
+                {timeRange && `Last ${timeRange} · `}Updated {relativeTime}
                 {intervalLabel && ` · every ${intervalLabel}`}
             </Typography>
         </Tooltip>

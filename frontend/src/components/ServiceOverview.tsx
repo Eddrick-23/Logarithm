@@ -15,23 +15,27 @@ interface ServiceOverviewProps {
     isLoading: boolean;
 }
 
+interface StatCardProps {
+    label: string;
+    value: string | number;
+    unit?: string;
+    delta: string;
+    deltaColor?: string;
+    timeRange?: string;
+    lastUpdated: number;
+    refetchIntervalMs: number;
+}
+
 const StatCard = memo(function StatCard({
     label,
     value,
     unit,
     delta,
     deltaColor = "text.secondary",
+    timeRange,
     lastUpdated,
     refetchIntervalMs,
-}: {
-    label: string;
-    value: string | number;
-    unit?: string;
-    delta: string;
-    deltaColor?: string;
-    lastUpdated: number;
-    refetchIntervalMs: number;
-}) {
+}: StatCardProps) {
     return (
         <Box sx={card}>
             <Typography sx={sectionLabel}>{label}</Typography>
@@ -46,7 +50,7 @@ const StatCard = memo(function StatCard({
             <Typography sx={{ fontSize: 13, fontWeight: 500, color: deltaColor }}>{delta}</Typography>
 
             {/* last updated display with refetch interval */}
-            <LastUpdated timestamp={lastUpdated} refreshIntervalMs={refetchIntervalMs} />
+            <LastUpdated timeRange={timeRange} timestamp={lastUpdated} refreshIntervalMs={refetchIntervalMs} />
         </Box>
     );
 });
@@ -73,13 +77,13 @@ export default memo(function ServiceOverview({ isLoading }: ServiceOverviewProps
         const absChange = Math.abs(percentChange).toFixed(0);
 
         if (percentChange > 0) {
-            logDeltaText = `↑ ${absChange}% vs avg`;
+            logDeltaText = `↑ ${absChange}% vs 60s avg`;
             logDeltaColour = "success.main";
         } else if (percentChange < 0) {
-            logDeltaText = `↓ ${absChange}% vs avg`;
+            logDeltaText = `↓ ${absChange}% vs 60s avg`;
             logDeltaColour = "error.main";
         } else {
-            logDeltaText = `~ 0% vs avg`;
+            logDeltaText = `~ 0% vs 60s avg`;
             logDeltaColour = "text.secondary";
         }
     }
@@ -142,7 +146,7 @@ export default memo(function ServiceOverview({ isLoading }: ServiceOverviewProps
         <Grid container spacing={2}>
             <Grid size={3}>
                 <StatCard
-                    label="Logs / sec"
+                    label="Log Rate (5s)"
                     value={logRate}
                     delta={logDeltaText}
                     deltaColor={logDeltaColour}
@@ -157,6 +161,7 @@ export default memo(function ServiceOverview({ isLoading }: ServiceOverviewProps
                     unit="%"
                     delta={errorDeltaText}
                     deltaColor={errorDeltaColour}
+                    timeRange="5m"
                     lastUpdated={errorRateMetricsUpdatedAt}
                     refetchIntervalMs={ERROR_RATE_METRICS_REFETCH_INTERVAL_MS}
                 />
