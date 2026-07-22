@@ -41,7 +41,7 @@ export default function NatsQueueDepth({ isLoading, isError }: NatsQueueDepthPro
 
             <Stack direction="row" spacing={2} sx={{ width: "100%" }}>
                 <NatsQueueDepthGraph
-                    title="Num Ack Pending - number of logs currently being processed"
+                    title="Num Ack Pending - number of logs delivered but not yet acknowledged"
                     xAxis={xAxis}
                     seriesData={numAckPendingdData}
                     isLoading={isLoading}
