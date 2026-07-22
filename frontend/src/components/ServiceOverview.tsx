@@ -111,7 +111,7 @@ export default memo(function ServiceOverview({ isLoading }: ServiceOverviewProps
     // 0: empty
     // >0: need recovery
     let natsDLQValue: string | number = "-";
-    let dlqDeltaText = "-";
+    let dlqDeltaText = "—";
     let dlqDeltaColour = "text.secondary";
     if (natsDLQMetrics?.numMessages !== undefined) {
         const count = natsDLQMetrics.numMessages;
@@ -129,8 +129,8 @@ export default memo(function ServiceOverview({ isLoading }: ServiceOverviewProps
     if (isLoading) {
         return (
             <Grid container spacing={2}>
-                {[1, 2, 3].map((skeletonKey) => (
-                    <Grid size={4} key={skeletonKey}>
+                {[1, 2, 3, 4].map((skeletonKey) => (
+                    <Grid size={3} key={skeletonKey}>
                         <Skeleton variant="rounded" height={110} sx={{ borderRadius: 2 }} />
                     </Grid>
                 ))}
