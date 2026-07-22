@@ -1,11 +1,12 @@
 import { Box, Typography, Grid, Skeleton } from "@mui/material";
 import { card, sectionLabel, statValue } from "../theme/tokens";
 import { formatNumber } from "../utils/utils";
-import { useErrorRateMetrics, useLogRateStats, useStorageInfoMetrics } from "../hooks/useMetrics";
+import { useErrorRateMetrics, useLogRateStats, useStorageInfoMetrics, useNatsDLQMetrics } from "../hooks/useMetrics";
 import {
     ERROR_RATE_METRICS_REFETCH_INTERVAL_MS,
     LOG_RATE_METRICS_REFETCH_INTERVAL_MS,
     STORAGE_INFO_METRICS_REFETCH_INTERVAL_MS,
+    NATS_DLQ_INFO_REFETCH_INTERVAL_MS,
 } from "../api/metricsApi";
 import { LastUpdated } from "./LastUpdated";
 import { memo } from "react";
@@ -54,6 +55,7 @@ export default memo(function ServiceOverview({ isLoading }: ServiceOverviewProps
     const { data: logRateStats, dataUpdatedAt: logRateUpdatedAt } = useLogRateStats();
     const { data: errorRateMetrics, dataUpdatedAt: errorRateMetricsUpdatedAt } = useErrorRateMetrics();
     const { data: storageInfoMetrics, dataUpdatedAt: storageInfoMetricsUpdatedAt } = useStorageInfoMetrics();
+    const { data: natsDLQMetrics, dataUpdatedAt: natsDLQMetricsUpdatedAt } = useNatsDLQMetrics();
 
     let logRate: string | number = 0;
     if (logRateStats?.currentRate !== undefined) {
@@ -105,6 +107,26 @@ export default memo(function ServiceOverview({ isLoading }: ServiceOverviewProps
         }
     }
 
+    // dlq display
+    // 0: empty
+    // >0: need recovery
+    let natsDLQValue: string | number = "-";
+    let dlqDeltaText = "-";
+    let dlqDeltaColour = "text.secondary";
+    if (natsDLQMetrics?.numMessages !== undefined) {
+        const count = natsDLQMetrics.numMessages;
+        natsDLQValue = count;
+
+        if (count === 0) {
+            dlqDeltaText = "● Empty";
+            dlqDeltaColour = "success.main";
+        } else {
+            dlqDeltaText = "● Messages need recovery";
+            dlqDeltaColour = "error.main";
+        }
+    }
+
+
     if (isLoading) {
         return (
             <Grid container spacing={2}>
@@ -119,7 +141,7 @@ export default memo(function ServiceOverview({ isLoading }: ServiceOverviewProps
 
     return (
         <Grid container spacing={2}>
-            <Grid size={4}>
+            <Grid size={3}>
                 <StatCard
                     label="Logs / sec"
                     value={logRate}
@@ -129,7 +151,7 @@ export default memo(function ServiceOverview({ isLoading }: ServiceOverviewProps
                     refetchIntervalMs={LOG_RATE_METRICS_REFETCH_INTERVAL_MS}
                 />
             </Grid>
-            <Grid size={4}>
+            <Grid size={3}>
                 <StatCard
                     label="Error Rate"
                     value={errorRateValue}
@@ -140,7 +162,17 @@ export default memo(function ServiceOverview({ isLoading }: ServiceOverviewProps
                     refetchIntervalMs={ERROR_RATE_METRICS_REFETCH_INTERVAL_MS}
                 />
             </Grid>
-            <Grid size={4}>
+            <Grid size={3}>
+                <StatCard
+                    label="Dead Letter Queue"
+                    value={natsDLQValue}
+                    delta={dlqDeltaText}
+                    deltaColor={dlqDeltaColour}
+                    lastUpdated={natsDLQMetricsUpdatedAt}
+                    refetchIntervalMs={NATS_DLQ_INFO_REFETCH_INTERVAL_MS}
+                />
+            </Grid>
+            <Grid size={3}>
                 <StatCard
                     label="Storage"
                     value={storageInfoMetrics?.value ?? "-"}

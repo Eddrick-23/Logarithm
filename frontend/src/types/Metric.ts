@@ -38,3 +38,7 @@ export type NatsQueueDepthGraphMetrics = {
     numAckPending: number[];
     numRedelivered: number[];
 };
+
+export type NatsDLQMetrics = {
+    numMessages: number;
+};

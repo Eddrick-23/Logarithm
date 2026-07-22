@@ -29,10 +29,11 @@ func AddRoutes(
 	mux.Handle("GET /api/services", handleDistinctServices(logger, logStore))
 	mux.Handle("GET /api/top-service-errors", handleTopServiceErrors(logger, logStore))
 	mux.Handle("GET /api/ingestion-graph-metrics", handleIngestionGraphMetrics(logger, logStore))
-	mux.Handle("GET /api/dashboard/stream", handleDashboardStream(logger, logStore, appCtx))
+	mux.Handle("GET /api/dashboard/stream", handleDashboardStream(logger, logStore, broker, appCtx))
 	mux.Handle("GET /api/log-rate-stats", handleLogRateStats(logger, logStore))
 	mux.Handle("GET /api/error-rate-metrics", handleErrorRateMetrics(logger, logStore))
 	mux.Handle("GET /api/storage-info", handleStorageInfo(logger, logStore))
+	mux.Handle("GET /api/nats-dlq-info", handleNatsDLQInfo(logger, broker))
 	mux.Handle("GET /api/nats-queue-depth-metrics", handleNatsQueueDepthMetrics(logger, logStore))
 	mux.Handle("GET /api/config", handleConfig(logger, config))
 	mux.Handle("GET /ws/logs/tail", handleLiveTail(logger, broker, config))
@@ -317,6 +318,21 @@ func handleStorageInfo(logger *slog.Logger, logStore *storage.ClickHouseStore) h
 
 		writeJSON(w, logger, http.StatusOK, card)
 	}
+}
+
+func handleNatsDLQInfo(logger *slog.Logger, natsBroker *transport.NatsBroker) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		natsDLQInfo, err := natsBroker.GetDLQStreamInfo(ctx, transport.DLQStreamName)
+		if err != nil {
+			writeError(w, logger, err, "failed to get nats dlq info", "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		writeJSON(w, logger, http.StatusOK, natsDLQInfo)
+	}
+
 }
 
 func handleNatsQueueDepthMetrics(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {

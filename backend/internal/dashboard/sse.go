@@ -10,10 +10,15 @@ import (
 
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
+	"github.com/Eddrick-23/Logarithm/internal/transport"
 	"golang.org/x/sync/errgroup"
 )
 
-func handleDashboardStream(logger *slog.Logger, logStore *storage.ClickHouseStore, appCtx context.Context) http.HandlerFunc {
+type DLQStatsProvider interface {
+	GetDLQStreamInfo(context.Context, string) (core.NatsDLQMetrics, error)
+}
+
+func handleDashboardStream(logger *slog.Logger, logStore *storage.ClickHouseStore, natsBroker DLQStatsProvider, appCtx context.Context) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
@@ -29,11 +34,13 @@ func handleDashboardStream(logger *slog.Logger, logStore *storage.ClickHouseStor
 		ticker5s := time.NewTicker(5 * time.Second)
 		ticker15s := time.NewTicker(15 * time.Second)
 		ticker30s := time.NewTicker(30 * time.Second)
+		ticker1m := time.NewTicker(1 * time.Minute)
 		ticker15m := time.NewTicker(15 * time.Minute)
 
 		defer ticker5s.Stop()
 		defer ticker15s.Stop()
 		defer ticker30s.Stop()
+		defer ticker1m.Stop()
 		defer ticker15m.Stop()
 
 		for {
@@ -63,6 +70,12 @@ func handleDashboardStream(logger *slog.Logger, logStore *storage.ClickHouseStor
 			case <-ticker30s.C:
 				// top service errors refreshes every 30s
 				if err := writeTopServiceErrorsStatsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
+					return
+				}
+
+			case <-ticker1m.C:
+				// Nats dlq stream info refreshes every 1 minute
+				if err := writeNatsDlQInfoEvent(r.Context(), w, flusher, logger, natsBroker); err != nil {
 					return
 				}
 
@@ -241,4 +254,21 @@ func writeStorageInfoEvent(
 	}
 
 	return writeSSEEvent(w, flusher, "storage-info", card)
+}
+
+// TODO sse write event for nats DLQ data
+func writeNatsDlQInfoEvent(
+	ctx context.Context,
+	w http.ResponseWriter,
+	flusher http.Flusher,
+	logger *slog.Logger,
+	natsBroker DLQStatsProvider,
+) error {
+	info, err := natsBroker.GetDLQStreamInfo(ctx, transport.DLQStreamName)
+	if err != nil {
+		logger.Error("failed to get nats dlq stream info", "err", err)
+		return err
+	}
+
+	return writeSSEEvent(w, flusher, "nats-dlq-info", info)
 }
