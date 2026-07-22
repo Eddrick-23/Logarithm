@@ -6,6 +6,7 @@ import type {
     IngestionGraphData,
     LogRateStatistics,
     NatsQueueDepthGraphMetrics,
+    NatsDLQMetrics,
 } from "../types/Metric";
 import type { StorageInfoMetrics } from "../types/Storage";
 
@@ -13,6 +14,7 @@ export const LOG_RATE_METRICS_REFETCH_INTERVAL_MS = 5_000; // 5 seconds
 export const INGESTION_GRAPH_REFETCH_INTERVAL_MS = 5_000; // 5 seconds
 export const ERROR_RATE_METRICS_REFETCH_INTERVAL_MS = 15_000; // 15 seconds
 export const TOP_SERVICE_ERRORS_STATS_REFETCH_INTERVAL_MS = 30_000; // 30 seconds
+export const NATS_DLQ_INFO_REFETCH_INTERVAL_MS = 1 * 60 * 1000; // 1 minute
 export const STORAGE_INFO_METRICS_REFETCH_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
 export const fetchIngestionGraphMetrics = async (): Promise<IngestionGraphData> => {
@@ -46,3 +48,8 @@ export const fetchNatsQueueDepthGraphMetrics = async (): Promise<NatsQueueDepthG
     const response = await axios.get<NatsQueueDepthGraphMetrics>("/api/nats-queue-depth-metrics");
     return response.data;
 };
+
+export const fetchNatsDLQMetrics = async(): Promise<NatsDLQMetrics> => {
+    const response = await axios.get<NatsDLQMetrics>("/api/nats-dlq-info");
+    return response.data;
+}

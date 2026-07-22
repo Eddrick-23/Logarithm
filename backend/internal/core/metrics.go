@@ -52,6 +52,10 @@ type NatsQueueDepthGraphMetrics struct {
 	NumRedelivered []uint64 `json:"numRedelivered"`
 }
 
+type NatsDLQMetrics struct {
+	NumMessages uint64 `json:"numMessages"`
+}
+
 func NewIngestionMetricsMap(rows []IngestionMetrics) IngestionMetricsMap {
 	result := make(IngestionMetricsMap)
 	for _, row := range rows {

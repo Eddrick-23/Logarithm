@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 )
@@ -471,4 +472,21 @@ func (nb *NatsBroker) StartPresenceListener(ctx context.Context, subject string,
 	}
 
 	return isActive, nil
+}
+
+func (nb *NatsBroker) GetDLQStreamInfo(ctx context.Context, streamName string) (core.NatsDLQMetrics, error) {
+	stream, err := nb.js.Stream(ctx, streamName)
+
+	if err != nil {
+		return core.NatsDLQMetrics{}, err
+	}
+
+	info, err := stream.Info(ctx)
+	if err != nil {
+		return core.NatsDLQMetrics{}, err
+	}
+
+	return core.NatsDLQMetrics{
+		NumMessages: info.State.Msgs,
+	}, nil
 }

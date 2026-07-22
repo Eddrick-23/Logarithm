@@ -6,6 +6,7 @@ import {
     fetchStorageInfoMetrics,
     fetchLogRateStats,
     fetchNatsQueueDepthGraphMetrics,
+    fetchNatsDLQMetrics,
 } from "../api/metricsApi";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -16,6 +17,7 @@ const QUERY_KEYS = {
     errorRateMetrics: "errorRateMetrics",
     storageInfoMetrics: "storageInfoMetrics",
     natsQueueDepthGraphMetrics: "natsQueueDepthGraphMetrics",
+    natsDLQMetrics: "natsDLQMetrics",
 };
 
 const STALE_THRESHOLD_MS = 15000; // 15s stale time
@@ -26,6 +28,7 @@ const EVENT_MAP = [
     { event: "error-rate", queryKey: QUERY_KEYS.errorRateMetrics },
     { event: "storage-info", queryKey: QUERY_KEYS.storageInfoMetrics },
     { event: "nats-queue-depth", queryKey: QUERY_KEYS.natsQueueDepthGraphMetrics },
+    { event: "nats-dlq-info", queryKey: QUERY_KEYS.natsDLQMetrics },
 ]; // stores a map which contains event name and TanStack query key
 
 export const useDashboard = () => {
@@ -76,6 +79,7 @@ export const useDashboard = () => {
                 topServiceErrorsStats,
                 errorRateMetrics,
                 natsQueueDepthGraphMetrics,
+                natsDLQMetrics,
             ] = await Promise.all([
                 fetchIngestionGraphMetrics(),
                 fetchStorageInfoMetrics(),
@@ -83,6 +87,7 @@ export const useDashboard = () => {
                 fetchTopServiceErrorsStats(),
                 fetchErrorRateMetrics(),
                 fetchNatsQueueDepthGraphMetrics(),
+                fetchNatsDLQMetrics(),
             ]);
 
             queryClient.setQueryData([QUERY_KEYS.ingestionGraphMetrics], ingestionGraphMetrics);
@@ -91,6 +96,7 @@ export const useDashboard = () => {
             queryClient.setQueryData([QUERY_KEYS.topServiceErrorsStats], topServiceErrorsStats);
             queryClient.setQueryData([QUERY_KEYS.errorRateMetrics], errorRateMetrics);
             queryClient.setQueryData([QUERY_KEYS.natsQueueDepthGraphMetrics], natsQueueDepthGraphMetrics);
+            queryClient.setQueryData([QUERY_KEYS.natsDLQMetrics], natsDLQMetrics);
 
             setIsError(false);
         } catch {
@@ -180,3 +186,13 @@ export const useNatsQueueDepthGraphMetrics = () => {
         enabled: false, // never auto-fetch since connect() seeds the data manually
     });
 };
+
+export const useNatsDLQMetrics = () => {
+    return useQuery({
+        queryKey: [QUERY_KEYS.natsDLQMetrics],
+        queryFn: fetchNatsDLQMetrics,
+        staleTime: Infinity,
+        refetchInterval: false,
+        enabled: false, // never auto-fetch since connect() seeds the data manually
+    })
+}
