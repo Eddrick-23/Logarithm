@@ -14,6 +14,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// DLQStatsProvider abstracts the retrieval of Dead Letter Queue stream statistics.
+// This prevents tight coupling with the transport.NatsBroker implementation
 type DLQStatsProvider interface {
 	GetDLQStreamInfo(context.Context, string) (core.NatsDLQMetrics, error)
 }

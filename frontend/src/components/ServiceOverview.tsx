@@ -126,7 +126,6 @@ export default memo(function ServiceOverview({ isLoading }: ServiceOverviewProps
         }
     }
 
-
     if (isLoading) {
         return (
             <Grid container spacing={2}>
