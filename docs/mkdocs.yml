@@ -10,6 +10,7 @@ nav:
   - Integration with OpenTelemetry: otel.md
   - Infrastructure:
       - Clickhouse: clickhouse.md
+      - Nats: nats.md
   - Reference:
       - Backend .env example: reference/backend-env-example.md
       - Frontend .env example: reference/frontend-env-example.md
