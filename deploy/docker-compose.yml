@@ -56,6 +56,7 @@ services:
       - "8089:8089"
       - "8090:8090"
     environment:
+      - INGESTER_HOST=0.0.0.0
       - INGESTER_PORT_GRPC=8089
       - INGESTER_PORT_HTTP=8090
       - NATS_URL=nats://nats:4222

@@ -32,7 +32,6 @@ OpenTelemetry. Two paths are documented:
     **`main.py`:**
 
     ```python
-    import time
     import logging
     from fastapi import FastAPI
     from opentelemetry import trace
@@ -57,7 +56,7 @@ OpenTelemetry. Two paths are documented:
     set_logger_provider(logger_provider)
 
     # 3) point exported logs to logarithm's ingester
-    exporter = OTLPLogExporter(endpoint="http://localhost:8089/v1/logs", compression=Compression.Gzip)
+    exporter = OTLPLogExporter(endpoint="http://localhost:8090/v1/logs", compression=Compression.Gzip)
     logger_provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
 
     # 4) Attatch OpenTelemetry Handler to Python's Root Logger
