@@ -89,7 +89,6 @@ services:
       - DB_USER=admin
       - DB_PASSWORD=strongpassword
       - DB_ADDRESS=clickhouse:9000
-      - SEED_SYSTEM=true
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://dashboard-api:8091/health"]
       interval: 10s
