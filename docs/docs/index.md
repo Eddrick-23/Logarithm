@@ -59,7 +59,7 @@ This is a short tutorial on connecting a simple FastAPI service, instrumented wi
     from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
-    from opentelemetry.exporter.otlp.proto.http.import Compression
+    from opentelemetry.exporter.otlp.proto.http import Compression
     from opentelemetry.sdk.resources import Resource, SERVICE_NAME
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 

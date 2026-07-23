@@ -6,8 +6,8 @@ services:
     environment:
       - VITE_API_URL=http://dashboard-api:8091
     depends_on:
-    dashboard-api:
-      condition: service_healthy
+      dashboard-api:
+        condition: service_healthy
 
   clickhouse:
     image: clickhouse/clickhouse-server:26.3
