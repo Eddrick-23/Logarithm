@@ -53,10 +53,12 @@ services:
   ingester:
     image: eddricklivando/logarithm:ingester
     ports:
+      - "8089:8089"
       - "8090:8090"
     environment:
+      - INGESTER_PORT_GRPC=8089
+      - INGESTER_PORT_HTTP=8090
       - NATS_URL=nats://nats:4222
-      - PORT=8090
       - DB_USER=admin
       - DB_PASSWORD=strongpassword
       - DB_ADDRESS=clickhouse:9000
