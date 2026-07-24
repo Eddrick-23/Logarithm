@@ -184,21 +184,3 @@ Infrastructure tuning variables such as timeouts, batch sizes, intervals and ret
 
 !!! warning
     Do not enable `ENABLE_PPROF` in production without restricting access since pprof endpoints can leak memory contents and are a security risk if publicly exposed.
-
-## Basic
-
-- basic environment variables.
-- these include host and ports
-
-## Logging Levels
-
-- env variables to tune logging levels for each service
-- Currently only worker has tunable log level
-- Will eventually add logging levels for ingester and dashboard api
-
-## Advanced
-
-- advanced variables. These are for infrastructure tuning
-- timeouts
-- batch sizes
-- intervals etc
