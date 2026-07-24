@@ -2,6 +2,8 @@
 
 Logarithm is a high-performance, log ingestion and self-hosted observability pipeline designed for modern microservice architectures.
 
+**Full documentation** : [https://eddrick-23.github.io/Logarithm/](https://eddrick-23.github.io/Logarithm/)
+
 ## Tech Stack
 
 - **Backend:** Go (Golang)
