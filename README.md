@@ -2,6 +2,8 @@
 
 Logarithm is a high-performance, log ingestion and self-hosted observability pipeline designed for modern microservice architectures.
 
+**Full documentation** : [https://eddrick-23.github.io/Logarithm/](https://eddrick-23.github.io/Logarithm/)
+
 ## Tech Stack
 
 - **Backend:** Go (Golang)
@@ -14,26 +16,30 @@ Logarithm is a high-performance, log ingestion and self-hosted observability pip
 
 ```text
 .
-├── backend/                # Go microservices (ingester, worker, dashboard)
-│   ├── cmd/                # Entrypoints for the microservices
-│   ├── internal/           # Core logic, transport, storage, and routing
-│   └── tests/              # Integration tests
-├── frontend/               # User interface and client-side code
+├── backend/                    # Go microservices (ingester, worker, dashboard)
+│   ├── cmd/                    # Entrypoints for the microservices
+│   ├── internal/               # Core logic, transport, storage, and routing
+│   └── tests/                  # Integration tests
+├── frontend/                   # User interface and client-side code
 │   └── src/
-│       └── api/            # API calls to the backend server
-│       └── components/     # Reusable UI components shared across pages
-│       └── hooks/          # TanStack Query hooks
-│       └── pages/          # Top-level page components mapped to routes
-│       └── routes/         # Route definitions and navigation configuration
-│       └── tests/          # Unit and integration tests
-│       └── theme/          # MUI theme configurations and style overrides
-│       └── types/          # Typescript type and interface definitions
-│       └── utils/          # Helper functions and shared utilities
-├── deploy/                 # Configuration files for infrastructure
-│   ├── clickhouse/         # ClickHouse init scripts (e.g., init.sql)
-│   └── nats/               # NATS server configurations
-├── docs/                   # documentation files
-├── docker-compose.yaml     # Local development environment orchestration
+│       ├── api/                # API client functions for backend requests
+│       ├── components/         # Reusable UI components shared across pages
+│       ├── config/             # Environment variables initialisation
+│       ├── hooks/              # TanStack Query hooks for data fetching and caching
+│       ├── pages/              # Top-level page components mapped to routes
+│       ├── routes/             # Route definitions and navigation configuration
+│       ├── tests/              # Frontend tests
+│       │   └── integration/    # Integration tests
+│       │   └── unit/           # Unit tests
+│       ├── theme/              # MUI theme configurations and style overrides
+│       ├── types/              # Typescript type and interface definitions
+│       ├── utils/              # Shared helper functions and utilities
+│       └── workers/            # Web Workers for background processing
+├── deploy/                     # Configuration files for infrastructure
+│   ├── clickhouse/             # ClickHouse init scripts (e.g., init.sql)
+│   └── nats/                   # NATS server configurations
+├── docs/                       # documentation files
+├── docker-compose.yaml         # Local development environment orchestration
 └── README.md
 ```
 
@@ -62,12 +68,12 @@ docker compose up --build
 
 This will spin up:
 
-- **React** - accessible at http://localhost:5173
-- **Go Dashboard API** - accessible at http://localhost:8091
+- **React** - accessible at <http://localhost:5173>
+- **Go Dashboard API** - accessible at <http://localhost:8091>
 - **Live Tail Logs Websocket** - accessible at ws://localhost:8091/ws/logs/tail
-- **ClickHouse DB** - accessible at http://localhost:8123
-- **Ingester API** - accessible at http://localhost:8090
-- **NATS** - accessible at http://localhost:8222
+- **ClickHouse DB** - accessible at <http://localhost:8123>
+- **Ingester API** - accessible at <http://localhost:8090>
+- **NATS** - accessible at <http://localhost:8222>
 
 To run in detached mode (background) mode:
 
@@ -107,7 +113,7 @@ docker compose -f docker-compose.yml up
 
 To run unit tests, use
 
-```
+```bash
 cd backend
 go test ./...
 ```
@@ -115,7 +121,7 @@ go test ./...
 Integration tests for the backend are available at backend/tests/integration and are tagged under `integration`
 To run them, use
 
-```
+```bash
 cd backend
 go test ./... -tags=integration
 ```
@@ -146,7 +152,8 @@ npm run test:watch
 Benchmarking logarithm uses a seeded randomised load generator using go and the vegeta library
 
 #### Usage
-```
+
+```bash
 cd load_generator
 
 go build -o bin/main
@@ -160,7 +167,7 @@ Results after the test will be in the results folder labelled results.bin, at an
 
 Instead of running the load generator by itself, a profile.sh script has been set up that will start the load generator and profiling with pprof alog with tracking nats queue depth. Run with
 
-```
+```bash
 cd load_generator
 bash profile.sh 30 10 5 config.json <optional IP: default localhost>
 ```
