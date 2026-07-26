@@ -3,6 +3,7 @@
 > All benchmarks are reproducible. Load generator configs are in `load_generator/configs/` and profiling scripts in `load_generator/`. <br>
 > M1 results were collected on 14 June 2026 at commit `bench-m1` (0d4aba89527fbb191b5061210e2180ac7c9683c7). <br>
 > M2 results were collected on 24 June 2026 at commit `bench-m2` (55e996a06fa37cebc60ba81310c4f04bdb674170). <br>
+> M3 results were collected on 21 July 2026 at commit `bench-m3` (d0dbe7fb67ce2fd0a32d6225f0d8dab0449b88fa). <br>
 > To reproduce, see [Reproducing Results](#reproducing-results).
 
 ---
@@ -78,7 +79,7 @@ Results are recorded across three milestones reflecting the evolution of the sys
 |---|---|
 | **M1** | HTTP ingestion, JSON payloads only. No optimisations|
 | **M2** | HTTP ingestion with support for protobuf payloads + performance optimisations from M1 |
-| **M3** | M2 + gRPC ingestion path added |
+| **M3** | M2 + worker pool + smart live tail streaming |
 
 ### Load Generator
 
@@ -140,15 +141,20 @@ consumer, polled at 1-second intervals.
 
 ## Baseline Configuration
 
-All cross-milestone comparisons use a single fixed baseline config. **RPS is fixed between milestone runs** — the same config is used for M1, M2, and M3 so that latency deltas are attributable solely to code changes. `contentType` can be swapped between `proto` or `json` to marshal the payloads accordingly.
+All cross-milestone comparisons use a single fixed baseline config. **RPS is fixed between milestone runs** — the same config is used for M1, M2, and M3 so that latency deltas are attributable solely to code changes. 
+- `protocol` can be swapped between `http` or `grpc` to test the respective transport protocols.
+- `contentType` can be swapped between `proto` or `json` to marshal the payloads accordingly.
+- `grpcWorkers` is used for `grpc` protocol only and similarly `httpMethod` and `httpHealthUrl` is used for `http` protocol only. 
 
 ```json
 {
   "seed": 42,
   "poolSize": 500000,
-  "healthUrl": "http://HOST_IP:8090/health",
+  "protocol": "http",
+  "grpcWorkers": 5,
+  "httpMethod": "POST",
+  "httpHealthUrl": "http://HOST_IP:8090/health",
   "targetUrl": "http://HOST_IP:8090/ingest",
-  "method": "POST",
   "contentType":"proto",
   "encoding": "zstd",
   "rps": 1000,
@@ -196,9 +202,9 @@ changes are directly attributable to code optimisations, not load changes.
 | M1: JSON bytes | HTTP | 2.88 |
 | M2: JSON bytes | HTTP | 1.48 |
 | M2: protobuf bytes | HTTP | 2.24 |
-| M3: JSON bytes | HTTP | |
-| M3: protobuf bytes | HTTP | |
-| M3: protobuf bytes| gRPC | |
+| M3: JSON bytes | HTTP | 1.73 |
+| M3: protobuf bytes | HTTP | 1.77 |
+| M3: protobuf bytes | gRPC | 0.80 |
 
 ---
 
@@ -212,8 +218,8 @@ The ceiling is identified by stepping RPS up incrementally until p99 exceeds 100
 
 ### M1: HTTP, JSON bytes
 
-| RPS |p99/ms | Queue Stabilised? |
-|---|---|---|
+| RPS | p99/ms | Queue Stabilised? |
+| --- | --- | --- |
 | 1,000 | 2.88 | Yes |
 | 2,000 | 3.66 | Yes |
 | 2,500 | 4.73 | No |
@@ -227,7 +233,7 @@ The ceiling is identified by stepping RPS up incrementally until p99 exceeds 100
 ### M2: HTTP, JSON bytes
 
 | RPS | p99/ms | Queue Stabilised |
-|-----|-----|-------------------|
+| ----- | ----- | ------------------- |
 | 1,000 | 1.48 | Yes |
 | 2,000 | 1.14 | Yes |
 | 3,000 | 1.22 | Yes |
@@ -242,7 +248,7 @@ The ceiling is identified by stepping RPS up incrementally until p99 exceeds 100
 ### M2: HTTP, protobuf bytes
 
 | RPS | p99/ms | Queue Stabilised |
-|-----|-----|-------------------|
+| ----- | ----- | ------------------- |
 | 1,000 | 2.24 | Yes |
 | 2,000 | 0.96 | Yes |
 | 3,000 | 1.08 | Yes |
@@ -261,42 +267,59 @@ The ceiling is identified by stepping RPS up incrementally until p99 exceeds 100
 <td valign="top" width="33%">
 
 ### M3: HTTP, JSON bytes
+
 | RPS | p99/ms | Queue Stabilised |
-|---|---|---|
-| 1,000 | | |
-| 2,000 | | |
-| 3,000 | | |
-| 4,000 | | |
-| 5,000 | | |
-| **Ceiling** | — | — |
+| --- | --- | --- |
+| 1,000 | 1.73 | Yes |
+| 2,000 | 1.05 | Yes |
+| 3,000 | 1.13 | Yes |
+| 4,000 | 1.25 | Yes |
+| 5,000 | 1.26 | Yes |
+| 6,000 | 1.38 | Yes |
+| 7,000 | 1.94 | Yes |
+| 7,500 | 1.78 | Yes |
+| 8,000 | 3.53 | No |
+| **Ceiling** | 1.78 | Yes |
 
 </td>
 
 <td valign="top" width="33%">
 
 ### M3: HTTP, protobuf bytes
+
 | RPS | p99/ms | Queue Stabilised |
-|---|---|---|
-| 1,000 | | |
-| 2,000 | | |
-| 3,000 | | |
-| 4,000 | | |
-| 5,000 | | |
-| **Ceiling** | — | — |
+| --- | --- | --- |
+| 1,000 | 1.77 | Yes |
+| 2,000 | 0.79 | Yes |
+| 3,000 | 0.82 | Yes |
+| 4,000 | 0.97 | Yes |
+| 5,000 | 0.98 | Yes |
+| 6,000 | 1.05 | Yes |
+| 7,000 | 1.23 | Yes |
+| 8,000 | 1.40 | Yes |
+| 8,500 | 1.81 | Yes |
+| 9,000 | 2.59 | No |
+| **Ceiling** | 1.81 | Yes |
 
 </td>
 
 <td valign="top" width="33%">
 
 ### M3: GRPC, protobuf bytes
+
 | RPS | p99/ms | Queue Stabilised |
-|---|---|---|
-| 1,000 | | |
-| 2,000 | | |
-| 3,000 | | |
-| 4,000 | | |
-| 5,000 | | |
-| **Ceiling** | — | — |
+| --- | --- | --- |
+| 1,000 | 0.80 | Yes |
+| 2,000 | 0.73 | Yes |
+| 3,000 | 0.83 | Yes |
+| 4,000 | 0.94 | Yes |
+| 5,000 | 0.95 | Yes |
+| 6,000 | 0.98 | Yes |
+| 7,000 | 1.32 | Yes |
+| 8,000 | 1.18 | Yes |
+| 8,500 | 1.19 | Yes |
+| 9,000 | 1.22 | No |
+| **Ceiling** | 1.19 | Yes |
 
 </td>
 
@@ -304,16 +327,15 @@ The ceiling is identified by stepping RPS up incrementally until p99 exceeds 100
 </table>
 
 ### Ceiling Summary
+
 | Milestone | Transport | Payload | Ceiling RPS | p99 at Ceiling/ms |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | M1 | HTTP | JSON | 2000 | 3.66 |
 | M2 | HTTP | JSON | 3500 | 1.32 |
 | M2 | HTTP | Protobuf | 5000 | 1.35 |
-| M3 | HTTP | JSON | | |
-| M3 | HTTP | Protobuf | | |
-| M3 | gRPC | Protobuf | | |
-
-> _Insert graph: side-by-side p99 latency distribution — HTTP vs gRPC at ceiling RPS._
+| M3 | HTTP | JSON | 7500 | 1.78 |
+| M3 | HTTP | Protobuf | 8500 | 1.81 |
+| M3 | gRPC | Protobuf | 8500 | 1.19 |
 
 ---
 
@@ -322,20 +344,23 @@ The ceiling is identified by stepping RPS up incrementally until p99 exceeds 100
 `NumPending` polled at 1-second intervals during the ceiling RPS run for each milestone.
 A stabilising curve confirms the worker drains the queue faster than the ingestion rate.
 
-| Milestone |Transport | Payload | Peak NumPending at Max Throughput|
-|---|---|---|---|
+| Milestone | Transport | Payload | Peak NumPending at Max Throughput|
+| --- | --- | --- | --- |
 | M1 | HTTP | JSON | 798 |
 | M2 | HTTP | JSON | 0 |
 | M2 | HTTP | protobuf | 1049 |
-| M3 | HTTP | JSON | |
-| M3 | HTTP | protobuf | |
-| M3 | gRPC | protobuf | |
+| M3 | HTTP | JSON | 7047 |
+| M3 | HTTP | protobuf | 8781 |
+| M3 | gRPC | protobuf | 7890 |
 
 <p align="center">
   <a href="./assets/">
     <img src="./assets/Milestone 1 Nats Queue Depth over time.svg" alt="Milestone 1" width="32%">
     <img src="./assets/Milestone 2 Nats Queue Depth over time (JSON).svg" alt="Milestone 2 JSON" width="32%">
     <img src="./assets/Milestone 2 Nats Queue Depth over time (protobuf).svg" alt="Milestone 2 Protobuf" width="32%">
+    <img src="./assets/Milestone 3 Nats Queue Depth over time (http_json).svg" alt="Milestone 1" width="32%">
+    <img src="./assets/Milestone 3 Nats Queue Depth over time (http_protobuf).svg" alt="Milestone 1" width="32%">
+    <img src="./assets/Milestone 3 Nats Queue Depth over time (grpc).svg" alt="Milestone 1" width="32%">
   </a>
 </p>
 

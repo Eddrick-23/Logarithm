@@ -2,7 +2,9 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"sync"
 	"time"
@@ -11,7 +13,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/Eddrick-23/Logarithm/internal/core"
-	"golang.org/x/sync/errgroup"
+	"github.com/Eddrick-23/Logarithm/internal/pool"
 )
 
 type LogStore interface {
@@ -20,28 +22,77 @@ type LogStore interface {
 	SearchLogs(context.Context, core.LogQueryFilter) ([]core.FlatLogRecord, error)
 }
 
+type batchPool interface {
+	Get() *columnBatch
+	Put(*columnBatch) bool
+}
+
 type ClickHouseStore struct {
 	conn       driver.Conn
 	tables     map[string]string
 	logger     *slog.Logger
 	ingestMu   sync.Mutex // ch.Client not thread safe
 	ingestConn *ch.Client // low level api for inserting
-	batchPool  sync.Pool
+	batchPool  batchPool
+
+	batchPoolSize int
+	batchRowLimit int
 }
 
 var _ LogStore = (*ClickHouseStore)(nil)
 
-// addr should be full host:port e.g. localhost:9000 or clickhouse:9000
-func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, dbName string, username string, password string) (*ClickHouseStore, error) {
-	logger.Info("Connecting to database...")
+type Config struct {
+	Address  string // host:port
+	Database string
+	Username string
+	Password string
+}
+
+type Option func(*ClickHouseStore)
+
+func WithLogger(l *slog.Logger) Option {
+	return func(s *ClickHouseStore) {
+		s.logger = l
+	}
+}
+
+func WithPoolSize(size int) Option {
+	return func(s *ClickHouseStore) {
+		s.batchPoolSize = size
+	}
+}
+
+func WithRowLimit(limit int) Option {
+	return func(s *ClickHouseStore) {
+		s.batchRowLimit = limit
+	}
+}
+
+const (
+	defaultBatchPoolSize = 5
+	defaultBatchRowLimit = 10000
+)
+
+func NewClickHouseStore(ctx context.Context, config Config, opts ...Option) (*ClickHouseStore, error) {
+	s := &ClickHouseStore{
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		batchPoolSize: defaultBatchPoolSize,
+		batchRowLimit: defaultBatchRowLimit,
+	}
+
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	s.logger.Info("Connecting to database...")
 
 	// high level driver
 	conn, err := clickhouse.Open(&clickhouse.Options{
-		Addr: []string{addr},
+		Addr: []string{config.Address},
 		Auth: clickhouse.Auth{
-			Database: dbName,
-			Username: username,
-			Password: password,
+			Database: config.Database,
+			Username: config.Username,
+			Password: config.Password,
 		},
 		MaxOpenConns: 10,
 		MaxIdleConns: 5,
@@ -53,17 +104,17 @@ func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, d
 
 	// low level driver
 	ingestConn, err := ch.Dial(ctx, ch.Options{
-		Address:  addr,
-		Database: dbName,
-		User:     username,
-		Password: password,
+		Address:  config.Address,
+		Database: config.Database,
+		User:     config.Username,
+		Password: config.Password,
 	})
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial ch-go ingest conn: %w", err)
 	}
 
-	tables, err := initTables(dbName)
+	tables, err := initTables(config.Database)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialise table mapping: %v", err)
 	}
@@ -75,18 +126,18 @@ func NewClickHouseStore(ctx context.Context, logger *slog.Logger, addr string, d
 		}
 		return nil, err
 	}
-	logger.Info("connection to database established")
-	return &ClickHouseStore{
-		conn:       conn,
-		ingestConn: ingestConn,
-		tables:     tables,
-		logger:     logger,
-		batchPool: sync.Pool{
-			New: func() any {
-				return newColumnBatch()
-			},
-		},
-	}, nil
+
+	batchPool := pool.New(s.batchPoolSize, newColumnBatch, pool.WithReuseCheck(func(c *columnBatch) bool {
+		return c.Capacity() <= s.batchRowLimit
+	}))
+
+	s.conn = conn
+	s.ingestConn = ingestConn
+	s.tables = tables
+	s.batchPool = batchPool
+
+	s.logger.Info("connection to database established")
+	return s, nil
 }
 
 func (s *ClickHouseStore) table(name string) (string, error) {
@@ -128,10 +179,12 @@ func (s *ClickHouseStore) InitDB(ctx context.Context) error {
 
 func (s *ClickHouseStore) Close() error {
 	s.logger.Info("Closing clickhouse connection")
-	if err := s.ingestConn.Close(); err != nil {
-		return err
-	}
-	return s.conn.Close()
+
+	var errs []error
+	errs = append(errs, s.ingestConn.Close())
+	errs = append(errs, s.conn.Close())
+
+	return errors.Join(errs...)
 }
 
 func (s *ClickHouseStore) buildFilterQueryString(filter core.LogQueryFilter) (string, []any) {
@@ -263,11 +316,11 @@ func (s *ClickHouseStore) GetDistinctServices(ctx context.Context) ([]string, er
 
 const INGESTION_METRICS_DURATION = 1 // it is in minutes
 
-// ingestion graph only, TODO: remove this in favour of SSE
-func (s *ClickHouseStore) GetIngestionMetrics(ctx context.Context) (core.IngestionMetricsResponse, error) {
+// return ingestion graph metrics in the past minute
+func (s *ClickHouseStore) GetIngestionGraphMetrics(ctx context.Context) (core.IngestionGraphMetrics, error) {
 	tbl, err := s.table(TableMetrics)
 	if err != nil {
-		return core.IngestionMetricsResponse{}, fmt.Errorf("failed to get table: %v", err)
+		return core.IngestionGraphMetrics{}, fmt.Errorf("failed to get table: %v", err)
 	}
 
 	whereClause := `WHERE Timestamp >= @start AND Timestamp < @end
@@ -285,89 +338,10 @@ func (s *ClickHouseStore) GetIngestionMetrics(ctx context.Context) (core.Ingesti
 	var rows []core.IngestionMetrics
 	// for now, im taking the metrics in the past 1 min, can be adjusted based on specifications
 	if err := s.conn.Select(ctx, &rows, queryString, clickhouse.Named("start", start), clickhouse.Named("end", end)); err != nil {
-		return core.IngestionMetricsResponse{}, err
+		return core.IngestionGraphMetrics{}, err
 	}
 
-	return core.NewIngestionMetricsResponse(rows, INGESTION_METRICS_DURATION*60), nil
-}
-
-// all ingestion metrics
-func (s *ClickHouseStore) GetAllIngestionMetrics(ctx context.Context) (core.IngestionMetricsEvent, error) {
-	tbl, err := s.table(TableMetrics)
-	if err != nil {
-		return core.IngestionMetricsEvent{}, err
-	}
-
-	var (
-		result      core.IngestionMetricsEvent
-		ingestionMu sync.Mutex
-		eg, egCtx   = errgroup.WithContext(ctx)
-	)
-
-	// query 1: ingestion graph points (last 60 ticks for the chart)
-	eg.Go(func() error {
-		end := time.Now().UTC().Truncate(time.Second)
-		start := end.Add(-time.Duration(INGESTION_METRICS_DURATION) * time.Minute)
-
-		whereClause := `WHERE Timestamp >= @start AND Timestamp < @end
-					GROUP BY ServiceName, Timestamp
-					ORDER BY ServiceName, Timestamp ASC
-					WITH FILL
-						FROM @start
-    					TO @end
-						STEP toIntervalSecond(1)`
-		queryString := fmt.Sprintf("SELECT Timestamp, ServiceName, sum(LogsCount) AS LogsCount FROM %v %v ", tbl, whereClause)
-
-		var rows []core.IngestionMetrics
-		if err := s.conn.Select(egCtx, &rows, queryString, clickhouse.Named("start", start), clickhouse.Named("end", end)); err != nil {
-			return fmt.Errorf("ingestion graph: %w", err)
-		}
-
-		ingestionMu.Lock()
-		result.Graph = core.NewIngestionMetricsResponse(rows, INGESTION_METRICS_DURATION*60)
-		ingestionMu.Unlock()
-		return nil
-	})
-
-	// query 2: log rate stats
-	eg.Go(func() error {
-		now := time.Now().UTC().Truncate(time.Second)
-
-		queryString := fmt.Sprintf(`
-		WITH
-			current AS (
-				SELECT sum(LogsCount) / 5 AS rate
-				FROM %v
-				WHERE Timestamp >= @now - INTERVAL 5 SECOND
-			),
-			baseline AS (
-				SELECT sum(LogsCount) / 60 AS rate
-				FROM %v
-				WHERE Timestamp >= @now - INTERVAL 60 SECOND
-			)
-		SELECT
-			current.rate AS CurrentRate,
-			baseline.rate AS AvgRate,
-			current.rate / nullIf(baseline.rate, 0) AS Ratio
-		FROM current, baseline
-	`, tbl, tbl)
-
-		var row core.LogRateStatistics
-		if err := s.conn.QueryRow(egCtx, queryString, clickhouse.Named("now", now)).ScanStruct(&row); err != nil {
-			return fmt.Errorf("log rate stats: %w", err)
-		}
-
-		ingestionMu.Lock()
-		result.LogStats = row
-		ingestionMu.Unlock()
-		return nil
-	})
-
-	if err := eg.Wait(); err != nil {
-		return core.IngestionMetricsEvent{}, err
-	}
-
-	return result, nil
+	return core.NewIngestionGraphMetrics(rows, INGESTION_METRICS_DURATION*60), nil
 }
 
 func (s *ClickHouseStore) GetErrorRateMetrics(ctx context.Context) (core.ErrorRateMetrics, error) {
@@ -451,7 +425,7 @@ func (s *ClickHouseStore) GetLogRateStatistics(ctx context.Context) (core.LogRat
 	`, tbl, tbl)
 
 	var result core.LogRateStatistics
-	if err := s.conn.Select(ctx, &result, queryString, clickhouse.Named("now", now)); err != nil {
+	if err := s.conn.QueryRow(ctx, queryString, clickhouse.Named("now", now)).ScanStruct(&result); err != nil {
 		return core.LogRateStatistics{}, err
 	}
 
@@ -535,4 +509,78 @@ func (s *ClickHouseStore) GetLogsStorageOutlook(ctx context.Context) (*core.Stor
 	result.IsSteadyState = false
 	result.ProjectedSteadyStateBytes = avgDailyBytes * LOGS_TTL_DAYS
 	return result, nil
+}
+
+func (s *ClickHouseStore) GetNatsQueueDepthMetrics(ctx context.Context, durationMinutes int) (core.NatsQueueDepthGraphMetrics, error) {
+	tbl, err := s.table(TableJetstreamConsumerMetrics)
+	if err != nil {
+		return core.NatsQueueDepthGraphMetrics{}, fmt.Errorf("failed to get table: %v", err)
+	}
+
+	queryString := fmt.Sprintf(`
+		SELECT Timestamp, NumPending, NumAckPending, NumRedelivered
+		FROM %s
+		WHERE Timestamp >= now() - toIntervalMinute(@duration)
+		ORDER BY Timestamp ASC
+	`, tbl)
+
+	rows, err := s.conn.Query(ctx, queryString, clickhouse.Named("duration", durationMinutes))
+	if err != nil {
+		return core.NatsQueueDepthGraphMetrics{}, fmt.Errorf("failed to query consumer info: %v", err)
+	}
+	defer rows.Close()
+
+	response := core.NatsQueueDepthGraphMetrics{
+		Timestamps:     []int64{},
+		NumPending:     []uint64{},
+		NumAckPending:  []uint64{},
+		NumRedelivered: []uint64{},
+	}
+
+	for rows.Next() {
+		var timestamp time.Time
+		var numPending uint64
+		var numAckPending uint64
+		var numRedelivered uint64
+
+		if err := rows.Scan(&timestamp, &numPending, &numAckPending, &numRedelivered); err != nil {
+			return core.NatsQueueDepthGraphMetrics{}, fmt.Errorf("failed to scan row: %v", err)
+		}
+		response.Timestamps = append(response.Timestamps, timestamp.UnixMilli())
+		response.NumPending = append(response.NumPending, numPending)
+		response.NumAckPending = append(response.NumAckPending, numAckPending)
+		response.NumRedelivered = append(response.NumRedelivered, numRedelivered)
+	}
+
+	if err := rows.Err(); err != nil {
+		return core.NatsQueueDepthGraphMetrics{}, fmt.Errorf("row iteration error: %v", err)
+	}
+
+	return response, nil
+}
+
+func (s *ClickHouseStore) SaveConsumerInfo(ctx context.Context, info core.NatsQueueDepthConsumerInfo) error {
+	tbl, err := s.table(TableJetstreamConsumerMetrics)
+	if err != nil {
+		return fmt.Errorf("failed to get table: %v", err)
+	}
+
+	queryString := fmt.Sprintf(`
+		INSERT INTO %s (
+			Timestamp, ConsumerName, StreamName, 
+			NumAckPending, NumRedelivered, NumPending
+		) VALUES (
+			?, ?, ?, ?, ?, ?
+		)
+	`, tbl)
+
+	err = s.conn.Exec(ctx, queryString,
+		time.Now().UTC(),
+		info.Name,
+		info.Stream,
+		info.NumAckPending,
+		info.NumRedelivered,
+		info.NumPending,
+	)
+	return err
 }

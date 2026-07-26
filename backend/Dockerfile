@@ -12,22 +12,32 @@ FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS builder
 WORKDIR /build
 ENV CGO_ENABLED=0 GOOS=linux
 
+ENV GOCACHE=/root/.cache/go-build
+ENV GOMODCACHE=/go/pkg/mod
+
 ARG TARGETARCH
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # isolated build stages
 FROM builder AS build-dashboard
 RUN --mount=type=bind,source=.,target=/build \
+    --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
     GOARCH=$TARGETARCH go build -o /out/dashboard ./cmd/dashboard
 
 FROM builder AS build-ingester
 RUN --mount=type=bind,source=.,target=/build \
+    --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
     GOARCH=$TARGETARCH go build -o /out/ingester ./cmd/ingester
 
 FROM builder AS build-worker
 RUN --mount=type=bind,source=.,target=/build \
+    --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
     GOARCH=$TARGETARCH go build -o /out/worker ./cmd/worker
 
 # TARGET: DASHBOARD

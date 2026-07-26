@@ -10,9 +10,17 @@ import (
 
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
+	"github.com/Eddrick-23/Logarithm/internal/transport"
+	"golang.org/x/sync/errgroup"
 )
 
-func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHouseStore, appCtx context.Context) http.HandlerFunc {
+// DLQStatsProvider abstracts the retrieval of Dead Letter Queue stream statistics.
+// This prevents tight coupling with the transport.NatsBroker implementation
+type DLQStatsProvider interface {
+	GetDLQStreamInfo(context.Context, string) (core.NatsDLQMetrics, error)
+}
+
+func handleDashboardStream(logger *slog.Logger, logStore *storage.ClickHouseStore, natsBroker DLQStatsProvider, appCtx context.Context) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
@@ -28,18 +36,20 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 		ticker5s := time.NewTicker(5 * time.Second)
 		ticker15s := time.NewTicker(15 * time.Second)
 		ticker30s := time.NewTicker(30 * time.Second)
+		ticker1m := time.NewTicker(1 * time.Minute)
 		ticker15m := time.NewTicker(15 * time.Minute)
 
 		defer ticker5s.Stop()
 		defer ticker15s.Stop()
 		defer ticker30s.Stop()
+		defer ticker1m.Stop()
 		defer ticker15m.Stop()
 
 		for {
 			select {
 			case <-r.Context().Done():
 				// Client closed the browser tab
-				logger.Debug("client disconnected from ingestion metrics stream")
+				logger.Debug("client disconnected from dashboard stream")
 				return
 
 			case <-appCtx.Done():
@@ -48,20 +58,26 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 				return
 
 			case <-ticker5s.C:
-				// ingestion graph and logs / second refreshes every 5s
-				if err := writeIngestionMetricsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
+				// ingestion graph and log rate metrics refreshes every 5s
+				if err := writeIngestionGraphAndLogRatesEvent(r.Context(), w, flusher, logger, logStore); err != nil {
 					return
 				}
 
 			case <-ticker15s.C:
-				// error rate metrics refreshes every 15s
-				if err := writeErrorRateMetricsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
+				// error rate and nats queue depth metrics refreshes every 15s
+				if err := writeErrorRateAndNatsQueueDepthMetricsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
 					return
 				}
 
 			case <-ticker30s.C:
 				// top service errors refreshes every 30s
 				if err := writeTopServiceErrorsStatsEvent(r.Context(), w, flusher, logger, logStore); err != nil {
+					return
+				}
+
+			case <-ticker1m.C:
+				// Nats dlq stream info refreshes every 1 minute
+				if err := writeNatsDlQInfoEvent(r.Context(), w, flusher, logger, natsBroker); err != nil {
 					return
 				}
 
@@ -75,63 +91,100 @@ func handleIngestionMetricsStream(logger *slog.Logger, logStore *storage.ClickHo
 	}
 }
 
-func writeIngestionMetricsEvent(
-	ctx context.Context,
-	w http.ResponseWriter,
-	flusher http.Flusher,
-	logger *slog.Logger,
-	logStore *storage.ClickHouseStore,
-) error {
-	ingestionMetrics, err := logStore.GetAllIngestionMetrics(ctx)
+// writeSSEEvent marshals data as JSON and writes it as a single SSE event
+// with the given event name, then flushes it to the client immediately.
+func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, event string, data any) error {
+	payload, err := json.Marshal(data)
 	if err != nil {
-		logger.Error("failed to get ingestion metrics", "err", err)
-		return err
+		return fmt.Errorf("failed to marshal %q: %w", event, err)
 	}
 
-	data, err := json.Marshal(ingestionMetrics)
-	if err != nil {
-		logger.Error("failed to marshal ingestion metrics", "err", err)
-		return err
-	}
-
-	// event: ingestion
-	// data: <payload>\n\n is the SSE wire protocol
-	if _, err := fmt.Fprintf(w, "event: ingestion\ndata: %s\n\n", data); err != nil {
+	// SSE format: "event: <name>\ndata: <payload>\n\n"
+	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, payload); err != nil {
 		// client likely disconnected
-		return err
+		return fmt.Errorf("failed to format %q: %w", event, err)
 	}
 
 	flusher.Flush()
 	return nil
 }
 
-func writeErrorRateMetricsEvent(
+func writeIngestionGraphAndLogRatesEvent(
 	ctx context.Context,
 	w http.ResponseWriter,
 	flusher http.Flusher,
 	logger *slog.Logger,
 	logStore *storage.ClickHouseStore,
 ) error {
-	errorRateMetrics, err := logStore.GetErrorRateMetrics(ctx)
-	if err != nil {
-		logger.Error("failed to get error rate metrics", "err", err)
+	var ingestionGraphMetrics core.IngestionGraphMetrics
+	var logRateStats core.LogRateStatistics
+
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		var err error
+		// retrieve metrics from the past minute
+		ingestionGraphMetrics, err = logStore.GetIngestionGraphMetrics(egCtx)
+		return err
+	})
+	eg.Go(func() error {
+		var err error
+		logRateStats, err = logStore.GetLogRateStatistics(egCtx)
+		return err
+	})
+
+	if err := eg.Wait(); err != nil {
+		logger.Error("failed to fetch ingestion graph / log rate stats", "error", err)
 		return err
 	}
 
-	data, err := json.Marshal(errorRateMetrics)
-	if err != nil {
-		logger.Error("failed to marshal error rate metrics", "err", err)
+	if err := writeSSEEvent(w, flusher, "ingestion-graph-metrics", ingestionGraphMetrics); err != nil {
 		return err
 	}
 
-	// event: error-rate
-	// data: <payload>\n\n is the SSE wire protocol
-	if _, err := fmt.Fprintf(w, "event: error-rate\ndata: %s\n\n", data); err != nil {
-		// client likely disconnected
+	if err := writeSSEEvent(w, flusher, "log-rate-stats", logRateStats); err != nil {
 		return err
 	}
 
-	flusher.Flush()
+	return nil
+}
+
+func writeErrorRateAndNatsQueueDepthMetricsEvent(
+	ctx context.Context,
+	w http.ResponseWriter,
+	flusher http.Flusher,
+	logger *slog.Logger,
+	logStore *storage.ClickHouseStore,
+) error {
+	var errorRateMetrics core.ErrorRateMetrics
+	var natsQueueDepthMetrics core.NatsQueueDepthGraphMetrics
+
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		var err error
+		// retrieve error rate metrics
+		errorRateMetrics, err = logStore.GetErrorRateMetrics(egCtx)
+		return err
+	})
+	eg.Go(func() error {
+		var err error
+		// retrieve nats queue depth graph metrics from the past 15 minutes
+		natsQueueDepthMetrics, err = logStore.GetNatsQueueDepthMetrics(egCtx, 15)
+		return err
+	})
+
+	if err := eg.Wait(); err != nil {
+		logger.Error("failed to fetch error rate metrics / nats queue depth metrics", "error", err)
+		return err
+	}
+
+	if err := writeSSEEvent(w, flusher, "error-rate", errorRateMetrics); err != nil {
+		return err
+	}
+
+	if err := writeSSEEvent(w, flusher, "nats-queue-depth", natsQueueDepthMetrics); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -148,21 +201,7 @@ func writeTopServiceErrorsStatsEvent(
 		return err
 	}
 
-	data, err := json.Marshal(topServiceErrorsStats)
-	if err != nil {
-		logger.Error("failed to marshal top service error metrics", "err", err)
-		return err
-	}
-
-	// event: top-service-errors
-	// data: <payload>\n\n is the SSE wire protocol
-	if _, err := fmt.Fprintf(w, "event: top-service-errors\ndata: %s\n\n", data); err != nil {
-		// client likely disconnected
-		return err
-	}
-
-	flusher.Flush()
-	return nil
+	return writeSSEEvent(w, flusher, "top-service-errors", topServiceErrorsStats)
 }
 
 func writeStorageInfoEvent(
@@ -216,19 +255,21 @@ func writeStorageInfoEvent(
 		}
 	}
 
-	data, err := json.Marshal(card)
+	return writeSSEEvent(w, flusher, "storage-info", card)
+}
+
+func writeNatsDlQInfoEvent(
+	ctx context.Context,
+	w http.ResponseWriter,
+	flusher http.Flusher,
+	logger *slog.Logger,
+	natsBroker DLQStatsProvider,
+) error {
+	info, err := natsBroker.GetDLQStreamInfo(ctx, transport.DLQStreamName)
 	if err != nil {
-		logger.Error("failed to marshal storage info metrics", "err", err)
+		logger.Error("failed to get nats dlq stream info", "err", err)
 		return err
 	}
 
-	// event: storage-info
-	// data: <payload>\n\n is the SSE wire protocol
-	if _, err := fmt.Fprintf(w, "event: storage-info\ndata: %s\n\n", data); err != nil {
-		// client likely disconnected
-		return err
-	}
-
-	flusher.Flush()
-	return nil
+	return writeSSEEvent(w, flusher, "nats-dlq-info", info)
 }

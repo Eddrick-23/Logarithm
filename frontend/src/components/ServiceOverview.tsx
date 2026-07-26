@@ -1,38 +1,41 @@
 import { Box, Typography, Grid, Skeleton } from "@mui/material";
 import { card, sectionLabel, statValue } from "../theme/tokens";
 import { formatNumber } from "../utils/utils";
-import type { LogRateStatistics } from "../types/Metric";
-import { useErrorRateMetrics, useStorageInfoMetrics } from "../hooks/useMetrics";
+import { useErrorRateMetrics, useLogRateStats, useStorageInfoMetrics, useNatsDLQMetrics } from "../hooks/useMetrics";
 import {
     ERROR_RATE_METRICS_REFETCH_INTERVAL_MS,
     LOG_RATE_METRICS_REFETCH_INTERVAL_MS,
     STORAGE_INFO_METRICS_REFETCH_INTERVAL_MS,
+    NATS_DLQ_INFO_REFETCH_INTERVAL_MS,
 } from "../api/metricsApi";
 import { LastUpdated } from "./LastUpdated";
+import { memo } from "react";
 
 interface ServiceOverviewProps {
-    data?: LogRateStatistics;
     isLoading: boolean;
-    logRateUpdatedAt: number;
 }
 
-function StatCard({
-    label,
-    value,
-    unit,
-    delta,
-    deltaColor = "text.secondary",
-    lastUpdated,
-    refetchIntervalMs,
-}: {
+interface StatCardProps {
     label: string;
     value: string | number;
     unit?: string;
     delta: string;
     deltaColor?: string;
+    timeRange?: string;
     lastUpdated: number;
     refetchIntervalMs: number;
-}) {
+}
+
+const StatCard = memo(function StatCard({
+    label,
+    value,
+    unit,
+    delta,
+    deltaColor = "text.secondary",
+    timeRange,
+    lastUpdated,
+    refetchIntervalMs,
+}: StatCardProps) {
     return (
         <Box sx={card}>
             <Typography sx={sectionLabel}>{label}</Typography>
@@ -47,38 +50,40 @@ function StatCard({
             <Typography sx={{ fontSize: 13, fontWeight: 500, color: deltaColor }}>{delta}</Typography>
 
             {/* last updated display with refetch interval */}
-            <LastUpdated timestamp={lastUpdated} refreshIntervalMs={refetchIntervalMs} />
+            <LastUpdated timeRange={timeRange} timestamp={lastUpdated} refreshIntervalMs={refetchIntervalMs} />
         </Box>
     );
-}
+});
 
-export default function ServiceOverview({ data, isLoading, logRateUpdatedAt }: ServiceOverviewProps) {
+export default memo(function ServiceOverview({ isLoading }: ServiceOverviewProps) {
+    const { data: logRateStats, dataUpdatedAt: logRateUpdatedAt } = useLogRateStats();
     const { data: errorRateMetrics, dataUpdatedAt: errorRateMetricsUpdatedAt } = useErrorRateMetrics();
     const { data: storageInfoMetrics, dataUpdatedAt: storageInfoMetricsUpdatedAt } = useStorageInfoMetrics();
+    const { data: natsDLQMetrics, dataUpdatedAt: natsDLQMetricsUpdatedAt } = useNatsDLQMetrics();
 
     let logRate: string | number = 0;
-    if (data?.currentRate !== undefined) {
-        logRate = formatNumber(data.currentRate);
+    if (logRateStats?.currentRate !== undefined) {
+        logRate = formatNumber(logRateStats.currentRate);
     }
 
     // log rate conditional display
-    let logDeltaText = "";
+    let logDeltaText = "—";
     let logDeltaColour = "text.secondary";
-    if (data?.avgRate === 0) {
-        logDeltaText = "No logs in the last 1 min";
+    if (logRateStats?.avgRate === 0) {
+        logDeltaText = "No logs received in the past minute.";
         logDeltaColour = "error.main";
-    } else if (data?.ratio !== undefined) {
-        const percentChange = (data.ratio - 1) * 100;
+    } else if (logRateStats?.ratio !== undefined) {
+        const percentChange = (logRateStats.ratio - 1) * 100;
         const absChange = Math.abs(percentChange).toFixed(0);
 
         if (percentChange > 0) {
-            logDeltaText = `↑ ${absChange}% vs avg`;
+            logDeltaText = `↑ ${absChange}% vs 60s avg`;
             logDeltaColour = "success.main";
         } else if (percentChange < 0) {
-            logDeltaText = `↓ ${absChange}% vs avg`;
+            logDeltaText = `↓ ${absChange}% vs 60s avg`;
             logDeltaColour = "error.main";
         } else {
-            logDeltaText = `~ 0% vs avg`;
+            logDeltaText = `~ 0% vs 60s avg`;
             logDeltaColour = "text.secondary";
         }
     }
@@ -106,11 +111,30 @@ export default function ServiceOverview({ data, isLoading, logRateUpdatedAt }: S
         }
     }
 
+    // dlq display
+    // 0: empty
+    // >0: need recovery
+    let natsDLQValue: string | number = "-";
+    let dlqDeltaText = "—";
+    let dlqDeltaColour = "text.secondary";
+    if (natsDLQMetrics?.numMessages !== undefined) {
+        const count = natsDLQMetrics.numMessages;
+        natsDLQValue = count;
+
+        if (count === 0) {
+            dlqDeltaText = "● Empty";
+            dlqDeltaColour = "success.main";
+        } else {
+            dlqDeltaText = "● Messages need recovery";
+            dlqDeltaColour = "error.main";
+        }
+    }
+
     if (isLoading) {
         return (
             <Grid container spacing={2}>
-                {[1, 2, 3].map((skeletonKey) => (
-                    <Grid size={4} key={skeletonKey}>
+                {[1, 2, 3, 4].map((skeletonKey) => (
+                    <Grid size={3} key={skeletonKey}>
                         <Skeleton variant="rounded" height={110} sx={{ borderRadius: 2 }} />
                     </Grid>
                 ))}
@@ -120,9 +144,9 @@ export default function ServiceOverview({ data, isLoading, logRateUpdatedAt }: S
 
     return (
         <Grid container spacing={2}>
-            <Grid size={4}>
+            <Grid size={3}>
                 <StatCard
-                    label="Logs / sec"
+                    label="Log Rate (5s)"
                     value={logRate}
                     delta={logDeltaText}
                     deltaColor={logDeltaColour}
@@ -130,18 +154,29 @@ export default function ServiceOverview({ data, isLoading, logRateUpdatedAt }: S
                     refetchIntervalMs={LOG_RATE_METRICS_REFETCH_INTERVAL_MS}
                 />
             </Grid>
-            <Grid size={4}>
+            <Grid size={3}>
                 <StatCard
                     label="Error Rate"
                     value={errorRateValue}
                     unit="%"
                     delta={errorDeltaText}
                     deltaColor={errorDeltaColour}
+                    timeRange="5m"
                     lastUpdated={errorRateMetricsUpdatedAt}
                     refetchIntervalMs={ERROR_RATE_METRICS_REFETCH_INTERVAL_MS}
                 />
             </Grid>
-            <Grid size={4}>
+            <Grid size={3}>
+                <StatCard
+                    label="Dead Letter Queue"
+                    value={natsDLQValue}
+                    delta={dlqDeltaText}
+                    deltaColor={dlqDeltaColour}
+                    lastUpdated={natsDLQMetricsUpdatedAt}
+                    refetchIntervalMs={NATS_DLQ_INFO_REFETCH_INTERVAL_MS}
+                />
+            </Grid>
+            <Grid size={3}>
                 <StatCard
                     label="Storage"
                     value={storageInfoMetrics?.value ?? "-"}
@@ -154,4 +189,4 @@ export default function ServiceOverview({ data, isLoading, logRateUpdatedAt }: S
             </Grid>
         </Grid>
     );
-}
+});

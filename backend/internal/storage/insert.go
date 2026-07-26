@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ClickHouse/ch-go"
@@ -36,8 +37,10 @@ type LogAppender interface {
 type batchAppender struct {
 	store *ClickHouseStore
 	batch *columnBatch
+	mu    sync.Mutex
 }
 
+// Appends a row entry. This operation is thread safe.
 func (b *batchAppender) Append(
 	timestamp, observedTimestamp time.Time,
 	severityNumber uint8,
@@ -46,6 +49,9 @@ func (b *batchAppender) Append(
 	logAttrKeys, logAttrValues, resAttrKeys, resAttrValues []string,
 	logFields LogFields,
 ) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	b.batch.Timestamps.Append(timestamp)
 	b.batch.ObservedTimestamps.Append(observedTimestamp)
 	b.batch.SeverityNumbers.Append(severityNumber)
@@ -139,8 +145,7 @@ func (c *columnBatch) ensureSize(targetRows int) {
 	const estimatedValBytes = 100
 	const estimatedAttrPerRow = 5
 
-	existingRows := cap(c.Timestamps.Data)
-	if existingRows >= targetRows {
+	if c.Capacity() >= targetRows {
 		return
 	}
 
@@ -207,14 +212,22 @@ func (c *columnBatch) ensureSize(targetRows int) {
 	c.ResAttrValues.Offsets = make(proto.ColUInt64, 0, targetRows)
 }
 
+// Capacity returns the row capacity this batch was last sized for via
+// ensureSize. Timestamps.Data is used as the proxy since ensureSize
+// allocates every buffer proportionally to the same targetRows.
+func (c *columnBatch) Capacity() int {
+	return cap(c.Timestamps.Data)
+}
+
 // Returns an interface for optimised inserts.
 //
 // It is the callers responsibility to append required fields.
 // Then call the Flush() interface method to perform the insert.
 // This avoids intermediate allocations and fills out ch-go's internal
 // column buffers directly.
+// The Append operations are safe to call concurrently.
 func (s *ClickHouseStore) FastInsert(preSize int) LogAppender {
-	colBatch := s.batchPool.Get().(*columnBatch)
+	colBatch := s.batchPool.Get()
 	colBatch.Reset()
 	colBatch.ensureSize(preSize)
 	return &batchAppender{
@@ -250,7 +263,7 @@ func (s *ClickHouseStore) BatchInsert(ctx context.Context, records []core.FlatLo
 		return nil
 	}
 
-	colBatch := s.batchPool.Get().(*columnBatch)
+	colBatch := s.batchPool.Get()
 	colBatch.Reset()
 	colBatch.ensureSize(len(records))
 	defer s.batchPool.Put(colBatch)

@@ -11,9 +11,10 @@ func BenchmarkGenerateRequest(b *testing.B) {
 	cfg := config.CleanConfig{
 		Seed:                 1,
 		PoolSize:             5000,
-		HealthUrl:            "",
+		GrpcWorkers:          1,
+		HttpMethod:           "",
+		HttpHealthUrl:        "",
 		TargetUrl:            "",
-		Method:               "",
 		Rps:                  1,
 		BatchSize:            500,
 		SeverityDistribution: []float64{0.1, 0.6, 0.1, 0.1, 0.1},

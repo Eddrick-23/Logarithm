@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 func FileExists(path string) (bool, error) {
@@ -20,18 +21,21 @@ func FileExists(path string) (bool, error) {
 
 }
 
-func GenerateFileName(path string, prefix string) (string, error) {
+func GenerateFileName(path string, filename string) (string, error) {
 	n, err := NumFilesInFolder(path)
 	if err != nil {
 		return "", err
 	}
 
+	base := strings.TrimSuffix(filename, filepath.Ext(filename))
+	ext := filepath.Ext(filename)
+
 	for suffix := 0; suffix <= n; suffix++ {
-		name := prefix
+		name := base
 		if suffix != 0 {
 			name += strconv.Itoa(suffix)
 		}
-		name += ".bin"
+		name += ext
 
 		exists, err := FileExists(filepath.Join(path, name))
 		if err != nil {
@@ -66,7 +70,7 @@ func NumFilesInFolder(path string) (int, error) {
 	return len(files), nil
 }
 
-func CreateResultFile(outDir string) (*os.File, error) {
+func CreateResultFile(outDir string, filename string) (*os.File, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		fmt.Printf("Error getting current directory: %v", err)
@@ -86,7 +90,7 @@ func CreateResultFile(outDir string) (*os.File, error) {
 		}
 	}
 
-	filename, err := GenerateFileName(outDir, "results")
+	filename, err = GenerateFileName(outDir, filename)
 	if err != nil {
 		fmt.Printf("could not find suitable result file name: %v", err)
 		return nil, err
@@ -98,4 +102,25 @@ func CreateResultFile(outDir string) (*os.File, error) {
 		return nil, err
 	}
 	return file, nil
+}
+
+// Write a signal file so bash script knows when load generation is completed
+func CreateReadyFile(outDir, filename string) error {
+	return os.WriteFile(filepath.Join(outDir, filename), []byte("ready"), 0644)
+}
+
+// Delete file if it exists. If file does not exist, returns nil error
+func DeleteFile(outDir, filename string) error {
+	path := filepath.Join(outDir, filename)
+	ok, err := FileExists(path)
+
+	if err != nil {
+		return err
+	}
+
+	if !ok {
+		return nil
+	}
+
+	return os.Remove(path)
 }

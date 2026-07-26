@@ -15,9 +15,11 @@ import (
 	"time"
 
 	"github.com/Eddrick-23/Logarithm/internal/config"
+	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/dashboard"
 	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
+	"github.com/Eddrick-23/Logarithm/internal/worker"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -47,8 +49,20 @@ func mustSpanID(hexStr string) pcommon.SpanID {
 }
 
 func run(ctx context.Context, w io.Writer, args []string) error {
+	config, err := config.LoadConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	var logLevel slog.Level
+	if err := logLevel.UnmarshalText([]byte(config.DashboardLogLevel)); err != nil {
+		logLevel = slog.LevelInfo
+	}
+	opt := &slog.HandlerOptions{
+		Level: logLevel,
+	}
 	logger := slog.New(
-		slog.NewTextHandler(w, nil),
+		slog.NewTextHandler(w, opt),
 	)
 	httpLogger := logger.With("component", "dashboard")
 	databaseLogger := logger.With("component", "database")
@@ -57,12 +71,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	config, err := config.LoadConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-
-	broker, err := transport.NewNatsBroker(ctx, natsLogger, config.NatsURL)
+	broker, err := transport.NewNatsBroker(ctx, config.NatsURL, transport.WithLogger(natsLogger))
 	if err != nil {
 		natsLogger.Error("failed to initialise NATS broker", "err", err)
 		os.Exit(1)
@@ -218,7 +227,14 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		}
 	}()
 
-	logStore, err := storage.NewClickHouseStore(ctx, databaseLogger, config.DBAddress, config.DBName, config.DBUser, config.DBPassword)
+	chConfig := storage.Config{
+		Address:  config.DBAddress,
+		Database: config.DBName,
+		Username: config.DBUser,
+		Password: config.DBPassword,
+	}
+
+	logStore, err := storage.NewClickHouseStore(ctx, chConfig, storage.WithLogger(databaseLogger))
 	if err != nil {
 		databaseLogger.Error("failed to connect to db", "err", err)
 		panic(err)
@@ -238,6 +254,49 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		Handler: srv,
 	}
 
+	// Bind to the existing jetstream consumer and start consuming messages, mainly used to
+	// extract out the consumer info to be saved into db to be displayed on the frontend
+	jetStreamConsumer, err := broker.GetJetstreamConsumer(ctx, transport.LogStreamName, worker.WorkerName)
+	if err != nil {
+		natsLogger.Error("failed to load jetstream consumer", "err", err)
+		return err
+	}
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		ticker := time.NewTicker(15 * time.Second) // currently, it refetches info from consumer every 15 seconds
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				// attempt to extract jetstream consumer info
+				info, err := jetStreamConsumer.Info(ctx)
+				if err != nil {
+					natsLogger.Error("failed to get consumer info", "err", err)
+					continue
+				}
+
+				natsQueueDepthConsumerInfo := core.NatsQueueDepthConsumerInfo{
+					Name:           info.Name,
+					Stream:         info.Stream,
+					NumPending:     info.NumPending,
+					NumAckPending:  uint64(info.NumAckPending),
+					NumRedelivered: uint64(info.NumRedelivered),
+				}
+
+				// attempt to save the info into the database
+				if err := logStore.SaveConsumerInfo(ctx, natsQueueDepthConsumerInfo); err != nil {
+					databaseLogger.Error("failed to write consumer info to database", "err", err)
+				}
+
+			case <-ctx.Done():
+				natsLogger.Info("stopping consumer info polling")
+				return
+			}
+		}
+	})
+
 	go func() {
 		httpLogger.Info("listening", "addr", httpServer.Addr)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -245,11 +304,8 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		}
 	}()
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	go func() { // shutdown job
-		defer wg.Done()
+	wg.Go(func() {
+		// shutdown job
 		<-ctx.Done()
 
 		shutdownCtx := context.Background()
@@ -260,10 +316,9 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
 			httpLogger.Error("http server shutting down failed", "err", err)
 		}
-	}()
+	})
 
 	wg.Wait()
-
 	return nil
 }
 

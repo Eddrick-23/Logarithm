@@ -7,14 +7,23 @@ import {
     type MRT_PaginationState,
     type MRT_SortingState,
 } from "material-react-table";
-import { IconButton, Tooltip } from "@mui/material";
+import { IconButton, InputAdornment, Stack, Tooltip } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import type { KeyValue, LogRecord } from "../types/Log";
+import type { KeyValue, LogRecord, LogType } from "../types/Log";
+import { SEVERITY_NORMALISE_MAP } from "../utils/severity";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { useSearchLogs } from "../hooks/useSearchLogs";
+import SearchIcon from "@mui/icons-material/Search";
+import SeverityPill from "./SeverityPill";
 
-export default function EnhancedTable() {
+function normaliseSeverity(value: string): LogType {
+    const lower = value.toLowerCase();
+    return SEVERITY_NORMALISE_MAP[lower] ?? "info";
+}
+
+export default function LogsTable() {
+    const [showColumnFilters, setShowColumnFilters] = useState<boolean>(true);
     const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>([]);
     const [sorting, setSorting] = useState<MRT_SortingState>([]);
     const [pagination, setPagination] = useState<MRT_PaginationState>({
@@ -40,37 +49,96 @@ export default function EnhancedTable() {
                 accessorKey: "traceId",
                 header: "Trace ID",
                 enableSorting: false,
+                grow: false, // should not grow in length since traceId length is fixed
+                size: 295,
             },
             {
                 accessorKey: "spanId",
                 header: "Span ID",
                 enableSorting: false,
+                grow: false, // should not grow in length since spanId length is fixed
+                size: showColumnFilters ? 190 : 170,
             },
             {
                 accessorKey: "severityText",
                 header: "Severity Text",
                 enableSorting: false,
+                grow: false, // should not grow in length since severityText length is fixed
+                size: showColumnFilters ? 235 : 190,
+                Cell: ({ cell }) => <SeverityPill severity={normaliseSeverity(cell.getValue<string>())} />,
+                // set severityText column to be center-aligned
+                muiTableHeadCellProps: {
+                    align: "center",
+                },
+                muiTableBodyCellProps: {
+                    align: "center",
+                },
             },
             {
                 accessorKey: "severityNumber",
                 header: "Severity #",
                 enableSorting: false,
+                grow: false, // should not grow in length since severityNumber length is fixed
+                size: showColumnFilters ? 200 : 170,
+                muiFilterTextFieldProps: ({ column }) => {
+                    const filterValue = column.getFilterValue() as string;
+                    const numericValue = Number(filterValue);
+                    const isInvalid = filterValue != "" && (numericValue < 1 || numericValue > 24);
+
+                    return {
+                        type: "number",
+                        error: isInvalid,
+                        helperText: isInvalid ? "Must be 1–24" : undefined,
+                        slotProps: {
+                            input: {
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon />
+                                    </InputAdornment>
+                                ),
+                                endAdornment: null,
+                            },
+                            // fix the formHelperText position below the input
+                            formHelperText: {
+                                sx: {
+                                    position: "absolute",
+                                    top: "100%",
+                                    left: 0,
+                                    margin: 0,
+                                    whiteSpace: "nowrap",
+                                },
+                            },
+                        },
+                    };
+                },
+                // set severityNumber column to be center-aligned
+                muiTableHeadCellProps: {
+                    align: "center",
+                },
+                muiTableBodyCellProps: {
+                    align: "center",
+                },
             },
             {
                 accessorKey: "serviceName",
                 header: "Service Name",
                 enableSorting: true,
+                grow: false, // should not grow in length since serviceName length is fixed
+                size: showColumnFilters ? 240 : 200,
             },
             {
                 accessorKey: "body",
                 header: "Body",
                 enableSorting: false,
+                size: 240,
             },
             {
                 accessorFn: (row) => new Date(row.timestamp),
                 id: "startTime",
                 header: "Time",
                 filterVariant: "datetime-range",
+                grow: false, // should not grow in length since time length is fixed
+                size: showColumnFilters ? 635 : 200,
                 muiFilterDateTimePickerProps: ({ rangeFilterIndex }: { rangeFilterIndex: number }) => ({
                     label: rangeFilterIndex === 0 ? "Start" : "End",
                 }),
@@ -82,14 +150,15 @@ export default function EnhancedTable() {
                 header: "Log Attributes",
                 enableSorting: false,
                 enableColumnFilter: false,
+                size: 250,
                 Cell: ({ cell }) => (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    <Stack direction="column" spacing={1}>
                         {cell.getValue<KeyValue[]>()?.map((attr, i) => (
                             <span key={`${i}-${attr.key}`}>
-                                {attr.key}: {attr.value}
+                                <strong>{attr.key}</strong>: {attr.value}
                             </span>
                         ))}
-                    </div>
+                    </Stack>
                 ),
             },
             {
@@ -97,23 +166,26 @@ export default function EnhancedTable() {
                 header: "Resource Attributes",
                 enableSorting: false,
                 enableColumnFilter: false,
+                size: 250,
                 Cell: ({ cell }) => (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    <Stack direction="column" spacing={1}>
                         {cell.getValue<KeyValue[]>()?.map((attr, i) => (
                             <span key={`${i}-${attr.key}`}>
-                                {attr.key}: {attr.value}
+                                <strong>{attr.key}</strong>: {attr.value}
                             </span>
                         ))}
-                    </div>
+                    </Stack>
                 ),
             },
         ],
-        [],
+        [showColumnFilters],
     );
 
     const table = useMaterialReactTable({
         columns,
         data: logs,
+        layoutMode: "grid",
+        enableStickyHeader: true,
         initialState: {
             showColumnFilters: true,
             columnFilters: [
@@ -126,13 +198,23 @@ export default function EnhancedTable() {
         manualFiltering: true, // turn off built-in client-side filtering
         manualPagination: true, // turn off built-in client-side pagination
         manualSorting: true, // turn off built-in client-side sorting
-        muiFilterTextFieldProps: {
+        muiFilterTextFieldProps: ({ column }) => ({
             variant: "filled",
-        },
+            placeholder: column.columnDef.header,
+            slotProps: {
+                input: {
+                    startAdornment: (
+                        <InputAdornment position="start">
+                            <SearchIcon />
+                        </InputAdornment>
+                    ),
+                },
+            },
+        }),
         muiToolbarAlertBannerProps: isError
             ? {
-                  color: "error",
-                  children: "Error loading data",
+                  severity: "error",
+                  children: "Error loading data.",
               }
             : undefined,
         onColumnFiltersChange: setColumnFilters,
@@ -154,7 +236,9 @@ export default function EnhancedTable() {
             showAlertBanner: isError,
             showProgressBars: isRefetching,
             sorting,
+            showColumnFilters,
         },
+        onShowColumnFiltersChange: setShowColumnFilters, // state passed to allow for reducing column width if filters are disabled
         muiTableHeadCellProps: {
             sx: {
                 color: "primary.main",

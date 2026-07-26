@@ -22,11 +22,6 @@ export type ErrorRateMetrics = {
     currentRate: number;
 };
 
-export type GetIngestionMetricsResponse = {
-    graph: IngestionGraphData;
-    logStats: LogRateStatistics;
-};
-
 export type TopServiceErrorsStats = {
     serviceName: string;
     totalErrors: number;
@@ -35,4 +30,15 @@ export type TopServiceErrorsStats = {
 
 export type GetTopServiceErrorsStatsResponse = {
     data: TopServiceErrorsStats[];
+};
+
+export type NatsQueueDepthGraphMetrics = {
+    timestamps: number[];
+    numPending: number[];
+    numAckPending: number[];
+    numRedelivered: number[];
+};
+
+export type NatsDLQMetrics = {
+    numMessages: number;
 };

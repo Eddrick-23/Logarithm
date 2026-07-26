@@ -35,8 +35,6 @@ func startPprof(logger *slog.Logger, config *config.Config) {
 }
 
 func run(ctx context.Context, w io.Writer) error {
-	const workerName = "worker"
-
 	config, err := config.LoadConfig(ctx)
 	if err != nil {
 		return err
@@ -63,18 +61,25 @@ func run(ctx context.Context, w io.Writer) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	store, err := storage.NewClickHouseStore(ctx,
-		dblogger,
-		config.DBAddress,
-		config.DBName,
-		config.DBUser,
-		config.DBPassword)
+	chConfig := storage.Config{
+		Address:  config.DBAddress,
+		Database: config.DBName,
+		Username: config.DBUser,
+		Password: config.DBPassword,
+	}
+	store, err := storage.NewClickHouseStore(
+		ctx,
+		chConfig,
+		storage.WithLogger(dblogger),
+		storage.WithPoolSize(config.DBBatchPoolSize),
+		storage.WithRowLimit(config.DBBatchPoolMaxRows),
+	)
 
 	if err != nil {
 		return fmt.Errorf("failed to connect to db: %w", err)
 	}
 
-	natsBroker, err := transport.NewNatsBroker(ctx, natsLogger, config.NatsURL)
+	natsBroker, err := transport.NewNatsBroker(ctx, config.NatsURL, transport.WithLogger(natsLogger))
 
 	if err != nil {
 		return fmt.Errorf("failed to create nats broker: %w", err)
@@ -94,7 +99,7 @@ func run(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("failed to ensure log stream: %w", err)
 	}
 
-	consumer, err := natsBroker.NewDurableConsumer(ctx, stream, workerName, config.NatsMaxDeliver, config.NatsBackoff, config.NatsConsumerMaxAckPending)
+	consumer, err := natsBroker.NewDurableConsumer(ctx, stream, worker.WorkerName, config.NatsMaxDeliver, config.NatsBackoff, config.NatsConsumerMaxAckPending)
 	if err != nil {
 		return fmt.Errorf("failed to create durable consumer: %w", err)
 	}
@@ -104,18 +109,45 @@ func run(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("failed to ensure dlq stream: %w", err)
 	}
 
-	decompressor, err := worker.NewLogDecompressor()
+	subscriberCheck, err := natsBroker.StartPresenceListener(ctx, transport.LiveTailPresenceSubject, config.WorkerLiveTailPresenceTimeout)
 	if err != nil {
-		return fmt.Errorf("failed to create log decompressor: %w", err)
+		return fmt.Errorf("failed to set up live tail presence listener: %w", err)
 	}
 
-	liveTailPublisher := worker.NewLiveTailPublisher(publishLogger, natsBroker, config.WorkerLiveTailCount, config.WorkerLiveTailQueueSize)
+	liveTailPublisher := worker.NewLiveTailPublisher(
+		natsBroker,
+		subscriberCheck,
+		worker.WithLogger(publishLogger),
+		worker.WithWorkerCount(config.WorkerLiveTailCount),
+		worker.WithQueueSize(config.WorkerLiveTailQueueSize),
+	)
 	defer liveTailPublisher.Close()
 
 	decoder := worker.NewLogDecoder()
 	flattener := worker.NewLogTransformer(logger)
+	factory := func() (worker.Decompressor, error) {
+		if config.WorkerCount == 1 {
+			return worker.NewLogDecompressor()
+		} else {
+			return worker.NewLogDecompressor(worker.WithZstdConcurrencyLimit(1))
+		}
+	}
+	workPool, err := worker.NewWorkerPool(worker.Config{
+		Logger:        workerLogger,
+		Store:         store,
+		DecompFactory: factory,
+		Decoder:       decoder,
+		Transformer:   flattener,
+		Publisher:     liveTailPublisher,
+		EstimatedRows: config.WorkerRowsPerBatch,
+		NumWorkers:    config.WorkerCount,
+	})
+	if err != nil {
+		return fmt.Errorf("workerPool construction failed: %w", err)
+	}
+	defer workPool.Close()
 
-	consumeCallback, err := worker.ConsumeCallback(workerLogger, store, decompressor, decoder, flattener, liveTailPublisher, config.WorkerRowsPerBatch)
+	consumeCallback, err := workPool.ConsumeCallback()
 	if err != nil {
 		return err
 	}

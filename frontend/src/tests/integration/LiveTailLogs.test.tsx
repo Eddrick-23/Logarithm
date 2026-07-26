@@ -1,15 +1,12 @@
-import { render, screen, act, waitFor } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { vi, describe, it, expect, beforeAll, beforeEach, afterEach, afterAll } from "vitest";
-import { setupServer } from "msw/node";
-import { ws } from "msw";
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import LiveTailLogs from "../../components/LiveTailLogs";
 import type { FlatLogRecord } from "../../types/Log";
-import { encode } from "@msgpack/msgpack";
 
 const connectingMessage = "Connecting to live tail server...";
-const pauseMessage = "Tail paused — new logs buffering";
-const errorMessage = "Connection lost. Failed to connect to the live tail server.";
+const pauseMessage = "Live Tail paused — No new logs";
+const errorMessage = /live tail server/i;
 
 vi.mock("../../hooks/useDistinctServices", () => ({
     useDistinctServices: () => ({
@@ -18,25 +15,36 @@ vi.mock("../../hooks/useDistinctServices", () => ({
     }),
 }));
 
-// mock websocket handler
-const tailWs = ws.link("ws://localhost:8091/ws/logs/tail");
+// MOCK WEB WORKER
+let mockWorkerInstance: MockWorker | null = null;
 
-let sendToClient: ((data: Uint8Array | string) => void) | null = null;
-let serverCloseConnection: ((code?: number) => void) | null = null;
+class MockWorker {
+    onmessage: ((event: MessageEvent) => void) | null = null;
+    postMessage = vi.fn();
+    terminate = vi.fn();
 
-const server = setupServer(
-    tailWs.addEventListener("connection", ({ client }) => {
-        sendToClient = (data) => client.send(data);
-        serverCloseConnection = (code = 1006) => client.close(code);
-    }),
-);
+    constructor() {
+        mockWorkerInstance = this;
+    }
+
+    // Custom helper to simulate the worker sending a message to the React component
+    emit(data: any) {
+        if (this.onmessage) {
+            act(() => {
+                this.onmessage!({ data } as MessageEvent);
+            });
+        }
+    }
+}
+
+vi.stubGlobal("Worker", MockWorker);
 
 const makeRecord = (overrides: Partial<FlatLogRecord> = {}): FlatLogRecord => ({
     serviceName: "auth-service",
     body: "User logged in",
     severityText: "INFO",
-    timestamp: new Date().toISOString(),
-    observedTimestamp: new Date().toISOString(),
+    timestamp: Date.now(),
+    observedTimestamp: Date.now(),
     insertedAt: "2024-01-01T00:00:00Z",
     traceId: "5b8aa5a2d2c8646c14e138a83416a41f",
     spanId: "f96ea2a71a065463",
@@ -51,213 +59,125 @@ const makeRecord = (overrides: Partial<FlatLogRecord> = {}): FlatLogRecord => ({
     ...overrides,
 });
 
-// encodes multiple objects into MessagePack and concatenates their bytes into a single stream
-const encodeBatch = (records: FlatLogRecord[]): Uint8Array => {
-    const buffers = records.map((r) => encode(r));
-    const totalLength = buffers.reduce((acc, curr) => acc + curr.length, 0);
-    const result = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const buf of buffers) {
-        result.set(buf, offset);
-        offset += buf.length;
-    }
-    return result;
-};
-
-const emitLogs = async (overrides: Partial<FlatLogRecord> = {}) => {
-    // encode record as binary MessagePack payload
-    await act(async () => sendToClient?.(encodeBatch([makeRecord(overrides)])));
-};
-
-/** Renders the component and waits for the WebSocket connection to be established */
+/** Renders the component and simulates the worker successfully connecting */
 const renderAndConnect = async () => {
     render(<LiveTailLogs />);
-    await waitFor(() => expect(sendToClient).not.toBeNull());
+    // Simulate the worker telling the UI it connected successfully
+    mockWorkerInstance?.emit({ type: "STATUS", payload: "live" });
 };
 
-beforeAll(() => server.listen());
-
 beforeEach(() => {
-    sendToClient = null;
-    serverCloseConnection = null;
+    mockWorkerInstance = null;
     vi.useFakeTimers({ shouldAdvanceTime: true });
 });
 
 afterEach(() => {
-    server.resetHandlers();
     vi.useRealTimers();
     vi.restoreAllMocks();
 });
 
-afterAll(() => server.close());
-
 describe("LiveTailLogs — connection status", () => {
-    it("shows connecting bar on initial render before socket opens", async () => {
+    it("shows connecting bar on initial render", async () => {
         render(<LiveTailLogs />);
         expect(screen.getByText(connectingMessage)).toBeInTheDocument();
-        await act(async () => {});
     });
 
-    it("hides connecting bar once socket opens", async () => {
+    it("hides connecting bar once worker sends connected status", async () => {
         await renderAndConnect();
         expect(screen.queryByText(connectingMessage)).not.toBeInTheDocument();
     });
 
-    it("shows connecting bar when server drops the connection and is retrying", async () => {
+    it("shows error bar when worker sends error status", async () => {
         await renderAndConnect();
-        await act(async () => serverCloseConnection?.(1006));
-        await waitFor(() => expect(screen.getByText(connectingMessage)).toBeInTheDocument());
+        mockWorkerInstance?.emit({ type: "STATUS", payload: "error" });
+        expect(screen.getByText(errorMessage)).toBeInTheDocument();
     });
 
-    it("shows error bar after max reconnect attempts are exhausted", async () => {
+    it("retrying after error sends RECONNECT command to worker", async () => {
         await renderAndConnect();
+        mockWorkerInstance?.emit({ type: "STATUS", payload: "error" });
 
-        server.use(
-            tailWs.addEventListener("connection", ({ client }) => {
-                client.close(1006);
-            }),
-        );
+        await userEvent.click(screen.getByRole("button", { name: /retry/i }));
 
-        await act(async () => serverCloseConnection?.(1006));
-        for (let i = 0; i < 5; i++) {
-            await act(async () => vi.advanceTimersByTime(1000 * 2 ** i + 100));
-        }
-
-        await waitFor(() => expect(screen.getByText(errorMessage)).toBeInTheDocument());
+        // UI should revert to connecting state
+        expect(screen.getByText(connectingMessage)).toBeInTheDocument();
+        // UI should instruct the worker to reconnect
+        expect(mockWorkerInstance?.postMessage).toHaveBeenCalledWith({ type: "RECONNECT" });
     });
 
-    it("does not reconnect on normal closure (code 1000)", async () => {
-        await renderAndConnect();
+    it("sends CLEANUP command to worker on unmount", () => {
+        const { unmount } = render(<LiveTailLogs />);
+        unmount();
 
-        const instanceBefore = sendToClient;
-        await act(async () => serverCloseConnection?.(1000));
-        await act(async () => vi.advanceTimersByTime(500));
-
-        expect(sendToClient).toBe(instanceBefore);
-    });
-
-    it("recovers to connected state after a successful reconnect", async () => {
-        await renderAndConnect();
-
-        await act(async () => serverCloseConnection?.(1006));
-        await act(async () => vi.advanceTimersByTime(1100));
-
-        await waitFor(() => expect(screen.queryByText(connectingMessage)).not.toBeInTheDocument());
-        expect(screen.queryByText(errorMessage)).not.toBeInTheDocument();
-    });
-
-    it("retrying after error resets to connecting state", async () => {
-        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-        await renderAndConnect();
-
-        server.use(
-            tailWs.addEventListener("connection", ({ client }) => {
-                client.close(1006);
-            }),
-        );
-
-        await act(async () => serverCloseConnection?.(1006));
-        for (let i = 0; i < 5; i++) {
-            await act(async () => {
-                vi.advanceTimersByTime(1000 * 2 ** i + 100);
-                await Promise.resolve();
-            });
-        }
-
-        await waitFor(() => expect(screen.getByText(errorMessage)).toBeInTheDocument());
-
-        server.resetHandlers();
-        await act(async () => {
-            await userEvent.click(screen.getByRole("button", { name: /retry/i }));
-            expect(screen.getByText(connectingMessage)).toBeInTheDocument();
-        });
-
-        // due to some jsdom errors, this line is only meant
-        // to suppress the act warning, not real errors
-        expect(consoleError).not.toHaveBeenCalledWith(expect.stringContaining("failed"));
+        expect(mockWorkerInstance?.postMessage).toHaveBeenCalledWith({ type: "CLEANUP" });
+        expect(mockWorkerInstance?.terminate).toHaveBeenCalled();
     });
 });
 
 describe("LiveTailLogs — receiving logs", () => {
-    it("renders an incoming log row", async () => {
+    it("renders an incoming log row sent from the worker", async () => {
         await renderAndConnect();
 
-        await emitLogs({ body: "User logged in" });
+        mockWorkerInstance?.emit({
+            type: "LOG_UPDATE",
+            payload: [makeRecord({ body: "User logged in" })],
+        });
 
         expect(screen.getByText("User logged in")).toBeInTheDocument();
     });
 
-    it("renders multiple logs sorted by timestamp descending", async () => {
+    it("renders multiple logs provided by the worker", async () => {
         await renderAndConnect();
 
-        await act(async () =>
-            sendToClient?.(
-                encodeBatch([
-                    makeRecord({ body: "Older log", timestamp: "2024-01-01T10:00:00Z" }),
-                    makeRecord({ body: "Newer log", timestamp: "2024-01-01T11:00:00Z" }),
-                ]),
-            ),
-        );
+        mockWorkerInstance?.emit({
+            type: "LOG_UPDATE",
+            payload: [makeRecord({ body: "Newer test log" }), makeRecord({ body: "Older test log" })],
+        });
 
-        const rows = screen.getAllByText(/log/i);
-        expect(rows[0].textContent).toContain("Newer log");
-        expect(rows[1].textContent).toContain("Older log");
+        const rows = screen.getAllByText(/test log/i);
+        expect(rows[0].textContent).toContain("Newer test log");
+        expect(rows[1].textContent).toContain("Older test log");
     });
 });
 
-describe("LiveTailLogs — pause / resume", () => {
-    it("shows pause alert bar when paused", async () => {
+describe("LiveTailLogs — pause / resume commands", () => {
+    it("shows pause alert bar and sends PAUSE command to worker", async () => {
         const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
         await renderAndConnect();
 
         await user.click(screen.getByRole("button", { name: /pause/i }));
 
         expect(screen.getByText(pauseMessage)).toBeInTheDocument();
+        expect(mockWorkerInstance?.postMessage).toHaveBeenCalledWith({ type: "PAUSE" });
     });
 
-    it("buffers logs while paused and flushes them on resume", async () => {
-        await renderAndConnect();
-
-        await userEvent.click(screen.getByRole("button", { name: /pause/i }));
-
-        await emitLogs({ body: "Buffered log" });
-        expect(screen.queryByText("Buffered log")).not.toBeInTheDocument();
-
-        await userEvent.click(screen.getByRole("button", { name: /continue/i }));
-        expect(screen.getByText("Buffered log")).toBeInTheDocument();
-    });
-
-    it("hides pause bar on resume", async () => {
+    it("hides pause bar and sends RESUME command to worker", async () => {
         await renderAndConnect();
 
         await userEvent.click(screen.getByRole("button", { name: /pause/i }));
         await userEvent.click(screen.getByRole("button", { name: /continue/i }));
 
         expect(screen.queryByText(pauseMessage)).not.toBeInTheDocument();
+        expect(mockWorkerInstance?.postMessage).toHaveBeenCalledWith({ type: "RESUME" });
     });
 
     it("disables pause button while connecting", async () => {
-        server.resetHandlers();
         render(<LiveTailLogs />);
         expect(screen.getByRole("button", { name: /pause/i })).toBeDisabled();
-        await act(async () => {});
     });
 });
 
-describe("LiveTailLogs — filters", () => {
+describe("LiveTailLogs — UI filters", () => {
     beforeEach(async () => {
         await renderAndConnect();
 
-        await act(async () =>
-            sendToClient?.(
-                encodeBatch([
-                    makeRecord({ serviceName: "auth-service", body: "Auth info log", severityText: "INFO" }),
-                    makeRecord({ serviceName: "payment-service", body: "Payment error log", severityText: "ERROR" }),
-                ]),
-            ),
-        );
-
-        await waitFor(() => expect(screen.getByText("Auth info log")).toBeInTheDocument());
+        mockWorkerInstance?.emit({
+            type: "LOG_UPDATE",
+            payload: [
+                makeRecord({ serviceName: "auth-service", body: "Auth info log", severityText: "INFO" }),
+                makeRecord({ serviceName: "payment-service", body: "Payment error log", severityText: "ERROR" }),
+            ],
+        });
     });
 
     it("filters by service", async () => {
@@ -280,11 +200,9 @@ describe("LiveTailLogs — filters", () => {
         const searchInput = screen.getByPlaceholderText("Search body...");
         await userEvent.type(searchInput, "Auth");
 
-        expect(screen.getByText("Auth info log")).toBeInTheDocument();
-
         act(() => vi.advanceTimersByTime(300));
 
-        expect(screen.getByText("Auth info log")).toBeInTheDocument();
+        expect(screen.getByText((_, element) => element?.textContent === "Auth info log")).toBeInTheDocument();
         expect(screen.queryByText("Payment error log")).not.toBeInTheDocument();
     });
 

@@ -16,7 +16,6 @@ import (
 	"github.com/Eddrick-23/Logarithm/internal/config"
 	"github.com/Eddrick-23/Logarithm/internal/core"
 	"github.com/Eddrick-23/Logarithm/internal/dashboard"
-	"github.com/Eddrick-23/Logarithm/internal/storage"
 	"github.com/Eddrick-23/Logarithm/internal/transport"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
@@ -25,14 +24,11 @@ import (
 func setupDashboardServer(t *testing.T, ctx context.Context) (*httptest.Server, *transport.NatsBroker) {
 	t.Helper()
 
-	logStore, err := storage.NewClickHouseStore(ctx, slog.Default(), dbAddr, dbname, user, password)
-	if err != nil {
-		t.Fatalf("failed to initialize ClickHouse store: %v", err)
-	}
+	logStore := getNewTestStore(t)
 
 	setupTestDB(t, ctx, logStore)
 
-	broker, err := transport.NewNatsBroker(ctx, slog.Default(), natsUrl)
+	broker, err := transport.NewNatsBroker(ctx, natsUrl, transport.WithLogger(slog.Default()))
 	if err != nil {
 		t.Fatalf("failed to connect to NATS: %v", err)
 	}
@@ -213,7 +209,7 @@ func TestDashboardHandleMetrics(t *testing.T) {
 	ctx := context.Background()
 	server, _ := setupDashboardServer(t, ctx)
 
-	reqURL := server.URL + "/api/ingestion-metrics"
+	reqURL := server.URL + "/api/ingestion-graph-metrics"
 	resp, err := http.Get(reqURL)
 	if err != nil {
 		t.Fatalf("failed to make GET request: %v", err)
@@ -226,12 +222,12 @@ func TestDashboardHandleMetrics(t *testing.T) {
 
 	body, _ := io.ReadAll(resp.Body)
 
-	var result core.IngestionMetricsEvent
+	var result core.IngestionGraphMetrics
 	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&result); err != nil {
 		t.Fatalf("failed to decode JSON: %v", err)
 	}
 
-	metrics := result.Graph.Metrics["payment-service"]
+	metrics := result.Metrics["payment-service"]
 	// 60 records due to the backfill of null timings
 	if len(metrics) != 60 {
 		t.Fatalf("expected 60 log metrics, got %v", len(metrics))

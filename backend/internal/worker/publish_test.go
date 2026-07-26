@@ -13,7 +13,13 @@ func TestLiveTailPublisherConcurrentEnqueue(t *testing.T) {
 		publishCh: make(chan struct{}, 10),
 	}
 
-	publisher := NewLiveTailPublisher(slog.Default(), producer, 2, 10)
+	publisher := NewLiveTailPublisher(
+		producer,
+		func() bool { return true },
+		WithLogger(slog.Default()),
+		WithWorkerCount(2),
+		WithQueueSize(10),
+	)
 	defer publisher.Close()
 
 	msg := &MockMsg{
@@ -21,37 +27,39 @@ func TestLiveTailPublisherConcurrentEnqueue(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			success := publisher.Enqueue("test-subject", msg)
 			assert.True(t, success, "enqueue should succeed")
-		}()
+		})
 	}
 
 	wg.Wait()
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-producer.publishCh
 	}
 
-	producer.mu.Lock()
-	defer producer.mu.Unlock()
-	assert.Equal(t, 10, producer.publishCount, "All 10 messages should be published successfully")
+	assert.Equal(t, 10, producer.GetPublishLiveTailCount(), "All 10 messages should be published successfully")
 }
 
 func TestLiveTailPublisherBackPressure(t *testing.T) {
 	producer := &MockProducer{}
 
-	pub := NewLiveTailPublisher(slog.Default(), producer, 0, 1) // 0 worker so never drains
-	defer pub.Close()
+	publisher := NewLiveTailPublisher(
+		producer,
+		func() bool { return true },
+		WithLogger(slog.Default()),
+		WithWorkerCount(0),
+		WithQueueSize(1),
+	)
+	defer publisher.Close()
 
 	msg := &MockMsg{data: []byte("log data")}
 
-	success1 := pub.Enqueue("test-subject", msg)
+	success1 := publisher.Enqueue("test-subject", msg)
 	assert.True(t, success1, "First enqueue should succeed")
 
-	success2 := pub.Enqueue("test-subject", msg)
+	success2 := publisher.Enqueue("test-subject", msg)
 	assert.False(t, success2, "Second enqueue should fail")
 }

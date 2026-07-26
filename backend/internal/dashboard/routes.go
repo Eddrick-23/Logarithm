@@ -28,11 +28,43 @@ func AddRoutes(
 	mux.Handle("GET /api/search", handleLogs(logger, logStore))
 	mux.Handle("GET /api/services", handleDistinctServices(logger, logStore))
 	mux.Handle("GET /api/top-service-errors", handleTopServiceErrors(logger, logStore))
-	mux.Handle("GET /api/ingestion-metrics", handleIngestionMetrics(logger, logStore))
-	mux.Handle("GET /api/ingestion-metrics/stream", handleIngestionMetricsStream(logger, logStore, appCtx))
+	mux.Handle("GET /api/ingestion-graph-metrics", handleIngestionGraphMetrics(logger, logStore))
+	mux.Handle("GET /api/dashboard/stream", handleDashboardStream(logger, logStore, broker, appCtx))
+	mux.Handle("GET /api/log-rate-stats", handleLogRateStats(logger, logStore))
 	mux.Handle("GET /api/error-rate-metrics", handleErrorRateMetrics(logger, logStore))
 	mux.Handle("GET /api/storage-info", handleStorageInfo(logger, logStore))
+	mux.Handle("GET /api/nats-dlq-info", handleNatsDLQInfo(logger, broker))
+	mux.Handle("GET /api/nats-queue-depth-metrics", handleNatsQueueDepthMetrics(logger, logStore))
+	mux.Handle("GET /api/config", handleConfig(logger, config))
 	mux.Handle("GET /ws/logs/tail", handleLiveTail(logger, broker, config))
+}
+
+// writeJSON attempts to marshal v to json
+// if successful, it will attempt to write to the response
+func writeJSON(w http.ResponseWriter, logger *slog.Logger, status int, v any) {
+	// Attempt to marshal the data first
+	data, err := json.Marshal(v)
+	if err != nil {
+		logger.Error("failed to marshal json response", "err", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	// Set headers only after we know encoding succeeded
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+
+	// Write the actual data to the response
+	if _, err := w.Write(data); err != nil {
+		logger.Error("failed to write response body", "err", err)
+	}
+}
+
+// writeError logs an error and sends an HTTP error response with the given
+// status code and message.
+func writeError(w http.ResponseWriter, logger *slog.Logger, err error, logMsg string, clientMsg string, status int) {
+	logger.Error(logMsg, "err", err)
+	http.Error(w, clientMsg, status)
 }
 
 func handleRoot(logger *slog.Logger) http.HandlerFunc {
@@ -50,16 +82,7 @@ func handleHealth(logger *slog.Logger) http.HandlerFunc {
 		Health string `json:"health"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		bytes, err := json.Marshal(&response{Health: "ok"})
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to marshall json: %v", err), http.StatusInternalServerError)
-		}
-
-		w.WriteHeader(http.StatusOK)
-		_, err = w.Write(bytes)
-		if err != nil {
-			logger.Error("failed to write response", "err", err)
-		}
+		writeJSON(w, logger, http.StatusOK, response{Health: "ok"})
 	}
 }
 
@@ -74,8 +97,7 @@ func handleLogs(logger *slog.Logger, logStore *storage.ClickHouseStore) http.Han
 		if s := query.Get("startTime"); s != "" {
 			startTime, err = time.Parse(layout, s)
 			if err != nil {
-				logger.Error("invalid start time type", "err", err)
-				http.Error(w, "Bad Request", http.StatusBadRequest)
+				writeError(w, logger, err, "invalid start time type", "Bad Request", http.StatusBadRequest)
 				return
 			}
 		}
@@ -83,50 +105,39 @@ func handleLogs(logger *slog.Logger, logStore *storage.ClickHouseStore) http.Han
 		if s := query.Get("endTime"); s != "" {
 			endTime, err = time.Parse(layout, s)
 			if err != nil {
-				logger.Error("invalid end time type", "err", err)
-				http.Error(w, "Bad Request", http.StatusBadRequest)
+				writeError(w, logger, err, "invalid end time type", "Bad Request", http.StatusBadRequest)
 				return
 			}
 		}
 
 		orderBy := core.ParseOrderByField(query.Get("orderBy"))
-		if err != nil {
-			logger.Error("invalid order by", "err", err)
-			http.Error(w, "Bad Request", http.StatusBadRequest)
-			return
-		}
-
 		descending, err := strconv.ParseBool(query.Get("descending"))
 		if err != nil {
-			logger.Error("invalid descending type", "err", err)
-			http.Error(w, "Bad Request", http.StatusBadRequest)
+			writeError(w, logger, err, "invalid descending type", "Bad Request", http.StatusBadRequest)
 			return
 		}
 
 		if s := query.Get("severityNumber"); s != "" {
 			severityNumber, err = strconv.Atoi(query.Get("severityNumber"))
 			if err != nil {
-				logger.Error("invalid severityNumber type", "err", err)
-				http.Error(w, "Bad Request", http.StatusBadRequest)
+				writeError(w, logger, err, "invalid severityNumber type", "Bad Request", http.StatusBadRequest)
 				return
 			}
 		}
 
 		limit, err := strconv.Atoi(query.Get("limit"))
 		if err != nil {
-			logger.Error("invalid limit type", "err", err)
-			http.Error(w, "Bad Request", http.StatusBadRequest)
+			writeError(w, logger, err, "invalid limit type", "Bad Request", http.StatusBadRequest)
 			return
 		}
 
 		offset, err := strconv.Atoi(query.Get("offset"))
 		if err != nil {
-			logger.Error("invalid offset type", "err", err)
-			http.Error(w, "Bad Request", http.StatusBadRequest)
+			writeError(w, logger, err, "invalid offset type", "Bad Request", http.StatusBadRequest)
 			return
 		}
 
-		ctx := context.Background()
+		ctx := r.Context()
 		filter := core.LogQueryFilter{
 			StartTime:      startTime,
 			EndTime:        endTime,
@@ -144,15 +155,13 @@ func handleLogs(logger *slog.Logger, logStore *storage.ClickHouseStore) http.Han
 
 		flatLogRecords, err := logStore.SearchLogs(ctx, filter)
 		if err != nil {
-			logger.Error("failed to search logs", "err", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeError(w, logger, err, "failed to search logs", "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
 		logsCount, err := logStore.GetFilteredLogsCount(ctx, filter)
 		if err != nil {
-			logger.Error("failed to get logs count", "err", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeError(w, logger, err, "failed to get logs count", "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
@@ -172,26 +181,18 @@ func handleLogs(logger *slog.Logger, logStore *storage.ClickHouseStore) http.Han
 			},
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		err = json.NewEncoder(w).Encode(response)
-		if err != nil {
-			logger.Error("failed to write response", "err", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
+		writeJSON(w, logger, http.StatusOK, response)
 	}
 }
 
 func handleDistinctServices(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
-		ctx := context.Background()
+		ctx := r.Context()
 
 		distinctServices, err := logStore.GetDistinctServices(ctx)
 		if err != nil {
-			logger.Error("failed to get distinct services", "err", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeError(w, logger, err, "failed to get distinct services", "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
@@ -199,72 +200,63 @@ func handleDistinctServices(logger *slog.Logger, logStore *storage.ClickHouseSto
 			"services": distinctServices,
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+		writeJSON(w, logger, http.StatusOK, response)
+	}
+}
 
-		err = json.NewEncoder(w).Encode(response)
+func handleLogRateStats(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		ctx := r.Context()
+
+		logRateStats, err := logStore.GetLogRateStatistics(ctx)
 		if err != nil {
-			logger.Error("failed to write response", "err", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeError(w, logger, err, "failed to get log rate stats", "Internal Server Error", http.StatusInternalServerError)
+			return
 		}
+
+		writeJSON(w, logger, http.StatusOK, logRateStats)
 	}
 }
 
 func handleErrorRateMetrics(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
-		ctx := context.Background()
+		ctx := r.Context()
 
 		errorRateMetrics, err := logStore.GetErrorRateMetrics(ctx)
 		if err != nil {
-			logger.Error("failed to get error rate metrics", "err", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeError(w, logger, err, "failed to get error metrics", "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		err = json.NewEncoder(w).Encode(errorRateMetrics)
-		if err != nil {
-			logger.Error("failed to write response", "err", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
+		writeJSON(w, logger, http.StatusOK, errorRateMetrics)
 	}
 }
 
-func handleIngestionMetrics(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
+func handleIngestionGraphMetrics(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
-		ctx := context.Background()
+		ctx := r.Context()
 
-		ingestionMetrics, err := logStore.GetAllIngestionMetrics(ctx)
+		ingestionGraphMetrics, err := logStore.GetIngestionGraphMetrics(ctx)
 		if err != nil {
-			logger.Error("failed to get logging metrics", "err", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeError(w, logger, err, "failed to get ingestion graph metrics", "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		err = json.NewEncoder(w).Encode(ingestionMetrics)
-		if err != nil {
-			logger.Error("failed to write response", "err", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
+		writeJSON(w, logger, http.StatusOK, ingestionGraphMetrics)
 	}
 }
 
 func handleTopServiceErrors(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
-		ctx := context.Background()
+		ctx := r.Context()
 
 		topServiceErrorsStats, err := logStore.GetTopServiceErrorsStats(ctx)
 		if err != nil {
-			logger.Error("failed to get top service errors stats", "err", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeError(w, logger, err, "failed to get top service errors stats", "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
@@ -272,14 +264,7 @@ func handleTopServiceErrors(logger *slog.Logger, logStore *storage.ClickHouseSto
 			Data: topServiceErrorsStats,
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		err = json.NewEncoder(w).Encode(response)
-		if err != nil {
-			logger.Error("failed to write response", "err", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
+		writeJSON(w, logger, http.StatusOK, response)
 	}
 }
 
@@ -289,13 +274,11 @@ func handleStorageInfo(logger *slog.Logger, logStore *storage.ClickHouseStore) h
 
 		stats, err := logStore.GetStorageStats(ctx)
 		if err != nil {
-			logger.Error("failed to get storage stats", "error", err)
-			http.Error(w, "failed to get storage info", http.StatusInternalServerError)
+			writeError(w, logger, err, "failed to get storage stats", "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 		if len(stats) == 0 {
-			logger.Error("no disk stats found")
-			http.Error(w, "no disk stats found", http.StatusInternalServerError)
+			writeError(w, logger, fmt.Errorf("no disk stats found"), "no disk stats found", "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
@@ -305,8 +288,7 @@ func handleStorageInfo(logger *slog.Logger, logStore *storage.ClickHouseStore) h
 
 		outlook, err := logStore.GetLogsStorageOutlook(ctx)
 		if err != nil {
-			logger.Error("failed to get logs storage outlook", "error", err)
-			http.Error(w, "failed to get storage info", http.StatusInternalServerError)
+			writeError(w, logger, err, "failed to get logs storage outlook", "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
@@ -334,9 +316,42 @@ func handleStorageInfo(logger *slog.Logger, logStore *storage.ClickHouseStore) h
 			}
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(card); err != nil {
-			logger.Error("failed to encode storage card response", "error", err)
+		writeJSON(w, logger, http.StatusOK, card)
+	}
+}
+
+func handleNatsDLQInfo(logger *slog.Logger, natsBroker *transport.NatsBroker) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		natsDLQInfo, err := natsBroker.GetDLQStreamInfo(ctx, transport.DLQStreamName)
+		if err != nil {
+			writeError(w, logger, err, "failed to get nats dlq info", "Internal Server Error", http.StatusInternalServerError)
+			return
 		}
+
+		writeJSON(w, logger, http.StatusOK, natsDLQInfo)
+	}
+
+}
+
+func handleNatsQueueDepthMetrics(logger *slog.Logger, logStore *storage.ClickHouseStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		// retrieve nats queue depth metrics in the past 15 minutes
+		natsQueueDepthMetrics, err := logStore.GetNatsQueueDepthMetrics(ctx, 15)
+		if err != nil {
+			writeError(w, logger, err, "failed to get nats queue depth metrics", "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		writeJSON(w, logger, http.StatusOK, natsQueueDepthMetrics)
+	}
+}
+
+func handleConfig(logger *slog.Logger, config *config.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, logger, http.StatusOK, config.Public())
 	}
 }

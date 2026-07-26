@@ -39,34 +39,44 @@ func TestFlattenRouting(t *testing.T) {
 	tests := []struct {
 		name            string
 		enqueueSuccess  bool
+		hasSubscribers  bool
 		expectedAppends int
 		expectedEnqueue int
 	}{
 		{
 			name:            "successful enqueue and append",
 			enqueueSuccess:  true,
+			hasSubscribers:  true,
 			expectedAppends: 1,
 			expectedEnqueue: 1,
 		},
 		{
 			name:            "enqueue fail does not block append",
 			enqueueSuccess:  false,
+			hasSubscribers:  true,
 			expectedAppends: 1,
 			expectedEnqueue: 1,
+		},
+		{
+			name:            "skip live tail publish if no active subscribers",
+			enqueueSuccess:  true,
+			hasSubscribers:  false,
+			expectedAppends: 1,
+			expectedEnqueue: 0,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			publisher := &MockPublisher{enqueueSuccess: tc.enqueueSuccess}
+			publisher := &MockPublisher{enqueueSuccess: tc.enqueueSuccess, hasSubscribers: tc.hasSubscribers}
 			appender := &MockLogAppender{}
 
 			logTransformer := NewLogTransformer(slog.Default())
 
 			logTransformer.Flatten(createTestLog(t), publisher, appender)
 
-			assert.Equal(t, tc.expectedEnqueue, publisher.enqueueCount)
-			assert.Equal(t, tc.expectedAppends, appender.appendCount)
+			assert.Equal(t, tc.expectedEnqueue, publisher.GetEnqueueCount())
+			assert.Equal(t, tc.expectedAppends, appender.GetAppendCount())
 		})
 	}
 }
@@ -99,7 +109,7 @@ func TestFlattenLogic(t *testing.T) {
 			expectedAppends: 1,
 			check: func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender) {
 				require.Len(t, actualLogs, expectedLength)
-				assert.Equal(t, mockAppender.appendCount, expectedAppends)
+				assert.Equal(t, expectedAppends, mockAppender.GetAppendCount())
 				assert.Equal(t, time.Unix(0, 1717732530000000000), actualLogs[0].Timestamp)
 				assert.Equal(t, "auth-service", actualLogs[0].ServiceName)
 				assert.Equal(t, "INFO", actualLogs[0].SeverityText)
@@ -133,7 +143,7 @@ func TestFlattenLogic(t *testing.T) {
 			expectedAppends: 1,
 			check: func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender) {
 				require.Len(t, actualLogs, expectedLength)
-				assert.Equal(t, expectedAppends, mockAppender.appendCount)
+				assert.Equal(t, expectedAppends, mockAppender.GetAppendCount())
 				assert.Equal(t, []string{"service.name"}, actualLogs[0].ResAttrKeys)
 				assert.Equal(t, []string{"auth-service"}, actualLogs[0].ResAttrValues)
 				assert.Equal(t, []string{"test.environment"}, actualLogs[0].LogAttrKeys)
@@ -173,7 +183,7 @@ func TestFlattenLogic(t *testing.T) {
 			expectedAppends: 2,
 			check: func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender) {
 				require.Len(t, actualLogs, expectedLength)
-				assert.Equal(t, expectedAppends, mockAppender.appendCount)
+				assert.Equal(t, expectedAppends, mockAppender.GetAppendCount())
 				serviceNames := []string{}
 				for _, record := range actualLogs {
 					serviceNames = append(serviceNames, record.ServiceName)
@@ -210,7 +220,7 @@ func TestFlattenLogic(t *testing.T) {
 			expectedAppends: 2,
 			check: func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender) {
 				require.Len(t, actualLogs, expectedLength)
-				assert.Equal(t, expectedAppends, mockAppender.appendCount)
+				assert.Equal(t, expectedAppends, mockAppender.GetAppendCount())
 				serviceNames := make(map[string]struct{})
 				for _, record := range actualLogs {
 					serviceNames[record.ServiceName] = struct{}{}
@@ -223,7 +233,7 @@ func TestFlattenLogic(t *testing.T) {
 			name: "Missing Service Name",
 			inputJSON: `{
 				"resourceLogs": [{
-					"resource": {}, 
+					"resource": {},
 					"scopeLogs": [{
 						"logRecords": [{
 							"severityText": "ERROR",
@@ -236,7 +246,7 @@ func TestFlattenLogic(t *testing.T) {
 			expectedAppends: 1,
 			check: func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender) {
 				require.Len(t, actualLogs, expectedLength)
-				assert.Equal(t, expectedAppends, mockAppender.appendCount)
+				assert.Equal(t, expectedAppends, mockAppender.GetAppendCount())
 				assert.Equal(t, "unknown", actualLogs[0].ServiceName)
 				assert.Equal(t, "ERROR", actualLogs[0].SeverityText)
 			},
@@ -260,7 +270,7 @@ func TestFlattenLogic(t *testing.T) {
 			expectedAppends: 1,
 			check: func(t *testing.T, expectedLength, expectedAppends int, actualLogs []core.FlatLogRecord, mockAppender *MockLogAppender) {
 				require.Len(t, actualLogs, expectedLength)
-				assert.Equal(t, expectedAppends, mockAppender.appendCount)
+				assert.Equal(t, expectedAppends, mockAppender.GetAppendCount())
 				assert.WithinDuration(t, time.Now(), actualLogs[0].Timestamp, 2*time.Second)
 				assert.WithinDuration(t, time.Now(), actualLogs[0].ObservedTimestamp, 2*time.Second)
 			},
@@ -281,7 +291,7 @@ func TestFlattenLogic(t *testing.T) {
 			logs := req.Logs()
 
 			mockAppender := &MockLogAppender{}
-			mockPublisher := &MockPublisher{enqueueSuccess: true}
+			mockPublisher := &MockPublisher{enqueueSuccess: true, hasSubscribers: true}
 
 			logTransformer := NewLogTransformer(slog.Default())
 			for i := 0; i < logs.ResourceLogs().Len(); i++ {
