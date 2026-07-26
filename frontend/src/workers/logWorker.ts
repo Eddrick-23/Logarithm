@@ -65,9 +65,8 @@ function connect() {
         }
     };
 
-    ws.onerror = (e) => {
-        // TODO: comment out in prod
-        console.error("Wroker: Websocket error", e);
+    ws.onerror = () => {
+        // console.error("Worker: Websocket error", e);
     };
 
     ws.onclose = (e) => {
