@@ -196,73 +196,99 @@ OpenTelemetry. Two paths are documented:
 
     Example in `net/http`. See [Using a different framework](#golang-framework) below for Gin/Echo.
 
-    **Install:**
-
-    ```bash
-    go get go.opentelemetry.io/otel \
-    go.opentelemetry.io/otel/sdk/log \
-    go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp \
-    go.opentelemetry.io/contrib/bridges/otelslog \
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-    ```
-
     **`main.go`:**
 
     ```go
     package main
 
     import (
-        "context"
-        "log/slog"
-        "net/http"
+            "context"
+            "fmt"
+            "net/http"
 
-        "go.opentelemetry.io/contrib/bridges/otelslog"
-        "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-        "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
-        "go.opentelemetry.io/otel/log/global"
-        sdklog "go.opentelemetry.io/otel/sdk/log"
+            "go.opentelemetry.io/contrib/bridges/otelslog"
+            "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+            "go.opentelemetry.io/otel"
+            "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
+            "go.opentelemetry.io/otel/log/global"
+            sdklog "go.opentelemetry.io/otel/sdk/log"
+            "go.opentelemetry.io/otel/sdk/resource"
+            sdktrace "go.opentelemetry.io/otel/sdk/trace"
+            semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
     )
 
-    func main() {
-        ctx := context.Background()
+    func main() {                                                                                         
+            ctx := context.Background()
+            // 1. Define your service name 
+            res, err := resource.Merge(
+                resource.Default(),
+                resource.NewWithAttributes(
+                    resource.Default().SchemaURL(), // Dynamically matches your SDK's schema version (e.g., 1.41.0 or 1.44.0)
+                    semconv.ServiceName("my-go-service"),
+                ),
+            )
 
-        exporter, err := otlploghttp.New(ctx,
-            otlploghttp.WithEndpoint("localhost:8090"),
-            otlploghttp.WithInsecure(),
-        )
-        if err != nil {
-            panic(err)
-        }
+            if err != nil {
+                    panic(err)
+            }
 
-        provider := sdklog.NewLoggerProvider(
-            sdklog.WithProcessor(sdklog.NewBatchProcessor(exporter)),
-        )
-        defer provider.Shutdown(ctx)
-        global.SetLoggerProvider(provider)
+            // 2. Initialize a local TracerProvider to generate IDs
+            tracerProvider := sdktrace.NewTracerProvider(
+                    sdktrace.WithResource(res),
+                    // Note: We are not attaching a trace exporter here,
+                    // so traces are generated for context but not sent over the network.
+            )
+            defer tracerProvider.Shutdown(ctx)
+            // Register it globally so otelhttp can find it
+            otel.SetTracerProvider(tracerProvider)
 
-        // otelslog bridges Go's stdlib slog to the OTel logs SDK, and reads
-        // trace_id/span_id off the request context.
-        logger := otelslog.NewLogger("my-go-service")
+            // 3. Initialize your Log Exporter
+            exporter, err := otlploghttp.New(ctx,
+                    otlploghttp.WithEndpoint("localhost:8090"),
+                    otlploghttp.WithInsecure(),
+            )
+            if err != nil {
+                    panic(err)
+            }
 
-        mux := http.NewServeMux()
-        mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-            logger.InfoContext(r.Context(), "from root!")
-            w.Write([]byte(`{"message": "Hello, Go with OpenTelemetry"}`))
-        })
-        mux.HandleFunc("/warn", func(w http.ResponseWriter, r *http.Request) {
-            logger.WarnContext(r.Context(), "fake warning!")
-            w.Write([]byte(`{"message": "Hello, Go with OpenTelemetry!"}`))
-        })
-        mux.HandleFunc("/error", func(w http.ResponseWriter, r *http.Request) {
-            logger.ErrorContext(r.Context(), "fake error!")
-            w.Write([]byte(`{"message": "Hello, Go with OpenTelemetry!"}`))
-        })
+            // 4. Initialize LoggerProvider with the Resource
+            provider := sdklog.NewLoggerProvider(
+                    sdklog.WithProcessor(sdklog.NewBatchProcessor(exporter)),
+                    sdklog.WithResource(res), // Attach the resource to logs
+            )
+            defer provider.Shutdown(ctx)
+            global.SetLoggerProvider(provider)
 
-        // otelhttp creates the per-request span that gives r.Context() something
-        // for otelslog to read trace_id/span_id from.
-        handler := otelhttp.NewHandler(mux, "http-server")
-        http.ListenAndServe(":8080", handler)
+            // otelslog bridges Go's stdlib slog to the OTel logs SDK
+            logger := otelslog.NewLogger("my-go-service")
+
+            mux := http.NewServeMux()
+            mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+                    logger.InfoContext(r.Context(), "from root!")
+                    w.Write([]byte(`{"message": "Hello, Go with OpenTelemetry"}`))
+            })
+            mux.HandleFunc("/warn", func(w http.ResponseWriter, r *http.Request) {
+                    logger.WarnContext(r.Context(), "fake warning!")
+                    w.Write([]byte(`{"message": "Hello, Go with OpenTelemetry!"}`))
+            })
+            mux.HandleFunc("/error", func(w http.ResponseWriter, r *http.Request) {
+                    logger.ErrorContext(r.Context(), "fake error!")
+                    w.Write([]byte(`{"message": "Hello, Go with OpenTelemetry!"}`))
+            })
+
+            // otelhttp will now use the global TracerProvider to create real spans
+            handler := otelhttp.NewHandler(mux, "http-server")
+            fmt.Println("listening on http://localhost:8080")
+            http.ListenAndServe(":8080", handler)
     }
+    ```
+
+    **Install:**
+
+    ```bash
+    go mod init example.com/m
+
+    go mod tidy
     ```
 
     **Run:**
