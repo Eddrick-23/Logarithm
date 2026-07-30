@@ -1,5 +1,6 @@
 site_name: Logarithm
 site_url: https://mydomain.org/mysite
+repo_url: https://github.com/Eddrick-23/Logarithm 
 
 nav:
   - Home: index.md
